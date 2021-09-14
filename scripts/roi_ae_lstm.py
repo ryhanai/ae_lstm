@@ -47,13 +47,6 @@ def visualize_ds(images, max_samples=20):
         ax.imshow(images[p])
     
 
-def preprocess_image(img):
-    # crop the center region
-    img = img[130:250, 120:360] 
-    img = cv2.resize(img, (width, height))
-    return img
-
-
 dataset_path = '/home/ryo/Dataset/dataset'
 sys.path.append(dataset_path)
 
@@ -113,8 +106,6 @@ def load_dataset(action='pushing',
             frames = []
             for i in range(0, n_frames, sampling_interval):
                 img = plt.imread(os.path.join(path, 'image_frame%d.jpg'%i))
-                # do not preprocess in ROI learning
-                # img = preprocess_image(img)
                 if normalize:
                     img = img/255.
                 frames.append(img)
@@ -162,16 +153,6 @@ def fixed_ROI_policy(ds):
     n_data = [group[0].shape[0] for group in ds]
     return np.tile(roi, [ds.shape[0], 1])
     
-        
-# def load_joint_dataset(action='pushing', groups=range(1,2), start_step=0, step_length=None):
-#     def load_group(group):
-#         joint_file = os.path.join(dataset_path, '%s/group%d'%(action, group), 'torobo_joint_position_avg.txt')
-#         joint_seq_time = load_torobo_unity_joint_seq(joint_file, start_step, step_length)
-#         joint_seq = np.delete(joint_seq_time, [0,8], axis=1) # delete wall time & something
-#         return joint_seq
-    
-#     joint_seqs = [load_group(g) for g in groups]
-#     return joint_seqs
 
 from scipy.linalg import norm
 
@@ -200,43 +181,95 @@ def test_crop_and_resize():
     plt.show()
 
 
+loss_tracker = keras.metrics.Mean(name="loss")
+val_loss_tracker = keras.metrics.Mean(name="val_loss")
+    
+class AutoencoderWithCrop(tf.keras.Model):
+    """
+    override loss computation
+    """
+    def train_step(self, data):
+        x, y = data
+        x_image, x_joint, x_roi = x
+        y_image, y_joint = y
+
+        with tf.GradientTape() as tape:
+            y_pred = self(x, training=True) # Forward pass
+            y_image_cropped = crop_and_resize((y_image, x_roi[:,-1]))
+            loss = keras.losses.mean_squared_error(y_image_cropped, y_pred[0])
+
+        trainable_vars = self.trainable_variables
+        gradients = tape.gradient(loss, trainable_vars)
+        self.optimizer.apply_gradients(zip(gradients, trainable_vars))
+
+        loss_tracker.update_state(loss)
+        return {"loss": loss_tracker.result()}
+
+    def test_step(self, data):
+        x, y = data
+        x_image, x_joint, x_roi = x
+        y_image, y_joint = y
+
+        y_pred = self(x, training=False) # Forward pass
+        y_cropped = crop_and_resize((y_image, x_roi[:,-1]))
+        val_loss = keras.losses.mean_squared_error(y_cropped, y_pred)
+        val_loss_tracker.update_state(val_loss)
+        return {"loss": val_loss_tracker.result()}
+
+    @property
+    def metrics(self):
+        return [loss_tracker, val_loss_tracker]
+
+
 dense_dim = 512
 latent_dim = 128
+time_window = 20
 
-def model_autoencoder():
-    image_input = tf.keras.Input(shape=(270, 480, 3))
-    roi_input = tf.keras.Input(shape=(4, ))
-    roi = tf.keras.layers.Lambda(crop_and_resize, output_shape=(height, width)) ([image_input, roi_input])
+def model_roi_ae_lstm():
+    # encoder
+    image_input = tf.keras.Input(shape=(time_window, 270, 480, 3))
+    roi_input = tf.keras.Input(shape=(time_window, 4))    
+    roi = tf.keras.layers.TimeDistributed(tf.keras.layers.Lambda(crop_and_resize, output_shape=(height, width, 3))) ([image_input, roi_input])
+
     roi_extractor = tf.keras.Model([image_input, roi_input], roi, name='roi_extractor')
     roi_extractor.summary()
     
-    # encoder_input = keras.Input(shape=(height, width, 3))
-    x = tf.keras.layers.GaussianNoise(0.2)(roi)
+    x = tf.keras.layers.TimeDistributed(tf.keras.layers.GaussianNoise(0.2))(roi)
 
-    x = tf.keras.layers.Conv2D(8, kernel_size=3, strides=1, padding='same', activation='selu')(x)
-    x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.MaxPool2D(pool_size=2)(x)
+    x = tf.keras.layers.TimeDistributed(tf.keras.layers.Conv2D(8, kernel_size=3, strides=1, padding='same', activation='selu'))(x)
+    x = tf.keras.layers.TimeDistributed(tf.keras.layers.BatchNormalization())(x)
+    x = tf.keras.layers.TimeDistributed(tf.keras.layers.MaxPool2D(pool_size=2))(x)
           
-    x = tf.keras.layers.Conv2D(16, kernel_size=3, strides=1, padding='same', activation='selu')(x)
-    x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.MaxPool2D(pool_size=2)(x)
+    x = tf.keras.layers.TimeDistributed(tf.keras.layers.Conv2D(16, kernel_size=3, strides=1, padding='same', activation='selu'))(x)
+    x = tf.keras.layers.TimeDistributed(tf.keras.layers.BatchNormalization())(x)
+    x = tf.keras.layers.TimeDistributed(tf.keras.layers.MaxPool2D(pool_size=2))(x)
 
-    x = tf.keras.layers.Conv2D(32, kernel_size=3, strides=1, padding='same', activation='selu')(x)
-    x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.MaxPool2D(pool_size=2)(x)
+    x = tf.keras.layers.TimeDistributed(tf.keras.layers.Conv2D(32, kernel_size=3, strides=1, padding='same', activation='selu'))(x)
+    x = tf.keras.layers.TimeDistributed(tf.keras.layers.BatchNormalization())(x)
+    x = tf.keras.layers.TimeDistributed(tf.keras.layers.MaxPool2D(pool_size=2))(x)
           
-    x = tf.keras.layers.Conv2D(64, kernel_size=3, strides=1, padding='same', activation='selu')(x)
-    x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.MaxPool2D(pool_size=2)(x)
+    x = tf.keras.layers.TimeDistributed(tf.keras.layers.Conv2D(64, kernel_size=3, strides=1, padding='same', activation='selu'))(x)
+    x = tf.keras.layers.TimeDistributed(tf.keras.layers.BatchNormalization())(x)
+    x = tf.keras.layers.TimeDistributed(tf.keras.layers.MaxPool2D(pool_size=2))(x)
 
-    x = tf.keras.layers.Flatten()(x)
-    encoder_output = tf.keras.layers.Dense(latent_dim, activation='selu')(x)
+    x = tf.keras.layers.TimeDistributed(tf.keras.layers.Flatten())(x)
+    encoder_output = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(latent_dim, activation='selu'))(x)
 
-    encoder = keras.Model([image_input, roi_input], encoder_output, name='encoder')
-    encoder.summary()
+    # stacked LSTM
+    dof = 8
+    joint_input = tf.keras.Input(shape=(time_window, dof))
+    state_dim = latent_dim + dof
+    x = tf.keras.layers.concatenate([encoder_output, joint_input])
+    x = tf.keras.layers.LSTM(state_dim, return_sequences=True)(x)
+    x = tf.keras.layers.LSTM(state_dim, return_sequences=True)(x)
+    x = tf.keras.layers.LSTM(50)(x)
+    x = tf.keras.layers.Dense(state_dim)(x)
+    lstm_image_output = tf.keras.layers.Lambda(lambda x:x[:,:128], output_shape=(128,))(x)
+    lstm_joint_output = tf.keras.layers.Lambda(lambda x:x[:,128:], output_shape=(8,))(x)
 
+    # decoder
     channels = 64
-    x = tf.keras.layers.Dense(5*10*channels, activation='selu')(encoder_output)
+    x = tf.keras.layers.Dense(5*10*channels, activation='selu')(lstm_image_output)
     x = tf.keras.layers.BatchNormalization()(x)
 
     x = tf.keras.layers.Reshape(target_shape=(5, 10, channels))(x)
@@ -260,13 +293,20 @@ def model_autoencoder():
           
     decoder_output = tf.keras.layers.Conv2DTranspose(3, kernel_size=3, strides=1, padding='same', activation='sigmoid')(x)
 
-    autoencoder = keras.Model([image_input, roi_input], decoder_output, name='autoencoder')
+    encoder = keras.Model([image_input, roi_input], encoder_output, name='encoder')
+    encoder.summary()
 
-    subtracted = tf.keras.layers.subtract([roi, decoder_output])
-    ae_sub = keras.Model([image_input, roi_input], subtracted, name='ae_sub')
-    ae_sub.summary()
+    model = AutoencoderWithCrop([image_input, joint_input, roi_input],
+                                [decoder_output, lstm_joint_output],
+                                name='dplmodel')
+    model.summary()
     
-    return roi_extractor, encoder, autoencoder, ae_sub
+    # subtracted = tf.keras.layers.subtract([roi, decoder_output])
+    # ae_sub = keras.Model([image_input, joint_input, roi_input], subtracted, name='ae_sub')
+    # ae_sub.summary()
+    
+    return roi_extractor, encoder, model
+
 
 def show_images(original_images, reconstructed_images, n=10):
     idx = [np.random.randint(1,20) for i in range(n)]
@@ -288,29 +328,28 @@ def show_images(original_images, reconstructed_images, n=10):
 
     plt.show()
 
-class AutoencoderWithCrop(tf.keras.Model):
-    def train_step(self, data):
-        x, y = data
-    
 
-class AE_Trainer:
+class ROI_AE_LSTM_Trainer:
 
     def __init__(self):
-        self.roi_extractor, self.encoder, self.autoencoder, self.ae_sub = model_autoencoder()
+        self.roi_extractor, self.encoder, self.model = model_roi_ae_lstm()
 
+        self.batch_size = 4
         # pushing: group1 - group400
-        train_ds = load_dataset(groups=range(1,30), sampling_interval=5)
-        self.train_data, self.train_labels = generate_dataset_for_AE_training(train_ds)
-        val_ds = load_dataset(groups=range(30,40), sampling_interval=5)
-        self.val_data, self.val_labels = generate_dataset_for_AE_training(val_ds)
+        train_ds = load_dataset(groups=range(1,4))
+        train_generator = DPLGenerator()
+        self.train_gen = train_generator.flow(train_ds, batch_size=self.batch_size)
+        val_ds = load_dataset(groups=range(5,6))
+        val_generator = DPLGenerator()
+        self.val_gen = val_generator.flow(val_ds, batch_size=self.batch_size)
 
         self.opt = keras.optimizers.Adamax(learning_rate=0.001)
-        self.ae_sub.compile(loss='mse', optimizer=self.opt)
+        self.model.compile(loss='mse', optimizer=self.opt)
 
         # create checkpoint and save best weight
         self.checkpoint_path = "/home/ryo/Program/ae_lstm/runs/ae_cp/cp.ckpt"
         
-    def train(self, epochs=500):
+    def train(self, epochs=100):
         start = time.time()
 
         # Create a callback that saves the model's weights
@@ -332,23 +371,24 @@ class AE_Trainer:
                                                          min_lr=0.00001)
 
         # train the model
-        history = self.ae_sub.fit_generator(self.train_data,
-                                  self.train_labels, 
-                                  epochs=epochs,
-                                  batch_size=32,
-                                  shuffle=True,
-                                  validation_data=(self.val_data, self.val_labels),
-                                  callbacks=[cp_callback, early_stop, reduce_lr])
+        total_train = self.train_gen.number_of_data()
+        total_val = self.val_gen.number_of_data()
+        history = self.model.fit_generator(self.train_gen,
+                                 steps_per_epoch=total_train // self.batch_size,
+                                 epochs=epochs,
+                                 validation_data=self.val_gen,
+                                 validation_steps=total_val // self.batch_size,
+                                 callbacks=[cp_callback, early_stop, reduce_lr])
 
         end = time.time()
         print('\ntotal time spent {}'.format((end-start)/60))
 
     def test_ae(self):
         # load best checkpoint and evaluate
-        self.ae_sub.compile(loss='mse', optimizer=self.opt)
-        self.ae_sub.load_weights(self.checkpoint_path)
+        self.model.compile(loss='mse', optimizer=self.opt)
+        self.model.load_weights(self.checkpoint_path)
         
-        reconstructed_images = self.autoencoder.predict(self.val_data)
+        reconstructed_images = self.model.predict(self.val_data)
         roi_images = self.roi_extractor.predict(self.val_data)
         show_images(roi_images, reconstructed_images)
 
