@@ -188,7 +188,7 @@ def test_crop_and_resize():
 
 loss_tracker = keras.metrics.Mean(name="loss")
 val_loss_tracker = keras.metrics.Mean(name="val_loss")
-    
+
 class AutoencoderWithCrop(tf.keras.Model):
     """
     override loss computation
@@ -219,7 +219,11 @@ class AutoencoderWithCrop(tf.keras.Model):
         x_image, x_joint, x_roi = x
         y_image, y_joint = y
         y_image_cropped = crop_and_resize((y_image, x_roi[:,-1]))
-        loss = keras.losses.mean_squared_error(y_image_cropped, y_pred[0])
+        
+        image_loss = tf.reduce_mean(tf.square(y_image_cropped - y_pred[0]))
+        joint_loss = tf.reduce_mean(tf.square(y_joint - y_pred[1]))
+        loss = image_loss + joint_loss
+        #loss = keras.losses.mean_squared_error(y_image_cropped, y_pred[0])
         return loss
     
     @property
@@ -333,7 +337,7 @@ def show_images(original_images, reconstructed_images, n=10):
 
     plt.show()
 
-
+    
 class ROI_AE_LSTM_Trainer:
 
     def __init__(self):
