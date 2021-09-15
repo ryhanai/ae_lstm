@@ -87,7 +87,7 @@ def load_dataset(action='pushing',
                  start_step=0,
                  step_length=None,
                  normalize=True):
-
+    
     def load_group(group, joint_range=None):
         path = os.path.join(dataset_path, '%s/group%d'%(action, group))
 
@@ -117,16 +117,27 @@ def load_dataset(action='pushing',
     start = time.time()
     data = []
 
-    for group in groups:
+    if normalize:
+        jp_range = joint_position_range()
+
+    n_groups = len(groups)
+    for i,group in enumerate(groups):
+        print('\rloading: {}/{}'.format(i, n_groups), end='')
         if normalize:
-            data.append(load_group(group, joint_position_range()))
+            data.append(load_group(group, jp_range))
         else:
             data.append(load_group(group))
 
     end = time.time()
-    print('total time spent {}'.format((end-start)/60))
+    print('\ntotal time spent for loading data: {} [min]'.format((end-start)/60))
 
     return data
+
+def joint_position_range():
+    ds = load_dataset(groups=range(1,400), load_image=False, normalize=False)
+    joint_max_positions = np.max([np.max(group, axis=0) for group in ds], axis=0)
+    joint_min_positions = np.min([np.min(group, axis=0) for group in ds], axis=0)
+    return joint_min_positions, joint_max_positions
 
 def generate_dataset_for_AE_training(ds):
     images = []
@@ -138,12 +149,6 @@ def generate_dataset_for_AE_training(ds):
     roi = np.array([0.48, 0.25, 0.92, 0.75]) # [y1, x1, y2, x2] in normalized coodinates
     bboxes = np.tile(roi, [input_images.shape[0], 1])
     return (input_images, bboxes), labels
-        
-def joint_position_range():
-    ds = load_dataset(groups=range(1,400), load_image=False, normalize=False)
-    joint_max_positions = np.max([np.max(group, axis=0) for group in ds], axis=0)
-    joint_min_positions = np.min([np.min(group, axis=0) for group in ds], axis=0)
-    return joint_min_positions, joint_max_positions
 
 def hand_coded_ROI_policy():
     return "a sequence of ROIs"
@@ -190,13 +195,10 @@ class AutoencoderWithCrop(tf.keras.Model):
     """
     def train_step(self, data):
         x, y = data
-        x_image, x_joint, x_roi = x
-        y_image, y_joint = y
 
         with tf.GradientTape() as tape:
             y_pred = self(x, training=True) # Forward pass
-            y_image_cropped = crop_and_resize((y_image, x_roi[:,-1]))
-            loss = keras.losses.mean_squared_error(y_image_cropped, y_pred[0])
+            loss = self.compute_loss(y, y_pred, x)
 
         trainable_vars = self.trainable_variables
         gradients = tape.gradient(loss, trainable_vars)
@@ -207,15 +209,19 @@ class AutoencoderWithCrop(tf.keras.Model):
 
     def test_step(self, data):
         x, y = data
-        x_image, x_joint, x_roi = x
-        y_image, y_joint = y
-
         y_pred = self(x, training=False) # Forward pass
-        y_cropped = crop_and_resize((y_image, x_roi[:,-1]))
-        val_loss = keras.losses.mean_squared_error(y_cropped, y_pred)
+        val_loss = self.compute_loss(y, y_pred, x)
+
         val_loss_tracker.update_state(val_loss)
         return {"loss": val_loss_tracker.result()}
 
+    def compute_loss(self, y, y_pred, x):
+        x_image, x_joint, x_roi = x
+        y_image, y_joint = y
+        y_image_cropped = crop_and_resize((y_image, x_roi[:,-1]))
+        loss = keras.losses.mean_squared_error(y_image_cropped, y_pred[0])
+        return loss
+    
     @property
     def metrics(self):
         return [loss_tracker, val_loss_tracker]
@@ -223,12 +229,11 @@ class AutoencoderWithCrop(tf.keras.Model):
 
 dense_dim = 512
 latent_dim = 128
-time_window = 20
 
-def model_roi_ae_lstm():
+def model_roi_ae_lstm(time_window_size=20):
     # encoder
-    image_input = tf.keras.Input(shape=(time_window, 270, 480, 3))
-    roi_input = tf.keras.Input(shape=(time_window, 4))    
+    image_input = tf.keras.Input(shape=(time_window_size, 270, 480, 3))
+    roi_input = tf.keras.Input(shape=(time_window_size, 4))    
     roi = tf.keras.layers.TimeDistributed(tf.keras.layers.Lambda(crop_and_resize, output_shape=(height, width, 3))) ([image_input, roi_input])
 
     roi_extractor = tf.keras.Model([image_input, roi_input], roi, name='roi_extractor')
@@ -257,7 +262,7 @@ def model_roi_ae_lstm():
 
     # stacked LSTM
     dof = 8
-    joint_input = tf.keras.Input(shape=(time_window, dof))
+    joint_input = tf.keras.Input(shape=(time_window_size, dof))
     state_dim = latent_dim + dof
     x = tf.keras.layers.concatenate([encoder_output, joint_input])
     x = tf.keras.layers.LSTM(state_dim, return_sequences=True)(x)
@@ -332,16 +337,17 @@ def show_images(original_images, reconstructed_images, n=10):
 class ROI_AE_LSTM_Trainer:
 
     def __init__(self):
-        self.roi_extractor, self.encoder, self.model = model_roi_ae_lstm()
+        self.batch_size = 32
+        self.time_window = 10
+        self.roi_extractor, self.encoder, self.model = model_roi_ae_lstm(time_window_size=self.time_window)
 
-        self.batch_size = 4
         # pushing: group1 - group400
-        train_ds = load_dataset(groups=range(1,4))
+        train_ds = load_dataset(groups=range(1,50))
         train_generator = DPLGenerator()
-        self.train_gen = train_generator.flow(train_ds, batch_size=self.batch_size)
-        val_ds = load_dataset(groups=range(5,6))
+        self.train_gen = train_generator.flow(train_ds, batch_size=self.batch_size, time_window_size=self.time_window)
+        val_ds = load_dataset(groups=range(100,120))
         val_generator = DPLGenerator()
-        self.val_gen = val_generator.flow(val_ds, batch_size=self.batch_size)
+        self.val_gen = val_generator.flow(val_ds, batch_size=self.batch_size, time_window_size=self.time_window)
 
         self.opt = keras.optimizers.Adamax(learning_rate=0.001)
         self.model.compile(loss='mse', optimizer=self.opt)
@@ -349,7 +355,7 @@ class ROI_AE_LSTM_Trainer:
         # create checkpoint and save best weight
         self.checkpoint_path = "/home/ryo/Program/ae_lstm/runs/ae_cp/cp.ckpt"
         
-    def train(self, epochs=100):
+    def train(self, epochs=30):
         start = time.time()
 
         # Create a callback that saves the model's weights
@@ -373,7 +379,7 @@ class ROI_AE_LSTM_Trainer:
         # train the model
         total_train = self.train_gen.number_of_data()
         total_val = self.val_gen.number_of_data()
-        history = self.model.fit_generator(self.train_gen,
+        history = self.model.fit(self.train_gen,
                                  steps_per_epoch=total_train // self.batch_size,
                                  epochs=epochs,
                                  validation_data=self.val_gen,
@@ -381,15 +387,27 @@ class ROI_AE_LSTM_Trainer:
                                  callbacks=[cp_callback, early_stop, reduce_lr])
 
         end = time.time()
-        print('\ntotal time spent {}'.format((end-start)/60))
+        print('\ntotal time spent for training: {}[min]'.format((end-start)/60))
 
-    def test_ae(self):
+    def test(self):
+        self.model.compile(loss='mse', optimizer=self.opt)
+        self.model.load_weights(self.checkpoint_path)
+        x,y = next(self.val_gen)
+        predicted_images, predicted_joint_positions = self.model.predict(x)
+        visualize_ds(predicted_images)
+        # roi_images = self.roi_extractor.predict((x[0],x[2]))
+        # visualize_ds(roi_images[:,-1,:,:,:])
+        roi_images = crop_and_resize((y[0], x[2][:,-1]))
+        visualize_ds(roi_images)
+        plt.show()
+        
+    def generate_sequence(self):
         # load best checkpoint and evaluate
         self.model.compile(loss='mse', optimizer=self.opt)
         self.model.load_weights(self.checkpoint_path)
         
         reconstructed_images = self.model.predict(self.val_data)
-        roi_images = self.roi_extractor.predict(self.val_data)
+
         show_images(roi_images, reconstructed_images)
 
         return reconstructed_images, roi_images

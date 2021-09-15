@@ -44,10 +44,10 @@ class Iterator(object):
 
 class ImageRNNIterator(Iterator):
     def __init__(self, dataset, data_generator,
-                     batch_size=32, shuffle=False, seed=None):
+                     batch_size=32, time_window_size=20, shuffle=False, seed=None):
         self.ds = dataset
         self.data_generator = data_generator
-        self.window_size = 20
+        self.window_size = time_window_size
 
         self.indices = []
         for g_num, group in enumerate(self.ds):
@@ -62,8 +62,12 @@ class ImageRNNIterator(Iterator):
     def next(self, batch_size=32, shuffle=False, seed=None):
         with self.lock:
             index_array, current_index, current_batch_size = next(self.index_generator)
+            if current_batch_size < batch_size:
+                # model.fit is interrupted, when the size of generated batch is smaller than batch_size.
+                # WARNING:tensorflow:Your input ran out of data; interrupting training. Make sure that your dataset or generator can generate at least `steps_per_epoch * epochs` batches 
+                index_array, current_index, current_batch_size = next(self.index_generator)
 
-        print(index_array)
+        # print(index_array)
         ishape = self.ds[0][1][0].shape
         jv_dim = self.ds[0][0].shape[1]
         batch_x_imgs = np.empty((current_batch_size, self.window_size, ishape[0], ishape[1], ishape[2]))
@@ -107,8 +111,8 @@ class DPLGenerator(ImageDataGenerator):
         assert random_crop == None or len(random_crop) == 2
         self.random_crop_size = random_crop
 
-    def flow(self, dataset, batch_size=32, shuffle=True, seed=None):
-        return ImageRNNIterator(dataset, self, batch_size, shuffle, seed)
+    def flow(self, dataset, batch_size=32, time_window_size=20, shuffle=True, seed=None):
+        return ImageRNNIterator(dataset, self, batch_size, time_window_size, shuffle, seed)
     
     def get_random_transform(self, img_shape, seed=None):
         tf = super().get_random_transform(img_shape, seed)
