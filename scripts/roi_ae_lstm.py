@@ -222,7 +222,7 @@ class AutoencoderWithCrop(tf.keras.Model):
         
         image_loss = tf.reduce_mean(tf.square(y_image_cropped - y_pred[0]))
         joint_loss = tf.reduce_mean(tf.square(y_joint - y_pred[1]))
-        loss = image_loss + joint_loss
+        loss = image_loss + 10.*joint_loss
         #loss = keras.losses.mean_squared_error(y_image_cropped, y_pred[0])
         return loss
     
@@ -232,7 +232,7 @@ class AutoencoderWithCrop(tf.keras.Model):
 
 
 dense_dim = 512
-latent_dim = 128
+latent_dim = 32
 
 def model_roi_ae_lstm(time_window_size=20):
     # encoder
@@ -273,8 +273,8 @@ def model_roi_ae_lstm(time_window_size=20):
     x = tf.keras.layers.LSTM(state_dim, return_sequences=True)(x)
     x = tf.keras.layers.LSTM(50)(x)
     x = tf.keras.layers.Dense(state_dim)(x)
-    lstm_image_output = tf.keras.layers.Lambda(lambda x:x[:,:128], output_shape=(128,))(x)
-    lstm_joint_output = tf.keras.layers.Lambda(lambda x:x[:,128:], output_shape=(8,))(x)
+    lstm_image_output = tf.keras.layers.Lambda(lambda x:x[:,:latent_dim], output_shape=(latent_dim,))(x)
+    lstm_joint_output = tf.keras.layers.Lambda(lambda x:x[:,latent_dim:], output_shape=(dof,))(x)
 
     # decoder
     channels = 64
@@ -345,21 +345,26 @@ class ROI_AE_LSTM_Trainer:
         self.time_window = 10
         self.roi_extractor, self.encoder, self.model = model_roi_ae_lstm(time_window_size=self.time_window)
 
-        # pushing: group1 - group400
-        train_ds = load_dataset(groups=range(1,50))
-        train_generator = DPLGenerator()
-        self.train_gen = train_generator.flow(train_ds, batch_size=self.batch_size, time_window_size=self.time_window)
-        val_ds = load_dataset(groups=range(100,120))
-        val_generator = DPLGenerator()
-        self.val_gen = val_generator.flow(val_ds, batch_size=self.batch_size, time_window_size=self.time_window)
-
         self.opt = keras.optimizers.Adamax(learning_rate=0.001)
         self.model.compile(loss='mse', optimizer=self.opt)
 
         # create checkpoint and save best weight
         self.checkpoint_path = "/home/ryo/Program/ae_lstm/runs/ae_cp/cp.ckpt"
-        
-    def train(self, epochs=30):
+
+    def load_train_data(self):
+        # pushing: group1 - group400
+        train_ds = load_dataset(groups=range(1,300))
+        train_generator = DPLGenerator()
+        self.train_gen = train_generator.flow(train_ds, batch_size=self.batch_size, time_window_size=self.time_window)
+
+    def load_val_data(self):
+        val_ds = load_dataset(groups=range(300,350))
+        val_generator = DPLGenerator()
+        self.val_gen = val_generator.flow(val_ds, batch_size=self.batch_size, time_window_size=self.time_window)
+
+    def train(self, epochs=100):
+        self.load_train_data()
+        self.load_val_data()
         start = time.time()
 
         # Create a callback that saves the model's weights
@@ -394,6 +399,7 @@ class ROI_AE_LSTM_Trainer:
         print('\ntotal time spent for training: {}[min]'.format((end-start)/60))
 
     def test(self):
+        self.load_val_data()
         self.model.compile(loss='mse', optimizer=self.opt)
         self.model.load_weights(self.checkpoint_path)
         x,y = next(self.val_gen)
@@ -403,6 +409,22 @@ class ROI_AE_LSTM_Trainer:
         # visualize_ds(roi_images[:,-1,:,:,:])
         roi_images = crop_and_resize((y[0], x[2][:,-1]))
         visualize_ds(roi_images)
+        plt.show()
+
+    def test_joint(self):
+        self.load_val_data()
+        self.model.compile(loss='mse', optimizer=self.opt)
+        self.model.load_weights(self.checkpoint_path)
+        x,y = next(self.val_gen)
+        predicted_images, predicted_joint_positions = self.model.predict(x)
+        data = np.concatenate((x[1], predicted_joint_positions[:,np.newaxis,:]), axis=1)
+
+        fig = plt.figure()
+        fig.subplots_adjust(hspace=0.1)
+        for joint_id in range(8):
+            ax = fig.add_subplot(8//2, 2, joint_id+1)
+            ax.plot(np.transpose(data[:,:,joint_id]))
+        #ax.axis('off')
         plt.show()
         
     def generate_sequence(self):
