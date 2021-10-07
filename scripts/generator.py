@@ -1,5 +1,6 @@
 import numpy as np
 import threading
+import time
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
 class Iterator(object):
@@ -43,11 +44,13 @@ class Iterator(object):
         return self.next(*args, **kwargs)
 
 class ImageRNNIterator(Iterator):
-    def __init__(self, dataset, data_generator,
-                     batch_size=32, time_window_size=20, shuffle=False, seed=None):
+    def __init__(self, dataset, data_generator, roi_fun,
+                     batch_size=32, time_window_size=20, add_roi=True, shuffle=False, seed=None):
         self.ds = dataset
         self.data_generator = data_generator
         self.window_size = time_window_size
+        self.roi_fun = roi_fun
+        self.add_roi = add_roi
 
         self.indices = []
         for g_num, group in enumerate(self.ds):
@@ -57,7 +60,9 @@ class ImageRNNIterator(Iterator):
 
         self.batch_index = 0
         self.total_batches_seen = 0
+
         super().__init__(len(self.indices), batch_size, shuffle, seed)
+
 
     def next(self, batch_size=32, shuffle=False, seed=None):
         with self.lock:
@@ -79,18 +84,34 @@ class ImageRNNIterator(Iterator):
             group_num, seq_num = self.indices[seq_idx]
             batch_x_jvs[i] = self.ds[group_num][0][seq_num:seq_num+self.window_size]
             batch_y_jv[i] = self.ds[group_num][0][seq_num+self.window_size]
-            for j in range(self.window_size):
-                batch_x_imgs[i][j] = self.ds[group_num][1][seq_num+j]
+
+        for i, seq_idx in enumerate(index_array):
+            group_num, seq_num = self.indices[seq_idx]
+            batch_x_imgs[i] = self.ds[group_num][1][seq_num:seq_num+self.window_size]
             batch_y_img[i] = self.ds[group_num][1][seq_num+self.window_size]
 
-        roi = np.array([0.48, 0.25, 0.92, 0.75]) # [y1, x1, y2, x2] in normalized coodinates
-        batch_rois = np.tile(roi, [batch_size, self.window_size, 1])
+        # This is slower
+        # a = []
+        # b = []
+        # for i, seq_idx in enumerate(index_array):
+        #     group_num, seq_num = self.indices[seq_idx]
+        #     a.append(self.ds[group_num][1][seq_num:seq_num+self.window_size])
+        #     b.append(self.ds[group_num][1][seq_num+self.window_size])
+        # batch_x_imgs = np.array(a)
+        # batch_y_imgs = np.array(b)
 
-        return (batch_x_imgs, batch_x_jvs, batch_rois), (batch_y_img, batch_y_jv)
+        # batch_rois = np.tile(roi, [batch_size, self.window_size, 1])
+        # batch_rois = np.array([self.roi_fun() for i in range(batch_size*self.window_size)]).reshape((batch_size, self.window_size, 4))
+
+        if self.add_roi:
+            batch_rois = np.array([self.roi_fun() for i in range(batch_size*self.window_size)]).reshape((batch_size, self.window_size, 4))
+            return (batch_x_imgs, batch_x_jvs, batch_rois), (batch_y_img, batch_y_jv)
+        else:
+            return (batch_x_imgs, batch_x_jvs), (batch_y_img, batch_y_jv)
 
     def number_of_data(self):
         return len(self.indices)
-    
+
 class DPLGenerator(ImageDataGenerator):
     def __init__(self, featurewise_center = False, samplewise_center = False,
                  featurewise_std_normalization = False, samplewise_std_normalization = False,
@@ -111,8 +132,8 @@ class DPLGenerator(ImageDataGenerator):
         assert random_crop == None or len(random_crop) == 2
         self.random_crop_size = random_crop
 
-    def flow(self, dataset, batch_size=32, time_window_size=20, shuffle=True, seed=None):
-        return ImageRNNIterator(dataset, self, batch_size, time_window_size, shuffle, seed)
+    def flow(self, dataset, roi_fun, batch_size=32, time_window_size=20, add_roi=True, shuffle=True, seed=None):
+        return ImageRNNIterator(dataset, self, roi_fun, batch_size, time_window_size, add_roi, shuffle, seed)
     
     def get_random_transform(self, img_shape, seed=None):
         tf = super().get_random_transform(img_shape, seed)
