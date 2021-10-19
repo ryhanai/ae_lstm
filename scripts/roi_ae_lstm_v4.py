@@ -15,6 +15,23 @@ from generator import *
 
 os.environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
 
+def draw_rect(image, roi):
+    '''
+    To draw i'th image with ROI rectangle
+
+    draw_rect(x[0][i][0], rois[i])
+    plt.show()
+    '''
+    fig,ax = plt.subplots()
+    ax.imshow(image)
+    height = image.shape[0]
+    width = image.shape[1]
+    x = width * roi[1]
+    w = width * (roi[3] - roi[1])
+    y = height * roi[0]
+    h = height * (roi[2] - roi[0])
+    rect = patches.Rectangle((x,y), w, h, linewidth=1, edgecolor='red', fill=False) # x,y,w,h [pixels]
+    ax.add_patch(rect)
 
 def visualize_ds(images, rois=[], max_samples=20):
     samples = min(len(images), max_samples)
@@ -248,7 +265,8 @@ def const_roi_fun():
 
 def roi_rect(args):
     c, s = args
-    es = 0.15 * (1.0 + s)
+    #es = 0.15 * (1.0 + s)
+    es = 0.075 * (1.0 + s)
     img_center = tf.tile(tf.constant([[0.5, 0.5]], dtype=tf.float32), (batch_size,1))
     a = tf.tile(tf.expand_dims(es, 1), (1,2))
     lt = img_center + 0.4 * (c - img_center) - a
