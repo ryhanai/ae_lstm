@@ -12,8 +12,16 @@ from tensorflow.keras import layers, losses
 from tensorflow.keras.models import Model
 
 from generator import *
+from PIL import Image
 
 os.environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
+
+def create_anim_gif(img_files, out_filename):
+    imgs = []
+    for img_file in img_files:
+        img = Image.open(img_file)
+        imgs.append(img)
+    imgs[0].save(out_filename, save_all=True, append_images=imgs[1:], optimize=False, duration=100, loop=0)
 
 def draw_rect(image, roi):
     '''
@@ -32,6 +40,23 @@ def draw_rect(image, roi):
     h = height * (roi[2] - roi[0])
     rect = patches.Rectangle((x,y), w, h, linewidth=1, edgecolor='red', fill=False) # x,y,w,h [pixels]
     ax.add_patch(rect)
+
+def create_anim_gif_for_group(images, rois, group_num, dir='./images'):
+    n = rois.shape[0]
+    image_files = []
+    for i in range(n):
+        draw_rect(images[i], rois[i])
+
+        if os.path.exists(dir):
+            pass
+        else:
+            os.mkdir(dir)
+
+        path = os.path.join(*[dir, str('{:05}.png'.format(i))])
+        plt.savefig(path)
+        plt.close()
+        image_files.append(path)
+        create_anim_gif(image_files, 'group{:05}.gif'.format(group_num))
 
 def visualize_ds(images, rois=[], max_samples=20):
     samples = min(len(images), max_samples)
@@ -461,15 +486,15 @@ class ROI_AE_LSTM_Trainer:
 
     def load_train_data(self):
         # pushing: group1 - group400
-        train_ds = load_dataset(groups=range(1,300))
+        self.train_ds = load_dataset(groups=range(1,300))
         #train_ds = load_dataset(groups=range(1,50))
         train_generator = DPLGenerator()
-        self.train_gen = train_generator.flow(train_ds, const_roi_fun, batch_size=self.batch_size, time_window_size=self.time_window, add_roi=False)
+        self.train_gen = train_generator.flow(self.train_ds, const_roi_fun, batch_size=self.batch_size, time_window_size=self.time_window, add_roi=False)
 
     def load_val_data(self):
-        val_ds = load_dataset(groups=range(300,350))
+        self.val_ds = load_dataset(groups=range(300,350))
         val_generator = DPLGenerator()
-        self.val_gen = val_generator.flow(val_ds, const_roi_fun, batch_size=self.batch_size, time_window_size=self.time_window, add_roi=False)
+        self.val_gen = val_generator.flow(self.val_ds, const_roi_fun, batch_size=self.batch_size, time_window_size=self.time_window, add_roi=False)
 
     def train(self, epochs=100):
         self.load_train_data()
@@ -513,9 +538,7 @@ class ROI_AE_LSTM_Trainer:
         print('\ntotal time spent for training: {}[min]'.format((end-start)/60))
 
     def test(self):
-        self.load_val_data()
-        self.model.compile(loss='mse', optimizer=self.opt)
-        self.model.load_weights(self.checkpoint_path)
+        self.prepare_for_test()
         x,y = next(self.val_gen)
         predicted_images, predicted_joint_positions, estimated_rois = self.model.predict(x)
         visualize_ds(y[0], estimated_rois)
@@ -525,9 +548,7 @@ class ROI_AE_LSTM_Trainer:
         return estimated_rois
 
     def test_joint(self):
-        self.load_val_data()
-        self.model.compile(loss='mse', optimizer=self.opt)
-        self.model.load_weights(self.checkpoint_path)
+        self.prepare_for_test()
         x,y = next(self.val_gen)
         predicted_images, predicted_joint_positions, estimated_rois = self.model.predict(x)
         data = np.concatenate((x[1], predicted_joint_positions[:,np.newaxis,:]), axis=1)
@@ -539,6 +560,36 @@ class ROI_AE_LSTM_Trainer:
             ax.plot(np.transpose(data[:,:,joint_id]))
         #ax.axis('off')
         plt.show()
+
+    def create_anim_gif(self, group_num=0, offset=20):
+        seq_len = len(self.val_ds[group_num][1])
+        ishape = self.val_ds[group_num][1][0].shape
+        jv_dim = self.val_ds[group_num][0].shape[1]
+        batch_size = seq_len-self.time_window
+        batch_x_imgs = np.empty((batch_size, self.time_window, ishape[0], ishape[1], ishape[2]))
+        batch_x_jvs = np.empty((batch_size, self.time_window, jv_dim))
+        batch_y_img = np.empty((batch_size, ishape[0], ishape[1], ishape[2]))
+        batch_y_jv = np.empty((batch_size, jv_dim))
+        for i, seq_num in enumerate(range(batch_size)):
+            batch_x_jvs[i] = self.val_ds[group_num][0][seq_num:seq_num+self.time_window]
+            batch_y_jv[i] = self.val_ds[group_num][0][seq_num+self.time_window]
+            batch_x_imgs[i] = self.val_ds[group_num][1][seq_num:seq_num+self.time_window]
+            batch_y_img[i] = self.val_ds[group_num][1][seq_num+self.time_window]
+
+        # return (batch_x_imgs, batch_x_jvs), (batch_y_img, batch_y_jv)
+
+        ximgs = batch_x_imgs[offset:offset+64:2]
+        xjvs = batch_x_jvs[offset:offset+64:2]
+        predicted_images, predicted_joint_positions, estimated_rois = self.model.predict((ximgs, xjvs))
+
+        yimgs = batch_y_img[offset:offset+64:2]
+        create_anim_gif_for_group(yimgs, estimated_rois[:,0,:], group_num)
+
+    def prepare_for_test(self):
+        self.load_val_data()
+        self.model.compile(loss='mse', optimizer=self.opt)
+        self.model.load_weights(self.checkpoint_path)
+
 
     def generate_sequence(self):
         # load best checkpoint and evaluate
