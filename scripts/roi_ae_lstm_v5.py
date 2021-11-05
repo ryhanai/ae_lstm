@@ -289,8 +289,8 @@ def const_roi_fun():
 
 def roi_rect(args):
     c, s = args
-    #es = 0.15 * (1.0 + s)
-    es = 0.075 * (1.0 + s)
+    es = 0.15 * (1.0 + s)
+    #es = 0.075 * (1.0 + s)
     img_center = tf.tile(tf.constant([[0.5, 0.5]], dtype=tf.float32), (batch_size,1))
     a = tf.tile(tf.expand_dims(es, 1), (1,2))
     lt = img_center + 0.4 * (c - img_center) - a
