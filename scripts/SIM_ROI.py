@@ -1,4 +1,4 @@
-pybullet_ur5_path = "/home/rspuser/Program/moonshot/pybullet_ur5"
+pybullet_ur5_path = "/home/ryo/Program/moonshot/pybullet_ur5"
 
 import sys
 sys.path.append(pybullet_ur5_path)
@@ -23,8 +23,8 @@ class SIM_ROI(SIM):
         self.armJoints = [1,2,3,4,5,6]
         self.gripperJoints = [13,15,17,18,20,22]
 
-        p.setAdditionalSearchPath("../")
         p.removeBody(self.cabinet)
+        p.setAdditionalSearchPath("../")
         self.cabinet = p.loadURDF("specification/urdf/objects/large_table.urdf", [0,0,0], p.getQuaternionFromEuler([0,0,0]), useFixedBase=True)
         p.removeBody(self.target)
         self.target = p.loadURDF("specification/urdf/objects/flat_target.urdf", [0.3,-0.6,0.77], useFixedBase=True)
@@ -62,6 +62,9 @@ class SIM_ROI(SIM):
         self.previous_js = self.getJointState()
         self.frameNo = 0
         self.frames = []
+
+    def moveArm(self, q):
+        self.setJointValues(self.ur5, self.armJoints, q)
         
     def moveEF(self, d):
         s = p.getLinkState(self.ur5, 7)

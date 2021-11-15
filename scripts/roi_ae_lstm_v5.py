@@ -79,7 +79,7 @@ def visualize_ds(images, rois=[], max_samples=20):
             rect = patches.Rectangle((x,y), w, h, linewidth=1, edgecolor='red', fill=False) # x,y,w,h [pixels]
             ax.add_patch(rect)
 
-dataset_path = '/home/rspuser/Dataset/dataset2'
+dataset_path = '/home/ryo/Dataset/dataset2'
 sys.path.append(dataset_path)
 
 roi_shape = (40, 80, 3)
@@ -481,7 +481,7 @@ class ROI_AE_LSTM_Trainer:
         self.model.compile(loss='mse', optimizer=self.opt)
 
         # create checkpoint and save best weight
-        self.checkpoint_path = "/home/rspuser/Program/moonshot/ae_lstm/runs/ae_cp/cp.ckpt"
+        self.checkpoint_path = "/home/ryo/Program/moonshot/ae_lstm/runs/ae_cp/cp.ckpt"
 
     def load_train_data(self):
         # pushing: group1 - group400
@@ -554,7 +554,7 @@ class ROI_AE_LSTM_Trainer:
 
         fig = plt.figure()
         fig.subplots_adjust(hspace=0.1)
-        for joint_id in range(8):
+        for joint_id in range(dof):
             ax = fig.add_subplot(8//2, 2, joint_id+1)
             ax.plot(np.transpose(data[:,:,joint_id]))
         #ax.axis('off')
