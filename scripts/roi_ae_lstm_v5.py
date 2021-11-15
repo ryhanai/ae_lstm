@@ -79,7 +79,7 @@ def visualize_ds(images, rois=[], max_samples=20):
             rect = patches.Rectangle((x,y), w, h, linewidth=1, edgecolor='red', fill=False) # x,y,w,h [pixels]
             ax.add_patch(rect)
 
-dataset_path = '/home/ryo/Dataset/dataset2'
+dataset_path = '/home/rspuser/Dataset/dataset2'
 sys.path.append(dataset_path)
 
 roi_shape = (40, 80, 3)
@@ -481,7 +481,7 @@ class ROI_AE_LSTM_Trainer:
         self.model.compile(loss='mse', optimizer=self.opt)
 
         # create checkpoint and save best weight
-        self.checkpoint_path = "/home/ryo/Program/ae_lstm/runs/ae_cp/cp.ckpt"
+        self.checkpoint_path = "/home/rspuser/Program/moonshot/ae_lstm/runs/ae_cp/cp.ckpt"
 
     def load_train_data(self):
         # pushing: group1 - group400
@@ -584,12 +584,12 @@ class ROI_AE_LSTM_Trainer:
         yimgs = batch_y_img[start:start+length:2]
         create_anim_gif_for_group(yimgs, estimated_rois[:,0,:], group_num)
 
-    def prepare_for_test(self):
-        self.load_val_data()
+    def prepare_for_test(self, load_val_data=True):
+        if load_val_data:
+            self.load_val_data()
         self.model.compile(loss='mse', optimizer=self.opt)
         self.model.load_weights(self.checkpoint_path)
-
-
+        
     def generate_sequence(self):
         # load best checkpoint and evaluate
         self.model.compile(loss='mse', optimizer=self.opt)

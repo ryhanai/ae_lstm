@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<robot name="cabinet">
+    <material name="green">
+        <color rgba="0.0 0.6 0.0 1.0"/>
+    </material>
+    <link name="link_cab">
+        <visual>
+        <origin xyz="-0.7 -0.36 0.0"/>
+            <geometry>
+                <mesh filename="../../meshes/objects/cabinet.dae"/>
+            </geometry>
+        </visual>
+        <collision>
+        <origin xyz="-0.7 -0.36 0.0"/>
+            <geometry>
+                <mesh filename="../../meshes/objects/cabinet.dae"/>
+            </geometry>
+        </collision>
+    </link>
+    <link name="link_ext">
+        <visual>
+            <material name="green"/>
+            <origin xyz="0.0 -0.5 0.0" rpy="0.0 0.0 0.0"/>
+            <geometry>
+                <box size="1.4 1.4 0.01"/>
+            </geometry>
+        </visual>
+        <collision>
+            <origin xyz="0.0 -0.5 0.0" rpy="0.0 0.0 0.0"/>
+            <geometry>
+                <box size="1.0 1.0 0.005"/>
+            </geometry>
+        </collision>
+    </link>
+    <joint name="joint_cabExt" type="fixed">
+    <origin xyz="0.0 -0.35 0.785"/>
+        <parent link="link_cab"/>
+        <child link="link_ext"/>
+    </joint>
+    
+</robot>
