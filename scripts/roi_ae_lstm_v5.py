@@ -186,13 +186,10 @@ def generate_dataset_for_AE_training(ds):
     bboxes = np.tile(roi, [input_images.shape[0], 1])
     return (input_images, bboxes), labels
 
-def hand_coded_ROI_policy():
-    return "a sequence of ROIs"
-
-def fixed_ROI_policy(ds):
-    roi = np.array([0.48, 0.25, 0.92, 0.75])
-    n_data = [group[0].shape[0] for group in ds]
-    return np.tile(roi, [ds.shape[0], 1])
+# def fixed_ROI_policy(ds):
+#     roi = np.array([0.48, 0.25, 0.92, 0.75])
+#     n_data = [group[0].shape[0] for group in ds]
+#     return np.tile(roi, [ds.shape[0], 1])
 
 
 from scipy.linalg import norm
@@ -273,7 +270,8 @@ class AutoencoderWithCrop(tf.keras.Model):
 
         image_loss = tf.reduce_mean(tf.square(y_image_cropped - y_pred[0]))
         joint_loss = tf.reduce_mean(tf.square(y_joint - y_pred[1]))
-        loss = image_loss + 10.*joint_loss
+        loss = image_loss + joint_loss
+        #loss = image_loss + 10.*joint_loss
         #loss = keras.losses.mean_squared_error(y_image_cropped, y_pred[0])
         return loss
 
@@ -287,14 +285,22 @@ def const_roi_fun():
     roi = np.concatenate((center-v, center+v)) # [y1, x1, y2, x2] in normalized coodinates
     return roi
 
+# def roi_rect(args):
+#     c, s = args
+#     es = 0.15 * (1.0 + s)
+#     #es = 0.075 * (1.0 + s)
+#     img_center = tf.tile(tf.constant([[0.5, 0.5]], dtype=tf.float32), (batch_size,1))
+#     a = tf.tile(tf.expand_dims(es, 1), (1,2))
+#     lt = img_center + 0.4 * (c - img_center) - a
+#     rb = img_center + 0.4 * (c - img_center) + a
+#     roi = tf.concat([lt, rb], axis=1)
+#     roi3 = tf.expand_dims(roi, 0)
+#     return tf.transpose(tf.tile(roi3, tf.constant([time_window_size, 1, 1], tf.int32)), [1,0,2])
+
 def roi_rect(args):
     c, s = args
-    es = 0.15 * (1.0 + s)
-    #es = 0.075 * (1.0 + s)
-    img_center = tf.tile(tf.constant([[0.5, 0.5]], dtype=tf.float32), (batch_size,1))
-    a = tf.tile(tf.expand_dims(es, 1), (1,2))
-    lt = img_center + 0.4 * (c - img_center) - a
-    rb = img_center + 0.4 * (c - img_center) + a
+    lt = tf.tile(tf.constant([[0.0, 0.0]], dtype=tf.float32), (batch_size,1))
+    rb = tf.tile(tf.constant([[1.0, 1.0]], dtype=tf.float32), (batch_size,1))
     roi = tf.concat([lt, rb], axis=1)
     roi3 = tf.expand_dims(roi, 0)
     return tf.transpose(tf.tile(roi3, tf.constant([time_window_size, 1, 1], tf.int32)), [1,0,2])
@@ -544,7 +550,7 @@ class ROI_AE_LSTM_Trainer:
         visualize_ds(x[0][:,0,:,:,:], estimated_rois)
         visualize_ds(predicted_images)
         plt.show()
-        return estimated_rois
+        return x[1],y[1],predicted_joint_positions,estimated_rois
 
     def test_joint(self):
         self.prepare_for_test()
