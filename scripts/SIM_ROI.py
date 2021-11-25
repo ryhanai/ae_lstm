@@ -100,16 +100,19 @@ class SIM_ROI(SIM):
     def closeGripper(self):
         self.moveGripper(0.8)
 
-    def getJointState(self):
+    def getJointState(self, encode_gripper_state=True):
         js = p.getJointStates(self.ur5, self.armJoints)
         armjv = list(zip(*js))[0]
         js = p.getJointStates(self.ur5, self.gripperJoints)
         js = list(zip(*js))
         grpjv = js[0]
         grpforce = js[3]
-        # gripperClosed = np.max(grpforce) > 1.0
-        gripperClosed = grpjv[0] > 0.3
-        return np.append(armjv, gripperClosed)
+        if encode_gripper_state:
+            # gripperClosed = np.max(grpforce) > 1.0
+            gripperClosed = grpjv[0] > 0.3
+            return np.append(armjv, gripperClosed)
+        else:
+            return np.append(armjv, grpjv)
 
     def saveFrame(self, img, save_threshold=5e-2):
         js = self.getJointState()

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-import os, sys, glob, re, time
+import os, sys, glob, re, time, copy
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
@@ -16,11 +16,16 @@ from PIL import Image
 
 os.environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
 
-def create_anim_gif(img_files, out_filename):
+def create_anim_gif(images, out_filename):
     imgs = []
-    for img_file in img_files:
-        img = Image.open(img_file)
-        imgs.append(img)
+    if type(images[0]) == str:
+        for img_file in img_files:
+            img = Image.open(img_file)
+            imgs.append(img)
+    elif type(images[0]) == np.ndarray:
+        imgs = [Image.fromarray((255*i).astype(np.uint8)) for i in images]
+    else:
+        imgs = images
     imgs[0].save(out_filename, save_all=True, append_images=imgs[1:], optimize=False, duration=100, loop=0)
 
 def draw_rect(image, roi):
@@ -589,6 +594,31 @@ class ROI_AE_LSTM_Trainer:
 
         yimgs = batch_y_img[start:start+length:2]
         create_anim_gif_for_group(yimgs, estimated_rois[:,0,:], group_num)
+
+    def process_sequence(self, group_num=0):
+        res = []
+        seq_len = len(self.val_ds[group_num][1])
+        ishape = self.val_ds[group_num][1][0].shape
+        jv_dim = self.val_ds[group_num][0].shape[1]
+        batch_size = 32
+        batch_x_imgs = np.empty((batch_size, self.time_window, ishape[0], ishape[1], ishape[2]))
+        batch_x_jvs = np.empty((batch_size, self.time_window, jv_dim))
+        batch_y_img = np.empty((batch_size, ishape[0], ishape[1], ishape[2]))
+        batch_y_jv = np.empty((batch_size, jv_dim))
+
+        for seq_num in range(seq_len-self.time_window):
+            print(seq_num)
+            batch_x_jvs[:] = self.val_ds[group_num][0][seq_num:seq_num+self.time_window]
+            batch_y_jv[:] = self.val_ds[group_num][0][seq_num+self.time_window]
+            batch_x_imgs[:] = self.val_ds[group_num][1][seq_num:seq_num+self.time_window]
+            batch_y_img[:] = self.val_ds[group_num][1][seq_num+self.time_window]
+
+            predicted_images, predicted_joint_positions, estimated_rois = self.model.predict((batch_x_imgs, batch_x_jvs))
+            current_joint_position = copy.copy(batch_x_jvs[0][-1])
+            label_joint_position = copy.copy(batch_y_jv[0])
+            predicted_joint_position = predicted_joint_positions[0]
+            res.append((current_joint_position, predicted_joint_position, label_joint_position))
+        return res
 
     def prepare_for_test(self, load_val_data=True):
         if load_val_data:
