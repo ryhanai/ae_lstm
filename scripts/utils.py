@@ -33,7 +33,7 @@ def draw_rect(image, roi):
 def create_anim_gif_from_images(images, out_filename):
     imgs = []
     if type(images[0]) == str:
-        for img_file in img_files:
+        for img_file in images:
             img = Image.open(img_file)
             imgs.append(img)
     elif type(images[0]) == np.ndarray:

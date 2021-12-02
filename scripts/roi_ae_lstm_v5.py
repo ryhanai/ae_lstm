@@ -103,7 +103,22 @@ def const_roi_fun():
 #     roi3 = tf.expand_dims(roi, 0)
 #     return tf.transpose(tf.tile(roi3, tf.constant([time_window_size, 1, 1], tf.int32)), [1,0,2])
 
+# def roi_rect(args):
+#     """
+#     Fixed ROI (averaged over estimated ROIs)
+#     """
+#     c, s = args
+#     lt = tf.tile(tf.constant([[0.1205094, 0.15675367]], dtype=tf.float32), (batch_size,1))
+#     rb = tf.tile(tf.constant([[0.70754665, 0.74379086]], dtype=tf.float32), (batch_size,1))
+#     roi = tf.concat([lt, rb], axis=1)
+#     roi3 = tf.expand_dims(roi, 0)
+#     return tf.transpose(tf.tile(roi3, tf.constant([time_window_size, 1, 1], tf.int32)), [1,0,2])
+
 def roi_rect(args):
+    """
+    To invalidate ROI, use this function.
+    This returns the whole image as ROI
+    """
     c, s = args
     lt = tf.tile(tf.constant([[0.0, 0.0]], dtype=tf.float32), (batch_size,1))
     rb = tf.tile(tf.constant([[1.0, 1.0]], dtype=tf.float32), (batch_size,1))
