@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from utils import *
-import roi_ae_lstm_v5 as roi
+import roi_ae_lstm_v6 as roi
 import SIM_ROI as S
 import numpy as np
 import cv2
@@ -11,10 +11,11 @@ trainer = roi.ROI_AE_LSTM_Trainer()
 trainer.prepare_for_test(load_val_data=True)
 
 capture_size = (180, 320)
-view_params = ([0,-0.9,1.35], [0,-0.55,0.5], [0,0,1])
+#view_params = ([0,-0.9,1.35], [0,-0.55,0.5], [0,0,1])
+view_params = [0,-0.7,1.4], [0,-0.6,0.5], [0,0,1]
 
-env = S.SIM_ROI(0)
-control = S.VRController(0)
+env = S.SIM_ROI(scene='reaching', is_vr=False)
+control = S.VRController_ROI(0)
 cam = S.CAMERA_ROI(capture_size[1], capture_size[0], fov=50)
 cam.setViewMatrix(*view_params)
 

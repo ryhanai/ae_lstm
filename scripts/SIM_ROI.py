@@ -5,20 +5,32 @@ sys.path.append(pybullet_ur5_path)
 
 from SIM import *
 import numpy as np
+import pandas as pd
 
 
 class CAMERA_ROI(CAMERA):
-    def __init__(self, width=300,height=300, fov=50, near=0.2, far=2.0):
+    def __init__(self, width=300, height=300, fov=50, near=0.2, far=2.0):
         super().__init__(width, height, fov, near, far)
+        self.cameraConfig = {}
+        self.cameraConfig['imageSize'] = (width,height)
+        self.cameraConfig['fov'] = fov
+        self.cameraConfig['near'] = near
+        self.cameraConfig['far'] = far
 
     def getImg(self):
         return p.getCameraImage(self.width,self.height,self.view_matrix,self.projection_matrix, lightDirection=[2,0,0], shadow=False, renderer=p.ER_BULLET_HARDWARE_OPENGL)
 
     def setViewMatrix(self, eyePosition, targetPosition, upVector):
+        self.cameraConfig['eyePosition'] = eyePosition
+        self.cameraConfig['targetPosition'] = targetPosition
+        self.cameraConfig['upVector'] = upVector
         self.view_matrix = p.computeViewMatrix(eyePosition, targetPosition, upVector)
 
+    def getCameraConfig(self):
+        return self.cameraConfig
+
 class SIM_ROI(SIM):
-    def __init__(self, is_vr=False):
+    def __init__(self, scene='pushing', is_vr=False):
         super().__init__(is_vr)
         self.armJoints = [1,2,3,4,5,6]
         self.gripperJoints = [13,15,17,18,20,22]
@@ -26,12 +38,25 @@ class SIM_ROI(SIM):
         p.removeBody(self.cabinet)
         p.setAdditionalSearchPath("../")
         self.cabinet = p.loadURDF("specification/urdf/objects/large_table.urdf", [0,0,0], p.getQuaternionFromEuler([0,0,0]), useFixedBase=True)
+        self.scene = scene
+        self.loadScene()
+
+        self.groupNo = 1
+
+    def loadScene(self):
         p.removeBody(self.target)
-        self.target = p.loadURDF("specification/urdf/objects/flat_target.urdf", [0.3,-0.6,0.77], useFixedBase=True)
         p.removeBody(self.box)
-        self.box = p.loadURDF("specification/urdf/objects/box30_real.urdf", [0.3,-0.6,0.77])
+
+        if self.scene == 'pushing':
+            self.target = p.loadURDF("specification/urdf/objects/flat_target.urdf", [0.3,-0.6,0.77], useFixedBase=True)
+            self.box = p.loadURDF("specification/urdf/objects/box30_real.urdf", [0.3,-0.6,0.77])
+            self.objects = {'target':self.target, 'box':self.box}
+        elif self.scene == 'reaching':
+            self.target = p.loadURDF("specification/urdf/objects/flat_target.urdf", [0.3,-0.6,0.77], useFixedBase=True)
+            self.objects = {'target':self.target}
+
         self.setInitialPos()
-        self.groupNo = 493
+
 
     def setInitialPos(self):
         # pick&place
@@ -41,23 +66,35 @@ class SIM_ROI(SIM):
         #                  -2.176581590986293,
         #                  -1.570484461359131,
         #                  0.0004259455658886804]
-        # pushing
-        armInitialValues = [-0.899109997666209,
-                            -0.5263515248505674,
-                            1.1386341089127756,
-                            -0.820088253279429,
-                            -0.7349581228169729,
-                            0.1551369530256832]
-        gripperInitialValues = [0, 0, 0, 0, 0, 0]
-        self.setJointValues(self.ur5, self.armJoints, armInitialValues)
-        self.setJointValues(self.ur5, self.gripperJoints, gripperInitialValues)
 
-        box_pos = np.append([-0.2, -0.75] + [0.2, 0.3] * np.random.random(2), 0.79)
-        box_ori = p.getQuaternionFromEuler([0,0,0])
-        p.resetBasePositionAndOrientation(self.box, box_pos, box_ori)
-        target_pos = np.append([0.1, -0.75] + [0.2, 0.3] * np.random.random(2), 0.77)
-        target_ori = p.getQuaternionFromEuler([0,0,0])
-        p.resetBasePositionAndOrientation(self.target, target_pos, target_ori)
+        if self.scene == 'pushing':
+            armInitialValues = [-0.899109997666209,
+                                -0.5263515248505674,
+                                1.1386341089127756,
+                                -0.820088253279429,
+                                -0.7349581228169729,
+                                0.1551369530256832]
+            gripperInitialValues = [0, 0, 0, 0, 0, 0]
+            self.setJointValues(self.ur5, self.armJoints, armInitialValues)
+            self.setJointValues(self.ur5, self.gripperJoints, gripperInitialValues)
+            box_pos = np.append([-0.2, -0.75] + [0.2, 0.3] * np.random.random(2), 0.79)
+            box_ori = p.getQuaternionFromEuler([0,0,0])
+            p.resetBasePositionAndOrientation(self.box, box_pos, box_ori)
+            target_pos = np.append([0.1, -0.75] + [0.2, 0.3] * np.random.random(2), 0.77)
+            target_ori = p.getQuaternionFromEuler([0,0,0])
+            p.resetBasePositionAndOrientation(self.target, target_pos, target_ori)
+        elif self.scene == 'reaching':
+            armInitialValues = [-0.899109997666209,
+                                -0.5263515248505674,
+                                1.1386341089127756,
+                                -0.820088253279429,
+                                -0.7349581228169729,
+                                0.1551369530256832]
+            self.moveArm(armInitialValues)
+            self.openGripper()
+            target_pos = np.append([0.1, -0.75] + [0.2, 0.3] * np.random.random(2), 0.77)
+            target_ori = p.getQuaternionFromEuler([0,0,0])
+            p.resetBasePositionAndOrientation(self.target, target_pos, target_ori)
 
         self.previous_js = self.getJointState()
         self.frameNo = 0
@@ -94,8 +131,7 @@ class SIM_ROI(SIM):
         self.setJointValues(self.ur5, self.gripperJoints, [q,-q,q,q,-q,q])        
         
     def openGripper(self):
-        #self.moveGripper(0)
-        self.moveGripper(0.4)
+        self.moveGripper(0)
 
     def closeGripper(self):
         self.moveGripper(0.8)
@@ -118,26 +154,37 @@ class SIM_ROI(SIM):
         js = self.getJointState()
         if np.linalg.norm(js - self.previous_js, ord=1) > save_threshold:
             print('save:[{}]: {}'.format(self.frameNo, js))
-            self.previous_js = js
-            self.frames.append((self.frameNo, js, img))
+            d = {'frameNo':self.frameNo, 'jointPosition':js, 'image':img}
+            for k,id in self.objects.items():
+                d[k] = p.getBasePositionAndOrientation(id)
+            self.frames.append(d)
             self.frameNo += 1
+            self.previous_js = js
 
-    def writeFrames(self):
+    def writeFrames(self, cameraConfig):
         print('writing to files ...')
-        _, joint_positions, images = zip(*self.frames)
         group_dir = 'data/{:d}'.format(self.groupNo)
         if not os.path.exists(group_dir):
             os.makedirs(group_dir)
+
+        joint_positions = []
+        for frame in self.frames:
+            joint_positions.append(frame['jointPosition'])
+            frameNo = frame['frameNo']
+            w,h,rgb,depth,seg = frame['image']
+            plt.imsave(os.path.join(group_dir, 'image_frame{:05d}.jpg'.format(frameNo)), rgb)
+            # plt.imsave(os.path.join(group_dir, 'image_frame{:05d}_depth.jpg'.format(frameNo)), depth, cmap=plt.cm.gray)
+            # plt.imsave(os.path.join(group_dir, 'image_frame{:05d}_seg.jpg'.format(frameNo)), seg)
+
         np.savetxt(os.path.join(group_dir, 'joint_position.txt'), joint_positions)
-        for i,image in enumerate(images):
-            w,h,rgb,depth,seg = image
-            plt.imsave(os.path.join(group_dir, 'image_frame{:05d}.jpg'.format(i)), rgb)
-            plt.imsave(os.path.join(group_dir, 'image_frame{:05d}_depth.jpg'.format(i)), depth, cmap=plt.cm.gray)
-            plt.imsave(os.path.join(group_dir, 'image_frame{:05d}_seg.jpg'.format(i)), seg)
+
+        for f in self.frames:
+            f.pop('image')
+        pd.to_pickle((cameraConfig, self.frames), os.path.join(group_dir, 'sim_states.pkl'))
         print('done')
         self.groupNo += 1
         self.setInitialPos()
-        
+
 class VRController_ROI(VRController):
     def __init__(self, isVR):
         super().__init__(isVR)

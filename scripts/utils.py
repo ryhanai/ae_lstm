@@ -220,7 +220,20 @@ class Dataset():
     def get(self):
         return self.data
 
+    def extend_initial_and_final_states(self, size):
+        def extend_group(gd):
+            joint_seq, images = gd
+            joint_seq2 = np.empty((joint_seq.shape[0] + size*2,) + joint_seq.shape[1:])
+            joint_seq2[:size] = joint_seq[0]
+            joint_seq2[size:size+joint_seq.shape[0]] = joint_seq
+            joint_seq2[size+joint_seq.shape[0]:] = joint_seq[-1]
+            images2 = [images[0]]*size + images + [images[-1]]*size
+            return joint_seq2, images2
 
+        data2 = []
+        for gd in self.data:
+            data2.append(extend_group(gd))
+        self.data = data2
 ##
 ## Analysis
 ##
