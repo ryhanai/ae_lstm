@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 
 from utils import *
-import roi_ae_lstm_v6 as roi
+#import roi_ae_lstm_v6 as roi
+import ae_lstm_v2 as roi
 import SIM_ROI as S
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 
-trainer = roi.ROI_AE_LSTM_Trainer()
+trainer = roi.AE_LSTM_Trainer()
 trainer.prepare_for_test(load_val_data=True)
 
 capture_size = (180, 320)
@@ -43,12 +44,14 @@ def reset():
 
 def captureRGB():
     img = cam.getImg()[2][:,:,:3]
-    img = cv2.resize(img, (160, 90))
+    #img = cv2.resize(img, (160, 90))
+    img = cv2.resize(img, (160, 80))
     return img / 255.
 
 def captureSegImg():
     img = cam.getImg()[4]
-    img = cv2.resize(img, (160, 90))
+    #img = cv2.resize(img, (160, 90))
+    img = cv2.resize(img, (160, 80))
     return img / 255.
 
 def getEFPos():
@@ -62,7 +65,8 @@ def run(max_steps=50, anim_gif=False):
         js = env.getJointState()
         js = normalize_joint_position(js)
         sm.addState(img, js)
-        imgs, jvs, rois = trainer.model.predict(sm.getHistory())
+        #imgs, jvs, rois = trainer.model.predict(sm.getHistory())
+        imgs, jvs = trainer.model.predict(sm.getHistory())
         jv = jvs[0]
         jv = unnormalize_joint_position(jv)
         print(jv)

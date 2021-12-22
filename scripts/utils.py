@@ -234,6 +234,36 @@ class Dataset():
         for gd in self.data:
             data2.append(extend_group(gd))
         self.data = data2
+
+    def smoothen(self, filter_size=5):
+        '''
+        filter_size must be odd number
+        '''
+        w = np.ones(filter_size)/filter_size
+        def smoothen_jv(jv):
+            seqlen, dim = jv.shape
+            smoothed_jv = np.empty((seqlen-filter_size+1, dim))
+            for i in range(dim):
+                jvp = np.convolve(jv[:,i], w, 'valid')
+                smoothed_jv[:,i] = jvp
+            return smoothed_jv
+
+        def smoothen_group(gd):
+            joint_seq, images = gd
+            smoothed_joint_seq = smoothen_jv(joint_seq)
+            c = int((filter_size-1)/2)
+            return smoothed_joint_seq, images[c:-c]
+
+        data2 = []
+        for gd in self.data:
+            data2.append(smoothen_group(gd))
+        self.data = data2
+
+    def preprocess(self, extend_size):
+        self.extend_initial_and_final_states(extend_size)
+        self.smoothen()
+
+
 ##
 ## Analysis
 ##
