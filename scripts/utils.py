@@ -9,6 +9,12 @@ import matplotlib.patches as patches
 
 
 ###
+###
+###
+
+def swap(x): return x[1],x[0]
+
+###
 ### Visualization tools
 ###
 
@@ -280,18 +286,27 @@ def print_distances(joint_vec_seq):
 ##
 
 class StateManager:
-    def __init__(self, time_window_size):
+    def __init__(self, time_window_size, batch_size=1):
         self.history = []
         self.frames = []
         self.time_window_size = time_window_size
+        self.batch_size = batch_size
 
     def initializeHistory(self, img, js):
         a = np.repeat(img[None, :], self.time_window_size, axis=0)
-        a = np.repeat(a[None, :], 32, axis=0)
+        a = np.repeat(a[None, :], self.batch_size, axis=0)
         b = np.repeat(js[None, :], self.time_window_size, axis=0)
-        b = np.repeat(b[None, :], 32, axis=0)
+        b = np.repeat(b[None, :], self.batch_size, axis=0)
         self.history = a,b
         self.frames = []
+
+    def setHistory(self, images, joint_states):
+        dof = joint_states.shape[1]
+        b = np.empty((self.batch_size,) + joint_states.shape)
+        b[0] = joint_states
+        a = np.empty((self.batch_size,) + images.shape)
+        a[0] = images
+        self.history = a,b
 
     def rollHistory(self, img, js):
         a = np.roll(self.history[0], -1, axis=1)
@@ -302,10 +317,13 @@ class StateManager:
 
     def addState(self, img, js):
         self.rollHistory(img, js)
-        self.frames.append(img)
+        self.frames.append((img, js))
 
     def getHistory(self):
         return self.history
 
     def getFrames(self):
         return self.frames
+
+    def getFrameImages(self):
+        return list(zip(*self.getFrames()))[0]

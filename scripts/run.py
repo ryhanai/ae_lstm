@@ -2,13 +2,13 @@
 
 from utils import *
 #import roi_ae_lstm_v6 as roi
-import ae_lstm_v2 as roi
+import ae_lstm_v2 as tr
 import SIM_ROI as S
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 
-trainer = roi.AE_LSTM_Trainer()
+trainer = tr.AE_LSTM_Trainer()
 trainer.prepare_for_test(load_val_data=True)
 
 capture_size = (180, 320)
@@ -25,14 +25,25 @@ realSim = S.p.setRealTimeSimulation(False)
 
 def normalize_joint_position(q):
     return trainer.val_ds.normalize_joint_position(q)
+
 def unnormalize_joint_position(q):
     return trainer.val_ds.unnormalize_joint_position(q)
 
-sm = StateManager(roi.time_window_size)
+def toCart(jv, unnormalize=True):
+    jv = unnormalize_joint_position(jv)
+    env.moveArm(jv[:6])
+    sync()
+    return getEFPos()
+
+def toCartTraj(jvs):
+    return [toCart(jv) for jv in jvs]
 
 def sync(steps=100):
     for j in range(steps):
         S.p.stepSimulation()
+
+
+sm = StateManager(tr.time_window_size)
 
 def reset():
     env.setInitialPos()
@@ -44,14 +55,12 @@ def reset():
 
 def captureRGB():
     img = cam.getImg()[2][:,:,:3]
-    #img = cv2.resize(img, (160, 90))
-    img = cv2.resize(img, (160, 80))
+    img = cv2.resize(img, swap(tr.input_image_shape[:2]))
     return img / 255.
 
 def captureSegImg():
     img = cam.getImg()[4]
-    #img = cv2.resize(img, (160, 90))
-    img = cv2.resize(img, (160, 80))
+    img = cv2.resize(img, swap(tr.input_image_shape[:2]))
     return img / 255.
 
 def getEFPos():
@@ -63,52 +72,34 @@ def run(max_steps=50, anim_gif=False):
         print('i = ', i)
         img = captureRGB()
         js = env.getJointState()
+
         js = normalize_joint_position(js)
         sm.addState(img, js)
-        #imgs, jvs, rois = trainer.model.predict(sm.getHistory())
-        imgs, jvs = trainer.model.predict(sm.getHistory())
+        res = trainer.model.predict(sm.getHistory())
+        if len(res) == 3:
+            imgs, jvs, rois = res
+        else:
+            imgs, jvs = res
         jv = jvs[0]
         jv = unnormalize_joint_position(jv)
+
         print(jv)
         env.moveArm(jv[:6])
         sync()
 
     if anim_gif:
-        create_anim_gif_from_images(sm.getFrames(), 'run.gif')
+        create_anim_gif_from_images(sm.getFrameImages(), 'run.gif')
 
-
-def predict_for_group(group_num=0, interval=3):
-    res = []
-    traj = trainer.process_sequence(group_num)
-    for c,p,l in traj:
-        c = unnormalize_joint_position(c)
-        env.moveArm(c[:6])
-        sync()
-        pos_c = getEFPos()
-        p = unnormalize_joint_position(p)
-        env.moveArm(p[:6])
-        sync()
-        pos_p = getEFPos()
-        l = unnormalize_joint_position(l)
-        env.moveArm(l[:6])
-        sync()
-        pos_l = getEFPos()
-        wp = (pos_c, pos_p, pos_l)
-        print(wp)
-        res.append(wp)
-
-    cs,ps,ls = zip(*res)
-    cs = np.array(cs)
-    ps = np.array(ps)
-    ls = np.array(ls)
-    return cs,ps,ls
+def predict_sequence_open(group_num=0):
+    trajs = trainer.predict_sequence_open(group_num)
+    return map(lambda x: np.array(toCartTraj(x)), trajs)
 
 def visualize_predicted_vectors(groups=range(10)):
     fig = plt.figure(figsize=(5,5))
     ax = fig.add_subplot(111)
     coordinate(ax, [-0.6,0.6],[-1.0,-0.2])
     for group in groups:
-        cs,ps,ls = predict_for_group(group)
+        cs,ps,ls = predict_sequence_open(group)
         draw_predictions_and_labels(ax, cs, ps, ls)
     plt.show()
 

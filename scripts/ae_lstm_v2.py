@@ -126,6 +126,9 @@ class AE_LSTM_Trainer:
         # create checkpoint and save best weight
         self.checkpoint_path = "/home/ryo/Program/moonshot/ae_lstm/runs/ae_cp/cp.ckpt"
 
+        self.model_loaded = False
+        self.val_data_loaded = False
+
     def load_train_data(self):
         self.train_ds = Dataset()
         self.train_ds.load('reaching', groups=range(1,300), image_size=input_image_size)
@@ -190,13 +193,16 @@ class AE_LSTM_Trainer:
         print('\ntotal time spent for training: {}[min]'.format((end-start)/60))
 
     def train_closed(self, epochs=20):
+        '''
+        under construction
+        '''
         self.train(epochs)
         samples = self.sample_with_current_policy(self)
         for n in range(20):
             self.train_gen.set_generated_samples(samples)
             self.train(epochs)
-            
-        
+
+
     def test(self):
         self.prepare_for_test()
         x,y = next(self.val_gen)
@@ -221,32 +227,31 @@ class AE_LSTM_Trainer:
         #ax.axis('off')
         plt.show()
 
-    def create_anim_gif(self, group_num=0, start=0, length=64):
-        d = self.val_ds.data
-        seq_len = len(d[group_num][1])
-        ishape = d[group_num][1][0].shape
-        jv_dim = d[group_num][0].shape[1]
-        batch_size = seq_len-self.time_window
-        batch_x_imgs = np.empty((batch_size, self.time_window, ishape[0], ishape[1], ishape[2]))
-        batch_x_jvs = np.empty((batch_size, self.time_window, jv_dim))
-        batch_y_img = np.empty((batch_size, ishape[0], ishape[1], ishape[2]))
-        batch_y_jv = np.empty((batch_size, jv_dim))
-        for i, seq_num in enumerate(range(batch_size)):
-            batch_x_jvs[i] = d[group_num][0][seq_num:seq_num+self.time_window]
-            batch_y_jv[i] = d[group_num][0][seq_num+self.time_window]
-            batch_x_imgs[i] = d[group_num][1][seq_num:seq_num+self.time_window]
-            batch_y_img[i] = d[group_num][1][seq_num+self.time_window]
+    def predict_sequence_closed(self, group=0, create_anim_gif=True):
+        '''
+        Closed execution using a trained model
+        '''
+        self.prepare_for_test()
+        jseq, iseq = self.val_ds.data[group]
+        batch_size = 1
+        sm = StateManager(self.time_window, batch_size)
+        sm.setHistory(np.array(iseq[:self.time_window]), jseq[:self.time_window])
 
-        # return (batch_x_imgs, batch_x_jvs), (batch_y_img, batch_y_jv)
+        for j in range(len(jseq)-self.time_window):
+            y = self.model.predict(sm.getHistory())
+            predicted_image = y[0][0]
+            predicted_joint_position = y[1][0]
+            sm.addState(predicted_image, predicted_joint_position)
 
-        ximgs = batch_x_imgs[start:start+length:2]
-        xjvs = batch_x_jvs[start:start+length:2]
-        predicted_images, predicted_joint_positions, estimated_rois = self.model.predict((ximgs, xjvs))
+        if create_anim_gif:
+            create_anim_gif_from_images(sm.getFrameImages(), 'closed_exec{:05d}.gif'.format(group))
+        return sm
 
-        yimgs = batch_y_img[start:start+length:2]
-        create_anim_gif_for_group(yimgs, estimated_rois[:,0,:], group_num)
-
-    def process_sequence(self, group_num=0):
+    def predict_sequence_open(self, group_num=0):
+        '''
+        Open execution using a trained model and teaching data
+        Returns three trajectories: input sequence, predicted sequence and label sequence
+        '''
         res = []
         d = self.val_ds.data
         seq_len = len(d[group_num][1])
@@ -270,11 +275,14 @@ class AE_LSTM_Trainer:
             label_joint_position = copy.copy(batch_y_jv[0])
             predicted_joint_position = predicted_joint_positions[0]
             res.append((current_joint_position, predicted_joint_position, label_joint_position))
-        return res
+        return list(zip(*res))
 
     def prepare_for_test(self, load_val_data=True):
-        if load_val_data:
+        if not self.val_data_loaded and load_val_data:
             self.load_val_data()
-        self.model.compile(loss='mse', optimizer=self.opt)
-        self.model.load_weights(self.checkpoint_path)
+            self.val_data_loaded = True
+        if not self.model_loaded:
+            self.model.compile(loss='mse', optimizer=self.opt)
+            self.model.load_weights(self.checkpoint_path)
+            self.model_loaded = True
 
