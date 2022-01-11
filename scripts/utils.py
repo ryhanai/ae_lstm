@@ -281,10 +281,6 @@ def print_distances(joint_vec_seq):
         print(norm(joint_vec_seq[i] - joint_vec_seq[i+1]))
 
 
-##
-## Online execution using trained models
-##
-
 class StateManager:
     def __init__(self, time_window_size, batch_size=1):
         self.history = []

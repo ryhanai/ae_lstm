@@ -9,116 +9,115 @@ from tensorflow.keras import layers, losses
 from tensorflow.keras.models import Model
 
 from utils import *
-from generator import *
+import generator
 
 os.environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
 
-input_image_shape = (80, 160, 3)
-input_image_size = input_image_shape[:2]
-dense_dim = 512
-latent_dim = 32
-time_window_size = 20
-dof = 7
-batch_size = 32
-
-
-def model_encoder():
-    image_input = tf.keras.Input(shape=((time_window_size,) + input_image_shape))
-
-    x = tf.keras.layers.TimeDistributed(tf.keras.layers.GaussianNoise(0.2))(image_input)
-
-    x = tf.keras.layers.TimeDistributed(tf.keras.layers.Conv2D(8, kernel_size=3, strides=1, padding='same', activation='selu'))(x)
+def conv_block(x, out_channels):
+    x = tf.keras.layers.TimeDistributed(tf.keras.layers.Conv2D(out_channels, kernel_size=3, strides=1, padding='same', activation='selu'))(x)
     x = tf.keras.layers.TimeDistributed(tf.keras.layers.BatchNormalization())(x)
-    x = tf.keras.layers.TimeDistributed(tf.keras.layers.MaxPool2D(pool_size=2))(x)
+    return tf.keras.layers.TimeDistributed(tf.keras.layers.MaxPool2D(pool_size=2))(x)
 
-    x = tf.keras.layers.TimeDistributed(tf.keras.layers.Conv2D(16, kernel_size=3, strides=1, padding='same', activation='selu'))(x)
-    x = tf.keras.layers.TimeDistributed(tf.keras.layers.BatchNormalization())(x)
-    x = tf.keras.layers.TimeDistributed(tf.keras.layers.MaxPool2D(pool_size=2))(x)
+def model_encoder(input_shape, time_window_size, out_dim, noise_stddev=0.2, name='encoder'):
+    image_input = tf.keras.Input(shape=((time_window_size,) + input_shape))
 
-    x = tf.keras.layers.TimeDistributed(tf.keras.layers.Conv2D(32, kernel_size=3, strides=1, padding='same', activation='selu'))(x)
-    x = tf.keras.layers.TimeDistributed(tf.keras.layers.BatchNormalization())(x)
-    x = tf.keras.layers.TimeDistributed(tf.keras.layers.MaxPool2D(pool_size=2))(x)
+    # Denoising Autoencoder
+    x = tf.keras.layers.TimeDistributed(tf.keras.layers.GaussianNoise(noise_stddev))(image_input)
 
-    x = tf.keras.layers.TimeDistributed(tf.keras.layers.Conv2D(64, kernel_size=3, strides=1, padding='same', activation='selu'))(x)
-    x = tf.keras.layers.TimeDistributed(tf.keras.layers.BatchNormalization())(x)
-    x = tf.keras.layers.TimeDistributed(tf.keras.layers.MaxPool2D(pool_size=2))(x)
+    x = conv_block(x, 8)
+    x = conv_block(x, 16)
+    x = conv_block(x, 32)
+    x = conv_block(x, 64)
 
     x = tf.keras.layers.TimeDistributed(tf.keras.layers.Flatten())(x)
-    encoder_output = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(latent_dim, activation='selu'))(x)
+    encoder_output = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(out_dim, activation='selu'))(x)
 
-    encoder = keras.Model([image_input], encoder_output, name='encoder')
+    encoder = keras.Model([image_input], encoder_output, name=name)
     encoder.summary()
     return encoder
 
-def model_lstm():
-    # stacked LSTM
-    imgvec_input = tf.keras.Input(shape=(time_window_size, latent_dim))
+def model_lstm(time_window_size, image_vec_dim, dof, lstm_units=50, use_stacked_lstm=False, name='lstm'):
+    imgvec_input = tf.keras.Input(shape=(time_window_size, image_vec_dim))
     joint_input = tf.keras.Input(shape=(time_window_size, dof))
-    state_dim = latent_dim + dof
+    state_dim = image_vec_dim + dof
     x = tf.keras.layers.concatenate([imgvec_input, joint_input])
-    # x = tf.keras.layers.LSTM(state_dim, return_sequences=True)(x)
-    # x = tf.keras.layers.LSTM(state_dim, return_sequences=True)(x)
-    x = tf.keras.layers.LSTM(50)(x)
-    x = tf.keras.layers.Dense(state_dim)(x)
-    lstm_image_output = tf.keras.layers.Lambda(lambda x:x[:,:latent_dim], output_shape=(latent_dim,))(x)
-    lstm_joint_output = tf.keras.layers.Lambda(lambda x:x[:,latent_dim:], output_shape=(dof,))(x)
 
-    lstm = keras.Model([imgvec_input, joint_input], [lstm_image_output, lstm_joint_output], name='lstm')
+    if use_stacked_lstm:
+        x = tf.keras.layers.LSTM(state_dim, return_sequences=True)(x)
+        x = tf.keras.layers.LSTM(state_dim, return_sequences=True)(x)
+
+    x = tf.keras.layers.LSTM(lstm_units)(x)
+    x = tf.keras.layers.Dense(state_dim)(x)
+    imgvec_output = tf.keras.layers.Lambda(lambda x:x[:,:image_vec_dim], output_shape=(image_vec_dim,))(x)
+    joint_output = tf.keras.layers.Lambda(lambda x:x[:,image_vec_dim:], output_shape=(dof,))(x)
+
+    lstm = keras.Model([imgvec_input, joint_input], [imgvec_output, joint_output], name=name)
     lstm.summary()
     return lstm
 
-def model_decoder():
-    channels = 64
-    ivec_input = tf.keras.Input(shape=(latent_dim))
-    x = tf.keras.layers.Dense(5*10*channels, activation='selu')(ivec_input)
-    x = tf.keras.layers.BatchNormalization()(x)
-
-    x = tf.keras.layers.Reshape(target_shape=(5, 10, channels))(x)
-    x = tf.keras.layers.BatchNormalization()(x)
-
+def deconv_block(x, out_channels):
     x = tf.keras.layers.Conv2DTranspose(64, kernel_size=3, strides=1, padding='same', activation='selu')(x)
     x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.UpSampling2D()(x)
+    return tf.keras.layers.UpSampling2D()(x)
 
-    x = tf.keras.layers.Conv2DTranspose(32, kernel_size=3, strides=1, padding='same', activation='selu')(x)
+def model_decoder(output_shape, image_vec_dim, name='decoder'):
+    channels = output_shape[2]
+    nblocks = 4
+    h = int(output_shape[0]/2**nblocks)
+    w = int(output_shape[1]/2**nblocks)
+    
+    imgvec_input = tf.keras.Input(shape=(image_vec_dim))
+    x = tf.keras.layers.Dense(h*w*channels, activation='selu')(imgvec_input)
     x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.UpSampling2D()(x)
+    
+    x = tf.keras.layers.Reshape(target_shape=(h, w, channels))(x)
+    x = tf.keras.layers.BatchNormalization()(x)
 
-    x = tf.keras.layers.Conv2DTranspose(16, kernel_size=3, strides=1, padding='same', activation='selu')(x)
-    x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.UpSampling2D()(x)
-
-    x = tf.keras.layers.Conv2DTranspose(8, kernel_size=3, strides=1, padding='same', activation='selu')(x)
-    x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.UpSampling2D()(x)
+    x = deconv_block(x, 64)
+    x = deconv_block(x, 32)
+    x = deconv_block(x, 16)
+    x = deconv_block(x, 8)
+    
     decoder_output = tf.keras.layers.Conv2DTranspose(3, kernel_size=3, strides=1, padding='same', activation='sigmoid')(x)
-    decoder = keras.Model(ivec_input, decoder_output, name='decoder')
+    decoder = keras.Model(imgvec_input, decoder_output, name=name)
     decoder.summary()
     return decoder
 
-def model_ae_lstm():
+def model_ae_lstm(input_image_shape, time_window_size, latent_dim, dof):
     image_input = tf.keras.Input(shape=((time_window_size,) + input_image_shape))
     joint_input = tf.keras.Input(shape=(time_window_size, dof))
 
-    encoded_img = model_encoder()(image_input)
-    predicted_ivec, predicted_jvec = model_lstm()([encoded_img, joint_input])
+    encoded_img = model_encoder(input_image_shape, time_window_size, latent_dim)(image_input)
+    predicted_ivec, predicted_jvec = model_lstm(time_window_size, latent_dim, dof)([encoded_img, joint_input])
+    decoded_img = model_decoder(input_image_shape, latent_dim)(predicted_ivec)
 
-    #encoded_roi = model_roi_encoder()([image_input, roi])
-    #predicted_ivec, predicted_jvec = model_roi_lstm()([encoded_roi, joint_input])
-    decoded_img = model_decoder()(predicted_ivec)
     model = tf.keras.Model(inputs=[image_input, joint_input],
-                               outputs=[decoded_img, predicted_jvec],
-                               name='dplmodel')
+                           outputs=[decoded_img, predicted_jvec],
+                           name='dplmodel')
     model.summary()
     return model
 
 
 class AE_LSTM_Trainer:
 
-    def __init__(self):
-        self.batch_size = batch_size
+    def __init__(self, dataset='reaching',
+                 train_groups=range(1,300),
+                 val_groups=range(300,350),
+                 input_image_size=(80, 160),
+                 time_window_size=20,
+                 latent_dim=32,
+                 dof=7,
+                 batch_size=32):
+
+        self.input_image_size = input_image_size
+        self.input_image_shape = input_image_size + (3,)
         self.time_window = time_window_size
-        self.model = model_ae_lstm()
+        self.latent_dim = latent_dim
+        self.dof = dof
+        self.dataset = dataset
+        self.batch_size = batch_size
+
+        self.model = model_ae_lstm(self,input_image_shape, self.time_window, self.latent_dim, self.dof)
 
         self.opt = keras.optimizers.Adamax(learning_rate=0.001)
         self.model.compile(loss='mse', optimizer=self.opt)
@@ -131,25 +130,25 @@ class AE_LSTM_Trainer:
 
     def load_train_data(self):
         self.train_ds = Dataset()
-        self.train_ds.load('reaching', groups=range(1,300), image_size=input_image_size)
+        self.train_ds.load(self.dataset, groups=train_groups, image_size=input_image_size)
         self.train_ds.preprocess(self.time_window)
-        train_generator = DPLGenerator()
+        train_generator = generator.DPLGenerator()
         self.train_gen = train_generator.flow(self.train_ds.get(),
-                                                  None,
-                                                  batch_size=self.batch_size,
-                                                  time_window_size=self.time_window,
-                                                  add_roi=False)
-
-    def load_val_data(self):
-        self.val_ds = Dataset()
-        self.val_ds.load('reaching', groups=range(300,350), image_size=input_image_size)
-        self.val_ds.preprocess(self.time_window)
-        val_generator = DPLGenerator()
-        self.val_gen = val_generator.flow(self.val_ds.get(),
                                               None,
                                               batch_size=self.batch_size,
                                               time_window_size=self.time_window,
                                               add_roi=False)
+
+    def load_val_data(self):
+        self.val_ds = Dataset()
+        self.val_ds.load(self.dataset, groups=val_groups, image_size=input_image_size)
+        self.val_ds.preprocess(self.time_window)
+        val_generator = generator.DPLGenerator()
+        self.val_gen = val_generator.flow(self.val_ds.get(),
+                                          None,
+                                          batch_size=self.batch_size,
+                                          time_window_size=self.time_window,
+                                          add_roi=False)
 
     def train(self, epochs=100):
         self.load_train_data()
@@ -194,29 +193,29 @@ class AE_LSTM_Trainer:
 
     def train_closed(self, epochs=20):
         '''
-        under construction
+        under implementation
         '''
         self.train(epochs)
+
         samples = self.sample_with_current_policy(self)
         for n in range(20):
             self.train_gen.set_generated_samples(samples)
             self.train(epochs)
 
 
-    def test(self):
+    def test_image_prediction(self):
         self.prepare_for_test()
         x,y = next(self.val_gen)
-        predicted_images, predicted_joint_positions = self.model.predict(x)
+        predicted_images, _ = self.model.predict(x)
         visualize_ds(y[0])
         visualize_ds(x[0][:,0,:,:,:])
         visualize_ds(predicted_images)
         plt.show()
-        return x[1],y[1],predicted_joint_positions
 
-    def test_joint(self):
+    def test_joint_prediction(self):
         self.prepare_for_test()
         x,y = next(self.val_gen)
-        predicted_images, predicted_joint_positions = self.model.predict(x)
+        _, predicted_joint_positions = self.model.predict(x)
         data = np.concatenate((x[1], predicted_joint_positions[:,np.newaxis,:]), axis=1)
 
         fig = plt.figure()
@@ -224,12 +223,11 @@ class AE_LSTM_Trainer:
         for joint_id in range(dof):
             ax = fig.add_subplot(8//2, 2, joint_id+1)
             ax.plot(np.transpose(data[:,:,joint_id]))
-        #ax.axis('off')
         plt.show()
 
     def predict_sequence_closed(self, group=0, create_anim_gif=True):
         '''
-        Closed execution using a trained model
+        Closed(=Offline) execution using a trained model
         '''
         self.prepare_for_test()
         jseq, iseq = self.val_ds.data[group]
@@ -249,7 +247,7 @@ class AE_LSTM_Trainer:
 
     def predict_sequence_open(self, group_num=0):
         '''
-        Open execution using a trained model and teaching data
+        Open(=Online) execution using a trained model and teaching data
         Returns three trajectories: input sequence, predicted sequence and label sequence
         '''
         res = []
@@ -258,9 +256,9 @@ class AE_LSTM_Trainer:
         ishape = d[group_num][1][0].shape
         jv_dim = d[group_num][0].shape[1]
         batch_size = 1
-        batch_x_imgs = np.empty((batch_size, self.time_window, ishape[0], ishape[1], ishape[2]))
+        batch_x_imgs = np.empty((batch_size, self.time_window) + ishape)
         batch_x_jvs = np.empty((batch_size, self.time_window, jv_dim))
-        batch_y_img = np.empty((batch_size, ishape[0], ishape[1], ishape[2]))
+        batch_y_img = np.empty((batch_size,) + ishape)
         batch_y_jv = np.empty((batch_size, jv_dim))
 
         for seq_num in range(seq_len-self.time_window):
