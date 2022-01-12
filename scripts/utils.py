@@ -144,19 +144,20 @@ def load_torobo_unity_joint_seq(joint_seq_file, start_step=0, step_length=None):
     return np_joint_seq_time
 
 class Dataset():
-    def __init__(self, **kargs):
+    def __init__(self, name, **kargs):
+        self._name = name
         try:
             self.dataset_path = kargs['dataset_path']
         except:
             self.dataset_path = os.path.join(os.environ['HOME'], 'Dataset/dataset2')
         self.compute_joint_position_range()
 
-    def compute_joint_position_range(self, action='pushing'):
-        self.load(groups=range(1,400), load_image=False, normalize=False)
-        joint_max_positions = np.max([np.max(group, axis=0) for group in self.data], axis=0)
-        joint_min_positions = np.min([np.min(group, axis=0) for group in self.data], axis=0)
-        self.joint_min_positions = joint_min_positions
-        self.joint_max_positions = joint_max_positions
+    def compute_joint_position_range(self):
+        self.load(groups=range(1,300), load_image=False, normalize=False)
+        jmaxs = np.max([np.max(group, axis=0) for group in self.data], axis=0)
+        jmins = np.min([np.min(group, axis=0) for group in self.data], axis=0)
+        self.joint_max_positions = np.where(np.isclose(jmaxs, jmins), 1, jmaxs)
+        self.joint_min_positions = np.where(np.isclose(jmaxs, jmins), 0, jmins)
 
     def joint_position_range(self):
         return self.joint_min_positions, self.joint_max_positions
@@ -167,9 +168,9 @@ class Dataset():
     def unnormalize_joint_position(self, q):
         return q * (self.joint_max_positions - self.joint_min_positions) + self.joint_min_positions
 
-    def load_group(self, group, action='pushing', load_image=True, image_size=(90, 160),
+    def load_group(self, group, load_image=True, image_size=(90, 160),
                        sampling_interval=1, normalize=True):
-        path = os.path.join(self.dataset_path, '%s/%d'%(action, group))
+        path = os.path.join(self.dataset_path, '%s/%d'%(self._name, group))
         # load joint and frame indices
         joint_file = os.path.join(path, 'joint_position.txt')
         joint_seq = np.loadtxt(joint_file)
@@ -197,8 +198,7 @@ class Dataset():
         else:
             return joint_seq
 
-    def load(self, action='pushing',
-                 groups=range(1,6),
+    def load(self, groups=range(1,6),
                  load_image=True,
                  image_size=(90, 160),
                  sampling_interval=1,
@@ -213,8 +213,7 @@ class Dataset():
         n_groups = len(groups)
         for i,group in enumerate(groups):
             print('\rloading: {}/{}'.format(i, n_groups), end='')
-            data.append(self.load_group(group, action,
-                                            load_image=load_image,
+            data.append(self.load_group(group, load_image=load_image,
                                             image_size=image_size,
                                             sampling_interval=sampling_interval,
                                             normalize=normalize))
@@ -225,6 +224,10 @@ class Dataset():
 
     def get(self):
         return self.data
+
+    @property
+    def name(self):
+        return self._name
 
     def extend_initial_and_final_states(self, size):
         def extend_group(gd):
