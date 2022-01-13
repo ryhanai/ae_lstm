@@ -1,12 +1,6 @@
 # -*- coding: utf-8 -*-
 
-import os, sys, glob, re, time, copy
-from datetime import datetime
-
-import numpy as np
-
-import tensorflow as tf
-from tensorflow import keras
+import os
 
 from utils import *
 import model, trainer
@@ -43,7 +37,12 @@ def prepare_for_test(cp='ae_cp.reaching.ae_lstm.20220112181145'):
     tr = trainer.Trainer(model, None, val_ds, time_window_size=time_window_size, checkpoint_file=cp)
     return tr
 
-# tr.predict_images()
-# tr.predict_joint_angles()
-# tr.predict_sequence_closed(0)
-# tr.predict_for_group(0)
+# Training
+# In[1]: train()
+
+# Test
+# In[1]: prepare_for_test()
+# In[2]: tr.predict_images()
+# In[3]: tr.predict_joint_angles()
+# In[4]: tr.predict_sequence_closed(0)
+# In[5]: tr.predict_for_group(0)
