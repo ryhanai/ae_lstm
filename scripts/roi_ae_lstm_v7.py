@@ -68,12 +68,12 @@ def roi_rect(args):
 #     return tf.transpose(tf.tile(roi3, tf.constant([time_window_size, 1, 1], tf.int32)), [1,0,2])
 
 
-class AutoencoderWithCrop(tf.keras.Model):
+class CustomModel(tf.keras.Model):
     """
     override loss computation
     """
     def __init__(self, *args, **kargs):
-        super(AutoencoderWithCrop, self).__init__(*args, **kargs)
+        super(CustomModel, self).__init__(*args, **kargs)
         self.loss_tracker = keras.metrics.Mean(name="loss")
         self.val_loss_tracker = keras.metrics.Mean(name="val_loss")
 
@@ -94,10 +94,6 @@ class AutoencoderWithCrop(tf.keras.Model):
     def test_step(self, data):
         x, y = data
         y_pred = self(x, training=False) # Forward pass
-
-        roi = y_pred[2]
-        print(' ROI: ', roi)
-
         val_loss = self.compute_loss(y, y_pred, x)
 
         self.val_loss_tracker.update_state(val_loss)
@@ -106,26 +102,22 @@ class AutoencoderWithCrop(tf.keras.Model):
     def compute_loss(self, y, y_pred, x):
         x_image, x_joint = x
         y_image, y_joint = y
-        roi = y_pred[2]
-        y_image_cropped = crop_and_resize((y_image, roi[:,-1]))
 
-        # batch_size = x_image.shape[0]
-        # reconst_roi = np.tile(np.array([0.0, 0.0, 1.0, 1.0]), [batch_size, 1])
-        # y_image_cropped = crop_and_resize((y_image, reconst_roi))
+        y_pred_cropped = crop_and_resize((y_pred[0], roi[:,-1]))
+        y_cropped = crop_and_resize((y_image, roi[:,-1]))
 
-        image_loss = tf.reduce_mean(tf.square(y_image_cropped - y_pred[0]))
+        roi_loss = tf.reduce_mean(tf.square(y_cropped - y_pred_cropped))
+        image_loss = tf.reduce_mean(tf.square(y_image - y_pred[0]))
         joint_loss = tf.reduce_mean(tf.square(y_joint - y_pred[1]))
         loss = image_loss + joint_loss
-        #loss = image_loss + 10.*joint_loss
-        #loss = keras.losses.mean_squared_error(y_image_cropped, y_pred[0])
+        loss = l / (1+l) * image_loss + 1 / (1+l) * image_loss + joint_loss
         return loss
 
     @property
     def metrics(self):
         return [self.loss_tracker, self.val_loss_tracker]
 
-
-def model_roi_lstm(time_window_size, image_vec_dim, dof, lstm_units=50, use_stacked_lstm=False, name='roi_lstm'):
+def model_lstm_no_split(time_window_size, image_vec_dim, dof, lstm_units=50, use_stacked_lstm=False, name='lstm'):
     imgvec_input = tf.keras.Input(shape=(time_window_size, image_vec_dim))
     joint_input = tf.keras.Input(shape=(time_window_size, dof))
     state_dim = image_vec_dim + dof
@@ -136,8 +128,13 @@ def model_roi_lstm(time_window_size, image_vec_dim, dof, lstm_units=50, use_stac
         x = tf.keras.layers.LSTM(state_dim, return_sequences=True)(x)
 
     x = tf.keras.layers.LSTM(lstm_units)(x)
+    x = tf.keras.layers.Dense(state_dim)(x)
+    lstm.summary()
+    return lstm
 
-    roi_param = tf.keras.layers.Dense(3, activation='sigmoid')(x) # (x, y, s)
+def model_roi_mlp(image_vec, image_vec_dim, dof, lstm_units=50, use_stacked_lstm=False, name='roi_mlp'):
+
+    roi_param = tf.keras.layers.Dense(3, activation='sigmoid')(image_vec) # (x, y, s)
     center = tf.keras.layers.Lambda(lambda x:x[:,:2], output_shape=(2,))(roi_param)
     scale = tf.keras.layers.Lambda(lambda x:x[:,2], output_shape=(1,))(roi_param)
     roi = tf.keras.layers.Lambda(roi_rect)([center, scale])
@@ -146,46 +143,27 @@ def model_roi_lstm(time_window_size, image_vec_dim, dof, lstm_units=50, use_stac
     m.summary()
     return m
 
-def model_roi_encoder(input_shape, time_window_size, out_dim, noise_stddev=0.2, name='roi_encoder'):
-    image_input = tf.keras.Input(shape=((time_window_size,) + input_shape))
-    roi_input = tf.keras.Input(shape=(time_window_size, 4))
-
-    roi = tf.keras.layers.TimeDistributed(tf.keras.layers.Lambda(crop_and_resize, output_shape=input_shape)) ([image_input, roi_input])
-    roi_extractor = tf.keras.Model([image_input, roi_input], roi, name='roi_extractor')
-    roi_extractor.summary()
-
-    x = tf.keras.layers.TimeDistributed(tf.keras.layers.GaussianNoise(noise_stddev))(roi)
-
-    x = conv_block(x, 8)
-    x = conv_block(x, 16)
-    x = conv_block(x, 32)
-    x = conv_block(x, 64)
-
-    x = tf.keras.layers.TimeDistributed(tf.keras.layers.Flatten())(x)
-    encoder_output = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(out_dim, activation='selu'))(x)
-
-    encoder = keras.Model([image_input, roi_input], encoder_output, name=name)
-    encoder.summary()
-    return encoder
-
-def model_roi_ae_lstm(input_image_shape, time_window_size, latent_dim, dof):
+def model_weighted_roi_loss(input_image_shape, time_window_size, latent_dim, dof):
     image_input = tf.keras.Input(shape=((time_window_size,) + input_image_shape))
     joint_input = tf.keras.Input(shape=(time_window_size, dof))
 
     encoded_img = model_encoder(input_image_shape, time_window_size, latent_dim)(image_input)
-    roi = model_roi_lstm(time_window_size, latent_dim, dof)([encoded_img, joint_input])
+    predicted = model_lstm_no_split(time_window_size, latent_dim, dof)([encoded_image, joint_input])
 
-    encoded_roi = model_roi_encoder(input_image_shape, time_window_size, latent_dim)([image_input, roi])
-    predicted_ivec, predicted_jvec = model_lstm(time_window_size, latent_dim, dof)([encoded_roi, joint_input])
-    decoded_roi = model_decoder(input_image_shape, latent_dim)(predicted_ivec)
-    m = AutoencoderWithCrop(inputs=[image_input, joint_input],
-                            outputs=[decoded_roi, predicted_jvec, roi],
-                            name='roi_ae_lstm')
+    roi = model_roi_mlp()(predicted)
+
+    imgvec_pred = tf.keras.layers.Lambda(lambda x:x[:,:latent_dim], output_shape=(latent_dim,))(predicted)
+    joint_pred = tf.keras.layers.Lambda(lambda x:x[:,latent_dim:], output_shape=(dof,))(predicted)
+    decoded_pred = model_decoder(input_image_shape, latent_dim)(imgvec_pred)
+
+    m = CustomModel(inputs=[image_input, joint_input],
+                        outputs=[decoded_pred, joint_pred, roi],
+                        name='weighted_roi_loss')
     m.summary()
     return m
 
 
-model = model_roi_ae_lstm(input_image_size+(3,), time_window_size, latent_dim, dof)
+model = model_weighted_roi_loss(input_image_size+(3,), time_window_size, latent_dim, dof)
 
 def train():
     train_ds = Dataset(dataset)
@@ -198,7 +176,7 @@ def train():
     tr.train()
     return tr
 
-def prepare_for_test(cp='ae_cp.reaching.roi_ae_lstm.20220113175732'):
+def prepare_for_test(cp):
     val_ds = Dataset(dataset)
     val_ds.load(groups=val_groups, image_size=input_image_size)
     val_ds.preprocess(time_window_size)
