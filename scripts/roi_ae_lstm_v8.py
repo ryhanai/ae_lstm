@@ -34,39 +34,12 @@ def crop_and_resize(args):
 def roi_rect(args):
     c, s = args
     es = 0.15 * (1.0 + s)
-    #es = 0.075 * (1.0 + s)
-    #img_center = tf.tile(tf.constant([[0.5, 0.5]], dtype=tf.float32), (batch_size,1))
     img_center = tf.map_fn(fn=lambda x: tf.constant([0.5, 0.5]), elems=c)
     a = tf.tile(tf.expand_dims(es, 1), (1,2))
     lt = img_center + 0.4 * (c - img_center) - a
     rb = img_center + 0.4 * (c - img_center) + a
     roi = tf.concat([lt, rb], axis=1)
-    roi3 = tf.expand_dims(roi, 0)
-    return tf.transpose(tf.tile(roi3, tf.constant([time_window_size, 1, 1], tf.int32)), [1,0,2])
-
-# def roi_rect(args):
-#     """
-#     Fixed ROI (averaged over estimated ROIs)
-#     """
-#     c, s = args
-#     lt = tf.tile(tf.constant([[0.1205094, 0.15675367]], dtype=tf.float32), (batch_size,1))
-#     rb = tf.tile(tf.constant([[0.70754665, 0.74379086]], dtype=tf.float32), (batch_size,1))
-#     roi = tf.concat([lt, rb], axis=1)
-#     roi3 = tf.expand_dims(roi, 0)
-#     return tf.transpose(tf.tile(roi3, tf.constant([time_window_size, 1, 1], tf.int32)), [1,0,2])
-
-# def roi_rect(args):
-#     """
-#     To invalidate ROI, use this function.
-#     This returns the whole image as ROI
-#     """
-#     c, s = args
-#     lt = tf.map_fn(fn=lambda x: tf.constant([0.0, 0.0]), elems=c)
-#     rb = tf.map_fn(fn=lambda x: tf.constant([1.0, 1.0]), elems=c)
-#     roi = tf.concat([lt, rb], axis=1)
-#     roi3 = tf.expand_dims(roi, 0)
-#     return tf.transpose(tf.tile(roi3, tf.constant([time_window_size, 1, 1], tf.int32)), [1,0,2])
-
+    return roi
 
 class CustomModel(tf.keras.Model):
     """
@@ -74,11 +47,9 @@ class CustomModel(tf.keras.Model):
     """
     def __init__(self, *args, **kargs):
         super(CustomModel, self).__init__(*args, **kargs)
-        self.roi_loss_tracker = keras.metrics.Mean(name="roi_loss")
         self.image_loss_tracker = keras.metrics.Mean(name="image_loss")
         self.joint_loss_tracker = keras.metrics.Mean(name="joint_loss")
         self.loss_tracker = keras.metrics.Mean(name="loss")
-        self.val_roi_loss_tracker = keras.metrics.Mean(name="val_roi_loss")
         self.val_image_loss_tracker = keras.metrics.Mean(name="val_image_loss")
         self.val_joint_loss_tracker = keras.metrics.Mean(name="val_joint_loss")
         self.val_loss_tracker = keras.metrics.Mean(name="val_loss")
@@ -88,19 +59,17 @@ class CustomModel(tf.keras.Model):
 
         with tf.GradientTape() as tape:
             y_pred = self(x, training=True) # Forward pass
-            roi_loss, image_loss, joint_loss, loss = self.compute_loss(y, y_pred, x)
+            image_loss, joint_loss, loss = self.compute_loss(y, y_pred, x)
 
         trainable_vars = self.trainable_variables
         gradients = tape.gradient(loss, trainable_vars)
         self.optimizer.apply_gradients(zip(gradients, trainable_vars))
 
-        self.roi_loss_tracker.update_state(roi_loss)
         self.image_loss_tracker.update_state(image_loss)
         self.joint_loss_tracker.update_state(joint_loss)
         self.loss_tracker.update_state(loss)
 
         return {
-            "roi_loss": self.roi_loss_tracker.result(),
             "image_loss": self.image_loss_tracker.result(),
             "joint_loss": self.joint_loss_tracker.result(),
             "loss": self.loss_tracker.result(),
@@ -109,15 +78,13 @@ class CustomModel(tf.keras.Model):
     def test_step(self, data):
         x, y = data
         y_pred = self(x, training=False) # Forward pass
-        val_roi_loss, val_image_loss, val_joint_loss, val_loss = self.compute_loss(y, y_pred, x)
+        val_image_loss, val_joint_loss, val_loss = self.compute_loss(y, y_pred, x)
 
-        self.val_roi_loss_tracker.update_state(val_roi_loss)
         self.val_image_loss_tracker.update_state(val_image_loss)
         self.val_joint_loss_tracker.update_state(val_joint_loss)
         self.val_loss_tracker.update_state(val_loss)
 
         return {
-            "roi_loss": self.val_roi_loss_tracker.result(),
             "image_loss": self.val_image_loss_tracker.result(),
             "joint_loss": self.val_joint_loss_tracker.result(),
             "loss": self.val_loss_tracker.result(),
@@ -126,21 +93,22 @@ class CustomModel(tf.keras.Model):
     def compute_loss(self, y, y_pred, x):
         x_image, x_joint = x
         y_image, y_joint = y
-        roi = y_pred[2]
 
-        y_pred_cropped = crop_and_resize((y_pred[0], roi[:,-1]))
-        y_cropped = crop_and_resize((y_image, roi[:,-1]))
-
-        roi_loss = tf.reduce_mean(tf.square(y_cropped - y_pred_cropped))
         image_loss = tf.reduce_mean(tf.square(y_image - y_pred[0]))
         joint_loss = tf.reduce_mean(tf.square(y_joint - y_pred[1]))
-        l = 2.0
-        loss = (l / (1+l) * roi_loss + 1 / (1+l) * image_loss) + joint_loss
-        return roi_loss, image_loss, joint_loss, loss
+        loss = image_loss + joint_loss
+        return image_loss, joint_loss, loss
 
     @property
     def metrics(self):
-        return [self.loss_tracker, self.val_loss_tracker]
+        return [
+            self.image_loss_tracker,
+            self.joint_loss_tracker,
+            self.loss_tracker,
+            self.val_image_loss_tracker,
+            self.val_joint_loss_tracker,
+            self.val_loss_tracker,
+            ]
 
 def model_lstm_no_split(time_window_size, image_vec_dim, dof, lstm_units=50, use_stacked_lstm=False, name='lstm'):
     imgvec_input = tf.keras.Input(shape=(time_window_size, image_vec_dim))
@@ -171,6 +139,29 @@ def model_roi_mlp(latent_dim, name='roi_mlp'):
     m.summary()
     return m
 
+def conv1_block(x, out_channels):
+    x = tf.keras.layers.Conv2D(out_channels, kernel_size=3, strides=1, padding='same', activation='selu')(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    return tf.keras.layers.MaxPool2D(pool_size=2)(x)
+
+def model_encoder_decoder(input_shape, noise_stddev=0.2, name='encoder_decoder'):
+    image_input = tf.keras.Input(shape=(input_shape))
+
+    x = tf.keras.layers.GaussianNoise(noise_stddev)(image_input)
+
+    x = conv1_block(x, 8)
+    x = conv1_block(x, 16)
+    x = conv1_block(x, 32)
+    x = conv1_block(x, 64)
+    x = deconv_block(x, 32)
+    x = deconv_block(x, 16)
+    x = deconv_block(x, 8)
+    x = deconv_block(x, 3)
+
+    m = keras.Model([image_input], x, name=name)
+    m.summary()
+    return m
+
 def model_weighted_roi_loss(input_image_shape, time_window_size, latent_dim, dof):
     image_input = tf.keras.Input(shape=((time_window_size,) + input_image_shape))
     joint_input = tf.keras.Input(shape=(time_window_size, dof))
@@ -184,9 +175,12 @@ def model_weighted_roi_loss(input_image_shape, time_window_size, latent_dim, dof
     joint_pred = tf.keras.layers.Lambda(lambda x:x[:,latent_dim:], output_shape=(dof,))(predicted)
     decoded_pred = model_decoder(input_image_shape, latent_dim)(imgvec_pred)
 
+    cropped_pred = tf.keras.layers.Lambda(crop_and_resize, output_shape=input_image_shape) ([decoded_pred, roi])
+    predicted2 = model_encoder_decoder(input_image_shape)(cropped_pred)
+
     m = CustomModel(inputs=[image_input, joint_input],
-                        outputs=[decoded_pred, joint_pred, roi],
-                        name='weighted_roi_loss')
+                        outputs=[predicted2, joint_pred, roi],
+                        name='time_space_prediction')
     m.summary()
     return m
 
