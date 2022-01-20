@@ -34,19 +34,45 @@ def crop_and_resize(args):
 def roi_rect(args):
     c, s = args
     es = 0.15 * (1.0 + s)
+    #es = 0.075 * (1.0 + s)
     img_center = tf.map_fn(fn=lambda x: tf.constant([0.5, 0.5]), elems=c)
     a = tf.tile(tf.expand_dims(es, 1), (1,2))
     lt = img_center + 0.4 * (c - img_center) - a
     rb = img_center + 0.4 * (c - img_center) + a
     roi = tf.concat([lt, rb], axis=1)
-    return roi
+    roi3 = tf.expand_dims(roi, 0)
+    return tf.transpose(tf.tile(roi3, tf.constant([time_window_size, 1, 1], tf.int32)), [1,0,2])
 
-class CustomModel(tf.keras.Model):
+# def roi_rect(args):
+#     """
+#     Fixed ROI (averaged over estimated ROIs)
+#     """
+#     c, s = args
+#     lt = tf.tile(tf.constant([[0.1205094, 0.15675367]], dtype=tf.float32), (batch_size,1))
+#     rb = tf.tile(tf.constant([[0.70754665, 0.74379086]], dtype=tf.float32), (batch_size,1))
+#     roi = tf.concat([lt, rb], axis=1)
+#     roi3 = tf.expand_dims(roi, 0)
+#     return tf.transpose(tf.tile(roi3, tf.constant([time_window_size, 1, 1], tf.int32)), [1,0,2])
+
+# def roi_rect(args):
+#     """
+#     To invalidate ROI, use this function.
+#     This returns the whole image as ROI
+#     """
+#     c, s = args
+#     lt = tf.map_fn(fn=lambda x: tf.constant([0.0, 0.0]), elems=c)
+#     rb = tf.map_fn(fn=lambda x: tf.constant([1.0, 1.0]), elems=c)
+#     roi = tf.concat([lt, rb], axis=1)
+#     roi3 = tf.expand_dims(roi, 0)
+#     return tf.transpose(tf.tile(roi3, tf.constant([time_window_size, 1, 1], tf.int32)), [1,0,2])
+
+
+class AutoencoderWithCrop(tf.keras.Model):
     """
     override loss computation
     """
     def __init__(self, *args, **kargs):
-        super(CustomModel, self).__init__(*args, **kargs)
+        super(AutoencoderWithCrop, self).__init__(*args, **kargs)
         tracker_names = ['image_loss', 'joint_loss', 'loss']
         self.train_trackers = {}
         self.test_trackers = {}
@@ -84,7 +110,14 @@ class CustomModel(tf.keras.Model):
         x_image, x_joint = x
         y_image, y_joint = y
 
-        image_loss = tf.reduce_mean(tf.square(y_image - y_pred[0]))
+        # predict ROI only
+        # roi = y_pred[2]
+        # y_image_cropped = crop_and_resize((y_image, roi[:,-1]))
+
+        # predict whole image
+        y_image_cropped = y_image
+
+        image_loss = tf.reduce_mean(tf.square(y_image_cropped - y_pred[0]))
         joint_loss = tf.reduce_mean(tf.square(y_joint - y_pred[1]))
         loss = image_loss + joint_loss
         return image_loss, joint_loss, loss
@@ -93,7 +126,8 @@ class CustomModel(tf.keras.Model):
     def metrics(self):
         return list(self.train_trackers.values()) + list(self.test_trackers.values())
 
-def model_lstm_no_split(time_window_size, image_vec_dim, dof, lstm_units=50, use_stacked_lstm=False, name='lstm'):
+
+def model_roi_lstm(time_window_size, image_vec_dim, dof, lstm_units=50, use_stacked_lstm=False, name='roi_lstm'):
     imgvec_input = tf.keras.Input(shape=(time_window_size, image_vec_dim))
     joint_input = tf.keras.Input(shape=(time_window_size, dof))
     state_dim = image_vec_dim + dof
@@ -104,71 +138,56 @@ def model_lstm_no_split(time_window_size, image_vec_dim, dof, lstm_units=50, use
         x = tf.keras.layers.LSTM(state_dim, return_sequences=True)(x)
 
     x = tf.keras.layers.LSTM(lstm_units)(x)
-    x = tf.keras.layers.Dense(state_dim)(x)
 
-    lstm = keras.Model([imgvec_input, joint_input], x, name=name)
-    lstm.summary()
-    return lstm
-
-def model_roi_mlp(latent_dim, name='roi_mlp'):
-    imgvec_input = tf.keras.Input(shape=(latent_dim))
-
-    roi_param = tf.keras.layers.Dense(3, activation='sigmoid')(imgvec_input) # (x, y, s)
+    roi_param = tf.keras.layers.Dense(3, activation='sigmoid')(x) # (x, y, s)
     center = tf.keras.layers.Lambda(lambda x:x[:,:2], output_shape=(2,))(roi_param)
     scale = tf.keras.layers.Lambda(lambda x:x[:,2], output_shape=(1,))(roi_param)
     roi = tf.keras.layers.Lambda(roi_rect)([center, scale])
 
-    m = keras.Model(imgvec_input, roi, name=name)
+    m = keras.Model([imgvec_input, joint_input], roi, name=name)
     m.summary()
     return m
 
-def conv1_block(x, out_channels):
-    x = tf.keras.layers.Conv2D(out_channels, kernel_size=3, strides=1, padding='same', activation='selu')(x)
-    x = tf.keras.layers.BatchNormalization()(x)
-    return tf.keras.layers.MaxPool2D(pool_size=2)(x)
+def model_roi_encoder(input_shape, time_window_size, out_dim, noise_stddev=0.2, name='roi_encoder'):
+    image_input = tf.keras.Input(shape=((time_window_size,) + input_shape))
+    roi_input = tf.keras.Input(shape=(time_window_size, 4))
 
-def model_encoder_decoder(input_shape, noise_stddev=0.2, name='encoder_decoder'):
-    image_input = tf.keras.Input(shape=(input_shape))
+    roi = tf.keras.layers.TimeDistributed(tf.keras.layers.Lambda(crop_and_resize, output_shape=input_shape)) ([image_input, roi_input])
+    roi_extractor = tf.keras.Model([image_input, roi_input], roi, name='roi_extractor')
+    roi_extractor.summary()
 
-    x = tf.keras.layers.GaussianNoise(noise_stddev)(image_input)
+    x = tf.keras.layers.TimeDistributed(tf.keras.layers.GaussianNoise(noise_stddev))(roi)
 
-    x = conv1_block(x, 8)
-    x = conv1_block(x, 16)
-    x = conv1_block(x, 32)
-    x = conv1_block(x, 64)
-    x = deconv_block(x, 32)
-    x = deconv_block(x, 16)
-    x = deconv_block(x, 8)
-    x = deconv_block(x, 3)
+    x = conv_block(x, 8)
+    x = conv_block(x, 16)
+    x = conv_block(x, 32)
+    x = conv_block(x, 64)
 
-    m = keras.Model([image_input], x, name=name)
-    m.summary()
-    return m
+    x = tf.keras.layers.TimeDistributed(tf.keras.layers.Flatten())(x)
+    encoder_output = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(out_dim, activation='selu'))(x)
 
-def model_weighted_roi_loss(input_image_shape, time_window_size, latent_dim, dof):
+    encoder = keras.Model([image_input, roi_input], encoder_output, name=name)
+    encoder.summary()
+    return encoder
+
+def model_roi_ae_lstm(input_image_shape, time_window_size, latent_dim, dof):
     image_input = tf.keras.Input(shape=((time_window_size,) + input_image_shape))
     joint_input = tf.keras.Input(shape=(time_window_size, dof))
 
     encoded_img = model_encoder(input_image_shape, time_window_size, latent_dim)(image_input)
-    predicted = model_lstm_no_split(time_window_size, latent_dim, dof)([encoded_img, joint_input])
+    roi = model_roi_lstm(time_window_size, latent_dim, dof)([encoded_img, joint_input])
 
-    roi = model_roi_mlp(latent_dim+dof)(predicted)
-
-    imgvec_pred = tf.keras.layers.Lambda(lambda x:x[:,:latent_dim], output_shape=(latent_dim,))(predicted)
-    joint_pred = tf.keras.layers.Lambda(lambda x:x[:,latent_dim:], output_shape=(dof,))(predicted)
-    decoded_pred = model_decoder(input_image_shape, latent_dim)(imgvec_pred)
-
-    cropped_pred = tf.keras.layers.Lambda(crop_and_resize, output_shape=input_image_shape) ([decoded_pred, roi])
-    predicted2 = model_encoder_decoder(input_image_shape)(cropped_pred)
-
-    m = CustomModel(inputs=[image_input, joint_input],
-                        outputs=[predicted2, joint_pred, roi],
-                        name='time_space_prediction')
+    encoded_roi = model_roi_encoder(input_image_shape, time_window_size, latent_dim)([image_input, roi])
+    predicted_ivec, predicted_jvec = model_lstm(time_window_size, latent_dim, dof)([encoded_roi, joint_input])
+    decoded_roi = model_decoder(input_image_shape, latent_dim)(predicted_ivec)
+    m = AutoencoderWithCrop(inputs=[image_input, joint_input],
+                            outputs=[decoded_roi, predicted_jvec, roi],
+                            name='roi_ae_lstm')
     m.summary()
     return m
 
 
-model = model_weighted_roi_loss(input_image_size+(3,), time_window_size, latent_dim, dof)
+model = model_roi_ae_lstm(input_image_size+(3,), time_window_size, latent_dim, dof)
 
 def train():
     train_ds = Dataset(dataset)
@@ -181,7 +200,7 @@ def train():
     tr.train()
     return tr
 
-def prepare_for_test(cp='ae_cp.reaching.weighted_roi_loss.20220119195946'):
+def prepare_for_test(cp='ae_cp.reaching.roi_ae_lstm.20220114003346'):
     val_ds = Dataset(dataset)
     val_ds.load(groups=val_groups, image_size=input_image_size)
     val_ds.preprocess(time_window_size)

@@ -204,7 +204,7 @@ def train():
     tr.train()
     return tr
 
-def prepare_for_test(cp):
+def prepare_for_test(cp='ae_cp.reaching.weighted_roi_loss.20220119195946'):
     val_ds = Dataset(dataset)
     val_ds.load(groups=val_groups, image_size=input_image_size)
     val_ds.preprocess(time_window_size)
