@@ -182,7 +182,7 @@ def train():
     tr.train()
     return tr
 
-def prepare_for_test(cp='ae_cp.reaching.roi_ae_lstm.20220114003346'):
+def prepare_for_test(cp='ae_cp.reaching.roi_ae_lstm_embed.20220126215954'):
     val_ds = Dataset(dataset)
     val_ds.load(groups=val_groups, image_size=input_image_size)
     val_ds.preprocess(time_window_size)
