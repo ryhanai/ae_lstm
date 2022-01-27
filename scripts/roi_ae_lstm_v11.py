@@ -137,7 +137,8 @@ class AutoencoderWithCrop(tf.keras.Model):
         roi = y_pred[2][0,-1]
         s = roi[2] - roi[0]
         attention_loss = s*s
-        l = 3e-4
+        #l = 3e-4
+        l = 0.0
         loss = image_loss + joint_loss + l * attention_loss
         return image_loss, joint_loss, attention_loss, loss
 
