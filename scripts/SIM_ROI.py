@@ -1,8 +1,3 @@
-pybullet_ur5_path = "/home/ryo/Program/moonshot/pybullet_ur5"
-
-import sys
-sys.path.append(pybullet_ur5_path)
-
 from SIM import *
 import numpy as np
 import pandas as pd
@@ -57,16 +52,7 @@ class SIM_ROI(SIM):
 
         self.setInitialPos()
 
-
-    def setInitialPos(self):
-        # pick&place
-        # initialValues = [-0.0009408158538868226,
-        #                  -0.9906506399912721,
-        #                  1.5819908718696956,
-        #                  -2.176581590986293,
-        #                  -1.570484461359131,
-        #                  0.0004259455658886804]
-
+    def resetRobot(self):
         if self.scene == 'pushing':
             armInitialValues = [-0.899109997666209,
                                 -0.5263515248505674,
@@ -77,12 +63,6 @@ class SIM_ROI(SIM):
             gripperInitialValues = [0, 0, 0, 0, 0, 0]
             self.setJointValues(self.ur5, self.armJoints, armInitialValues)
             self.setJointValues(self.ur5, self.gripperJoints, gripperInitialValues)
-            box_pos = np.append([-0.2, -0.75] + [0.2, 0.3] * np.random.random(2), 0.79)
-            box_ori = p.getQuaternionFromEuler([0,0,0])
-            p.resetBasePositionAndOrientation(self.box, box_pos, box_ori)
-            target_pos = np.append([0.1, -0.75] + [0.2, 0.3] * np.random.random(2), 0.77)
-            target_ori = p.getQuaternionFromEuler([0,0,0])
-            p.resetBasePositionAndOrientation(self.target, target_pos, target_ori)
         elif self.scene == 'reaching':
             armInitialValues = [-0.899109997666209,
                                 -0.5263515248505674,
@@ -92,14 +72,46 @@ class SIM_ROI(SIM):
                                 0.1551369530256832]
             self.moveArm(armInitialValues)
             self.openGripper()
-            target_pos = np.append([0.1, -0.75] + [0.2, 0.3] * np.random.random(2), 0.77)
-            target_ori = p.getQuaternionFromEuler([0,0,0])
-            p.resetBasePositionAndOrientation(self.target, target_pos, target_ori)
 
         self.previous_js = self.getJointState()
+
+    def setObjectPosition(self, *positions):
+        if self.scene == 'pushing':
+            if len(positions) == 2:
+                box_pos = positions[0]
+                target_pos = positions[1]
+            else:
+                box_pos = np.append([-0.2, -0.75] + [0.2, 0.3] * np.random.random(2), 0.79)
+                target_pos = np.append([0.1, -0.75] + [0.2, 0.3] * np.random.random(2), 0.77)
+            box_ori = p.getQuaternionFromEuler([0,0,0])
+            target_ori = p.getQuaternionFromEuler([0,0,0])
+            p.resetBasePositionAndOrientation(self.box, box_pos, box_ori)
+        elif self.scene == 'reaching':
+            if len(positions) == 1:
+                target_pos = positions[0]
+            else:
+                target_pos = np.append([0.1, -0.75] + [0.2, 0.3] * np.random.random(2), 0.77)
+            target_ori = p.getQuaternionFromEuler([0,0,0])
+            p.resetBasePositionAndOrientation(self.target, target_pos, target_ori)
+         
+    def setInitialPos(self):
+        self.resetRobot()
+        self.setObjectPosition()
         self.frameNo = 0
         self.frames = []
 
+    def getTargetXYZ(self):
+        pos, ori = p.getBasePositionAndOrientation(self.box)
+        return np.array(pos)
+
+    def getTCPXYZ(self):
+        linkID = 7
+        s = p.getLinkState(self.ur5, linkID)
+        # transform from wrist link to tool center point
+        w2t_tf = ([0.174 -0.015, 0.004, 0], p.getQuaternionFromEuler([0,0,0]))
+        goalPos, goalOri = self.multiplyTransforms(s, w2t_tf)
+        return np.array(goalPos)
+    
     def moveArm(self, q):
         self.setJointValues(self.ur5, self.armJoints, q)
         
@@ -115,7 +127,7 @@ class SIM_ROI(SIM):
 
     def multiplyTransforms(self, t1, t2):
         return p.multiplyTransforms(t1[0], t1[1], t2[0], t2[1])
-        
+    
     def rotateEF(self, euler):
         linkID = 7
         s = p.getLinkState(self.ur5, linkID)
