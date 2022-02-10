@@ -1,0 +1,61 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://wiki.ros.org/xacro" name="mocap_base_scene">
+​
+  <!-- robot arms -->
+  <xacro:include filename="../../urdf/ur5e/ur_macro.xacro"/>
+ 
+ 
+  <xacro:ur_robot
+      prefix="c_bot_"
+      joint_limits_parameters_file="../../config/joint_limits.yaml"
+      physical_parameters_file="../../config/physical_parameters.yaml"
+      visual_parameters_file="../../config/visual_parameters.yaml"
+      kinematics_parameters_file="../../config/default_kinematics.yaml"/>
+​
+​
+​
+ 
+  <xacro:include filename="../../urdf/robotiq/robotiq_arg2f_coupling.urdf.xacro"/>
+  <xacro:robotiq_arg2f_coupling prefix="c_bot_gripper_coupling_"
+				parent="c_bot_flange">
+    <origin xyz="0 0 0" rpy="${pi} 0 0"/>
+  </xacro:robotiq_arg2f_coupling>
+​
+
+
+  <xacro:include filename="../../urdf/robotiq/robotiq_85_gripper.urdf.xacro"/>
+  <xacro:robotiq_85_gripper prefix="c_bot_gripper_"
+			parent="c_bot_gripper_coupling_flange_link">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </xacro:robotiq_85_gripper>
+
+  <link name="peg">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0 0 0.24"/>
+      <mass value="0.4"/>
+      <inertia ixx="0.0094" ixy="0" ixz="0" iyy="0.0008" iyz="0" izz="0.0094"/>
+    </inertial>
+    <visual>
+      <origin rpy="0, 1.57, 0" xyz="0.12, 0, 0"/>
+      <geometry>
+	<mesh filename="../../meshes/objects/peg.obj" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="blue">
+        <color rgba="0.5 0.5 1.0 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin rpy="0, 1.57, 0" xyz="0.12, 0, 0"/>
+      <geometry>
+	<mesh filename="../../meshes/objects/peg.obj" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="hand_to_peg" type="fixed">
+    <parent link="c_bot_gripper_coupling_flange_link"/>
+    <child link="peg"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+
+</robot>
