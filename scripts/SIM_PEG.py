@@ -84,10 +84,15 @@ class SIM_ROI(SIM):
 
         
         self.setInitialPos()
+        self.clearFrames()
 
     def resetRobot(self):
-        self.moveArm(self.armInitialValues)
-        self.moveGripper(0.47)
+        while True:
+            self.moveArm(self.armInitialValues)
+            self.moveGripper(0.47)
+            p.stepSimulation()
+            if np.allclose(self.getJointState()[:6], self.armInitialValues, atol=1e-2):
+                break
 
         self.previous_js = self.getJointState()
 
@@ -95,13 +100,15 @@ class SIM_ROI(SIM):
         if len(positions) == 1:
             target_pos = positions[0]
         else:
-            target_pos = np.append([0.0, -0.8] + [0.5, 0.3] * np.random.random(2), 0.795)
+            target_pos = np.append([0.0, -0.75] + [0.40, 0.10] * (2*np.random.random(2)-1), 0.795)
         target_ori = p.getQuaternionFromEuler([0,0,0])
         p.resetBasePositionAndOrientation(self.target, target_pos, target_ori)
          
     def setInitialPos(self):
         self.resetRobot()
         self.setObjectPosition()
+        
+    def clearFrames(self):
         self.frameNo = 0
         self.frames = []
 
@@ -203,12 +210,25 @@ class SIM_ROI(SIM):
         pd.to_pickle((cameraConfig, self.frames), os.path.join(group_dir, 'sim_states.pkl'))
         print('done')
         self.groupNo += 1
-        self.setInitialPos()
 
+
+import rospy
+from geometry_msgs.msg import Vector3
+        
 class VRController_ROI(VRController):
-    def __init__(self, isVR):
+    def __init__(self, isVR, use3Dmouse):
         super().__init__(isVR)
+        self.use3Dmouse = use3Dmouse
 
+        if use3Dmouse:
+            self.last_msg = Vector3()
+            rospy.init_node("spacenav_receiver")
+            rospy.Subscriber("/spacenav/offset", Vector3, self.spacenav_callback)
+
+    def spacenav_callback(self, msg):
+        self.last_msg = msg
+        # rospy.loginfo("%s", msg)
+        
     def update(self):
         super().update()
 
@@ -226,6 +246,7 @@ class VRController_ROI(VRController):
         self.CG = 0
         self.OG = 0
         self.W = 0
+        self.BLK = 0
         aa = p.getKeyboardEvents()
         m = copy.copy(aa)
         qTranslate = ord('t')
@@ -238,6 +259,7 @@ class VRController_ROI(VRController):
         qWrite = ord('a')
         qCloseG = ord('f')
         qOpenG = ord('d')
+        qBreak = ord('b')
         if qTranslate in m and m[qTranslate]&p.KEY_IS_DOWN: # change the gripper position
             if qLeft in m:
                 if qUp in m:
@@ -270,4 +292,5 @@ class VRController_ROI(VRController):
             self.CG = 1
         if qOpenG in m and m[qOpenG]&p.KEY_WAS_TRIGGERED: # open gripper
             self.OG = 1
-
+        if qBreak in m and m[qBreak]&p.KEY_WAS_TRIGGERED: # break the control loop
+            self.BLK = 1

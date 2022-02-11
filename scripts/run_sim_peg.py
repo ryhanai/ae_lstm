@@ -14,10 +14,10 @@ import roi_ae_lstm_v13 as mdl
 tr = mdl.prepare_for_test()
 
 capture_size = (180, 320)
-view_params = [0,-1.15,1.45], [0,-0.4,0.5], [0,0,1]
+view_params = [0,-1.15,1.55], [0,-0.42,0.5], [0,0,1]
 
 env = S.SIM_ROI(scene='reaching', is_vr=False)
-control = S.VRController_ROI(0)
+control = S.VRController_ROI(False, use3Dmouse=True)
 cam = S.CAMERA_ROI(capture_size[1], capture_size[0], fov=40)
 cam.setViewMatrix(*view_params)
 
@@ -51,12 +51,13 @@ roi_hist = []
 def reset():
     global roi_hist
     env.setInitialPos()
-    sync()
+    #sync()
     img0 = captureRGB()
     js0 = env.getJointState()
     js0 = normalize_joint_position(js0)
     sm.initializeHistory(img0, js0)
     roi_hist = []
+    env.clearFrames()
 
 def captureRGB():
     img = cam.getImg()[2][:,:,:3]
@@ -198,6 +199,7 @@ def teach():
 
         # finish task?
         if task_completed():
+            env.writeFrames(cam.getCameraConfig())
             reset()
             continue
 
@@ -208,37 +210,40 @@ def teach():
         #     val = calc.get_IK(env.ur5, 8,joy_pos, gripperOriQ)
         #     invJoints = [1,2,3,4,5,6,13,15,17,18,20,22]
         #     env.setJointValues(env.ur5,invJoints,val)
-        if control.B2:  #VR
+        if control.BLK:
+            break
+        if control.B2:
             reset()
             continue
-        if control.W:
-            env.writeFrames(cam.getCameraConfig())
 
-        v = 0.006
+        v = 0.008
         vx = vy = math.sqrt(v*v / 2.)
         vtheta = 3
 
-        if control.KTL:
-            env.moveEF([-v, 0, 0])
-        if control.KTR:
-            env.moveEF([v, 0, 0])
-        if control.KTU:
-            env.moveEF([0, v, 0])
-        if control.KTD:
-            env.moveEF([0, -v, 0])
-        if control.KTLU:
-            env.moveEF([-vx, vy, 0])
-        if control.KTLD:
-            env.moveEF([-vx, -vy, 0])
-        if control.KTRU:
-            env.moveEF([vx, vy, 0])
-        if control.KTRD:
-            env.moveEF([vx, -vy, 0])
-        if control.KD:
-            env.moveEF([0, 0, -v])
-        if control.KU:
-            env.moveEF([0, 0, v])
-        if control.CG:
-            env.closeGripper()
-        if control.OG:
-            env.openGripper()
+        if control.use3Dmouse:
+            env.moveEF([v * (-control.last_msg.y), v * control.last_msg.x, v * control.last_msg.z])
+        else:
+            if control.KTL:
+                env.moveEF([-v, 0, 0])
+            if control.KTR:
+                env.moveEF([v, 0, 0])
+            if control.KTU:
+                env.moveEF([0, v, 0])
+            if control.KTD:
+                env.moveEF([0, -v, 0])
+            if control.KTLU:
+                env.moveEF([-vx, vy, 0])
+            if control.KTLD:
+                env.moveEF([-vx, -vy, 0])
+            if control.KTRU:
+                env.moveEF([vx, vy, 0])
+            if control.KTRD:
+                env.moveEF([vx, -vy, 0])
+            if control.KD:
+                env.moveEF([0, 0, -v])
+            if control.KU:
+                env.moveEF([0, 0, v])
+            if control.CG:
+                env.closeGripper()
+            if control.OG:
+                env.openGripper()
