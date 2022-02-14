@@ -4,16 +4,17 @@ import pandas as pd
 
 
 class CAMERA_ROI(CAMERA):
-    def __init__(self, width=300, height=300, fov=40, near=0.2, far=2.0):
+    def __init__(self, width=300, height=300, fov=40, near=0.2, far=2.0, shadow=True):
         super().__init__(width, height, fov, near, far)
         self.cameraConfig = {}
         self.cameraConfig['imageSize'] = (width,height)
         self.cameraConfig['fov'] = fov
         self.cameraConfig['near'] = near
         self.cameraConfig['far'] = far
+        self.shadow = shadow
 
     def getImg(self):
-        return p.getCameraImage(self.width,self.height,self.view_matrix,self.projection_matrix, lightDirection=[2,0,0], shadow=False, renderer=p.ER_BULLET_HARDWARE_OPENGL)
+        return p.getCameraImage(self.width,self.height,self.view_matrix,self.projection_matrix, lightDirection=[2,0,0], shadow=self.shadow, renderer=p.ER_BULLET_HARDWARE_OPENGL if self.shadow == True else p.ER_TINY_RENDERER)
 
     def setViewMatrix(self, eyePosition, targetPosition, upVector):
         self.cameraConfig['eyePosition'] = eyePosition

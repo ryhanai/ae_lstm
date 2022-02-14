@@ -8,8 +8,8 @@ import matplotlib.pyplot as plt
 
 from core.utils import *
 import SIM_PEG as S
-import roi_ae_lstm_v13 as mdl
-#import ae_lstm as mdl
+#import roi_ae_lstm_v14 as mdl
+import ae_lstm_v3 as mdl
 
 tr = mdl.prepare_for_test()
 
@@ -17,8 +17,8 @@ capture_size = (180, 320)
 view_params = [0,-1.15,1.55], [0,-0.42,0.5], [0,0,1]
 
 env = S.SIM_ROI(scene='reaching', is_vr=False)
-control = S.VRController_ROI(False, use3Dmouse=True)
-cam = S.CAMERA_ROI(capture_size[1], capture_size[0], fov=40)
+control = S.VRController_ROI(False, use3Dmouse=False)
+cam = S.CAMERA_ROI(capture_size[1], capture_size[0], fov=40, shadow=False)
 cam.setViewMatrix(*view_params)
 
 S.p.setRealTimeSimulation(False)
@@ -100,18 +100,26 @@ def eval_goal_accuracy(n_samples=20):
 
 import pandas as pd
 
-def calc_train_data_bias(groups=range(1,5)):
-    results = []
+def rerender(groups=range(1,2), task='peg-in-hole'):
     for g in groups:
-        s = pd.read_pickle('~/Dataset/dataset2/reaching/{}/sim_states.pkl'.format(g))[1][-1]
-        q = s['jointPosition']
-        p_target = np.array(s['target'][0])
-        env.setObjectPosition(p_target)
-        env.moveArm(q[:6])
-        sync()
-        p_tcp = env.getTCPXYZ()
-        results.append((p_target, p_tcp))
-    return results
+        env.clearFrames()
+        env.resetRobot()
+        for s in pd.read_pickle('~/Dataset/dataset2/{}/{}/sim_states.pkl'.format(task, g))[1]:
+            q = s['jointPosition']
+            p_target = np.array(s['target'][0])
+            env.setObjectPosition(p_target)
+            env.moveArm(q[:6])
+            sync()
+            js = env.getJointState()
+            img = cam.getImg()
+            print('save:[{}]: {}'.format(env.frameNo, js))
+            d = {'frameNo':env.frameNo, 'jointPosition':js, 'image':img}
+            for k,id in env.objects.items():
+                d[k] = S.p.getBasePositionAndOrientation(id)
+            env.frames.append(d)
+            env.frameNo += 1
+        env.groupNo = g
+        env.writeFrames(cam.getCameraConfig())
 
 def run(max_steps=50, anim_gif=False, anim_gif_file='run.gif'):
     for i in range(max_steps):

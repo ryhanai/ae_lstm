@@ -17,7 +17,7 @@ view_params = [0,-0.7,1.4], [0,-0.6,0.5], [0,0,1]
 
 env = S.SIM_ROI(scene='reaching', is_vr=False)
 control = S.VRController_ROI(0)
-cam = S.CAMERA_ROI(capture_size[1], capture_size[0], fov=50)
+cam = S.CAMERA_ROI(capture_size[1], capture_size[0], fov=50, shadow=False)
 cam.setViewMatrix(*view_params)
 
 #S.p.setTimeStep(1./240)
@@ -109,6 +109,27 @@ def calc_train_data_bias(groups=range(1,5)):
         p_tcp = env.getTCPXYZ()
         results.append((p_target, p_tcp))
     return results
+
+def rerender(groups=range(1,2), task='reaching'):
+    for g in groups:
+        env.clearFrames()
+        env.resetRobot()
+        for s in pd.read_pickle('~/Dataset/dataset2/{}/{}/sim_states.pkl'.format(task, g))[1]:
+            q = s['jointPosition']
+            p_target = np.array(s['target'][0])
+            env.setObjectPosition(p_target)
+            env.moveArm(q[:6])
+            sync()
+            js = env.getJointState()
+            img = cam.getImg()
+            print('save:[{}]: {}'.format(env.frameNo, js))
+            d = {'frameNo':env.frameNo, 'jointPosition':js, 'image':img}
+            for k,id in env.objects.items():
+                d[k] = S.p.getBasePositionAndOrientation(id)
+            env.frames.append(d)
+            env.frameNo += 1
+        env.groupNo = g
+        env.writeFrames(cam.getCameraConfig())
 
 def run(max_steps=50, anim_gif=False, anim_gif_file='run.gif'):
     for i in range(max_steps):
