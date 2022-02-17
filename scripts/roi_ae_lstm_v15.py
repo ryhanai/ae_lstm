@@ -12,6 +12,8 @@ from core.utils import *
 from core.model import *
 from core import trainer
 
+import matplotlib.ticker as ptick
+
 os.environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
 
 
@@ -227,6 +229,9 @@ def train():
     tr.train()
     return tr
 
+
+from mpl_toolkits.mplot3d import axes3d, Axes3D
+
 class Predictor(trainer.Trainer):
     def __init__(self, *args, **kargs):
         super(Predictor, self).__init__(*args, **kargs)
@@ -245,7 +250,66 @@ class Predictor(trainer.Trainer):
         visualize_ds(predicted_images)
         plt.show()
 
+    def generate_roi_images(self, sample, n = 5):
+        xs = np.linspace(0.1, 0.9, n)
+        ys = np.linspace(0.1, 0.9, n)
+        ss = 0.7 * np.sin(np.pi*xs)
+        out_images = []
+        for roi_params in zip(xs,ys,ss):
+            roi_params = np.expand_dims(np.array(roi_params), 0)
+            predicted_images, _ = self.model.predict(sample[0] + (roi_params,))
+            imgs = sample[0][0][0][-1:]
+            bboxes = roi_rect1((roi_params[:,:2], roi_params[:,2]))
+            img_with_bb = draw_bounding_boxes(imgs, bboxes)[0]
+            img = np.concatenate([img_with_bb, predicted_images[0]], axis=1)
+            out_images.append(img)
+            # plt.imshow(img)
+            # plt.show()
+        create_anim_gif_from_images(out_images, 'generated_roi_images.gif')
         
+    def get_a_sample_from_batch(self, batch, n):
+        x,y = batch
+        x_img = x[0][n:n+1]
+        x_joint = x[1][n:n+1]
+        y_img = y[0][n:n+1]
+        y_joint = y[1][n:n+1]
+        return (x_img,x_joint),(y_img,y_joint)
+        
+    def prediction_error(self, sample, roi_params):
+        x,y = sample
+        roi_params = np.expand_dims(roi_params, 0)
+        predicted_images, predicted_joints = self.model.predict(x + (roi_params,))
+        error = tf.reduce_mean(tf.square(predicted_joints - y[1]))
+        return error
+
+    def prediction_errors(self, sample, nx=10, ny=10, ns=5):
+        x = np.linspace(0.2, 0.8, nx)
+        y = np.linspace(0.2, 0.8, ny)
+        s = np.linspace(0.3, 0.7, ns)
+        x,y,s = np.meshgrid(x, y, s)
+        z = np.array([self.prediction_error(sample, [x,y,s]) for x,y,s in zip(x.flatten(), y.flatten(), s.flatten())]).reshape((nx,ny,ns))
+
+        idx = np.unravel_index(np.argmin(z), z.shape)
+        xopt = x[idx]
+        yopt = y[idx]
+        sopt = s[idx]
+        sopt_idx = idx[2]
+        imgs = sample[0][0][0][-1:]
+        bboxes = roi_rect1((np.array([[xopt,yopt]]), np.array([sopt])))
+        img_with_bb = draw_bounding_boxes(imgs, bboxes)[0]
+        plt.imshow(img_with_bb)
+
+        fig = plt.figure()
+        ax = fig.add_subplot(projection='3d')
+        ax.set_xlabel('v')
+        ax.set_ylabel('u')
+        ax.zaxis.set_major_formatter(ptick.ScalarFormatter(useMathText=True))
+        ax.ticklabel_format(style='sci', axis='z', scilimits=(0,0))
+        ax.plot_surface(x[:,:,sopt_idx], y[:,:,sopt_idx], z[:,:,sopt_idx], cmap='plasma')
+
+        plt.show()
+        return x,y,z,imgs[0]
+    
 def prepare_for_test(cp='ae_cp.reaching-no-shadow.predictor.20220216182028'):
     val_ds = Dataset(dataset)
     val_ds.load(groups=val_groups, image_size=input_image_size)
