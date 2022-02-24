@@ -6,7 +6,8 @@ import matplotlib.pyplot as plt
 
 from core.utils import *
 import SIM_ROI as S
-import roi_ae_lstm_v13 as mdl
+#import roi_ae_lstm_v13 as mdl
+import roi_ae_lstm_v15 as mdl
 #import ae_lstm as mdl
 
 tr = mdl.prepare_for_test()
@@ -15,7 +16,7 @@ capture_size = (180, 320)
 #view_params = ([0,-0.9,1.35], [0,-0.55,0.5], [0,0,1])
 view_params = [0,-0.7,1.4], [0,-0.6,0.5], [0,0,1]
 
-env = S.SIM_ROI(scene='reaching', is_vr=False)
+env = S.SIM_ROI(scene='reaching', is_vr=False, obstacles=True)
 control = S.VRController_ROI(0)
 cam = S.CAMERA_ROI(capture_size[1], capture_size[0], fov=50, shadow=False)
 cam.setViewMatrix(*view_params)
@@ -131,7 +132,10 @@ def rerender(groups=range(1,2), task='reaching'):
         env.groupNo = g
         env.writeFrames(cam.getCameraConfig())
 
-def run(max_steps=50, anim_gif=False, anim_gif_file='run.gif'):
+n_runs = 0
+        
+def run(max_steps=50, anim_gif=False):
+    global n_runs
     for i in range(max_steps):
         print('i = ', i)
         img = captureRGB()
@@ -139,10 +143,13 @@ def run(max_steps=50, anim_gif=False, anim_gif_file='run.gif'):
 
         js = normalize_joint_position(js)
         sm.addState(img, js)
-        res = tr.model.predict(sm.getHistory())
+        res = tr.predict(sm.getHistory())
         if len(res) == 3:
             imgs, jvs, rois = res
-            roi_hist.append(rois[0][0])
+            if rois.ndim == 3:
+                roi_hist.append(rois[0][0])
+            else:
+                roi_hist.append(rois[0])
         else:
             imgs, jvs = res
         jv = jvs[0]
@@ -153,7 +160,8 @@ def run(max_steps=50, anim_gif=False, anim_gif_file='run.gif'):
         sync()
 
     if anim_gif:
-        create_anim_gif_from_images(sm.getFrameImages(), anim_gif_file, roi_hist)
+        create_anim_gif_from_images(sm.getFrameImages(), 'run{:0=5}.gif'.format(n_runs), roi_hist)
+    n_runs += 1
 
 def predict_sequence_open(group_num=0):
     trajs = tr.predict_sequence_open(group_num)

@@ -26,7 +26,7 @@ class CAMERA_ROI(CAMERA):
         return self.cameraConfig
 
 class SIM_ROI(SIM):
-    def __init__(self, scene='pushing', is_vr=False):
+    def __init__(self, scene='pushing', is_vr=False, obstacles=False):
         super().__init__(is_vr)
         self.armJoints = [1,2,3,4,5,6]
         self.gripperJoints = [13,15,17,18,20,22]
@@ -35,11 +35,11 @@ class SIM_ROI(SIM):
         p.setAdditionalSearchPath("../")
         self.cabinet = p.loadURDF("specification/urdf/objects/large_table.urdf", [0,0,0], p.getQuaternionFromEuler([0,0,0]), useFixedBase=True)
         self.scene = scene
-        self.loadScene()
+        self.loadScene(obstacles)
 
         self.groupNo = 1
 
-    def loadScene(self):
+    def loadScene(self, obstacles=False):
         p.removeBody(self.target)
         p.removeBody(self.box)
 
@@ -51,6 +51,18 @@ class SIM_ROI(SIM):
             self.target = p.loadURDF("specification/urdf/objects/flat_target.urdf", [0.3,-0.6,0.77], useFixedBase=True)
             self.objects = {'target':self.target}
 
+        obstacle_layouts = [
+            [[0.2,-0.7,0.8], [-0.15,-0.73,0.8]],
+            [[0.3,-0.52,0.8], [-0.15,-0.73,0.8]]
+            ]
+            
+        if obstacles:
+            i = 1
+            o1 = p.loadURDF("specification/urdf/objects/blue_cylinder.urdf", obstacle_layouts[i][0], useFixedBase=True)
+            o2 = p.loadURDF("specification/urdf/objects/yellow_cuboid.urdf", obstacle_layouts[i][1], useFixedBase=True)
+            self.objects['obstacle1'] = o1
+            self.objects['obstacle2'] = o2
+            
         self.setInitialPos()
         self.clearFrames()
 
