@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<robot name="yellow_cuboid">
+  <material name="yellow">
+    <color rgba="0.8 0.8 0.0 1.0"/>
+  </material>
+
+  <link name="box">
+    <visual>
+      <material name="yellow"/>
+      <origin xyz="0.0 0.0 0.05" rpy="0.0 0.0 0.0"/>
+      <geometry>
+        <box size="0.03 0.03 0.1"/>
+      </geometry>
+    </visual>
+  </link>
+</robot>

@@ -57,7 +57,7 @@ class SIM_ROI(SIM):
             ]
             
         if obstacles:
-            i = 1
+            i = 0
             o1 = p.loadURDF("specification/urdf/objects/blue_cylinder.urdf", obstacle_layouts[i][0], useFixedBase=True)
             o2 = p.loadURDF("specification/urdf/objects/yellow_cuboid.urdf", obstacle_layouts[i][1], useFixedBase=True)
             self.objects['obstacle1'] = o1

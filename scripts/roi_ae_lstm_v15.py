@@ -17,7 +17,7 @@ import matplotlib.ticker as ptick
 os.environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
 
 
-dataset = 'reaching-no-shadow'
+dataset = 'reaching'
 train_groups=range(1,300)
 val_groups=range(300,350)
 input_image_size=(80,160)
@@ -86,7 +86,7 @@ class PredictionModel(tf.keras.Model):
         x, y = data
 
         roi_pos = tf.random.uniform([batch_size, 2])
-        roi_scale = tf.random.uniform([batch_size])
+        roi_scale = tf.random.uniform([batch_size], minval=0.3, maxval=0.9)
         roi_param = tf.concat([roi_pos, tf.expand_dims(roi_scale, 1)], 1)
         rect = roi_rect1([roi_pos, roi_scale])
 
@@ -152,8 +152,8 @@ class ROIEstimationModel(tf.keras.Model):
     def train_step(self, data):
         x, y = data
 
-        roi_pos = tf.tile([[0.0, 0.0]], (batch_size, 1))
-        roi_scale = tf.ones(batch_size)
+        roi_pos = tf.tile([[0.5, 0.5]], (batch_size, 1))
+        roi_scale = tf.constant(np.full(batch_size, 0.9, dtype=np.float32))
         roi_param = tf.concat([roi_pos, tf.expand_dims(roi_scale, 1)], 1)
         rect = roi_rect1([roi_pos, roi_scale])
 
@@ -172,8 +172,8 @@ class ROIEstimationModel(tf.keras.Model):
     def test_step(self, data):
         x, y = data
 
-        roi_pos = tf.tile([[0.0, 0.0]], (batch_size, 1))
-        roi_scale = tf.ones(batch_size)
+        roi_pos = tf.tile([[0.5, 0.5]], (batch_size, 1))
+        roi_scale = tf.constant(np.full(batch_size, 0.9, dtype=np.float32))
         roi_param = tf.concat([roi_pos, tf.expand_dims(roi_scale, 1)], 1)
         rect = roi_rect1([roi_pos, roi_scale])
 
@@ -271,16 +271,17 @@ def model_prediction(input_image_shape, time_window_size, image_vec_dim, dof):
                                 name='predictor')
     predictor.summary()
 
-    x = tf.keras.layers.Dense(10, activation='selu')(predicted_state)
+    x = tf.keras.layers.Dense(32, activation='selu')(predicted_state)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Dense(16, activation='selu')(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Dense(8, activation='selu')(x)
     x = tf.keras.layers.BatchNormalization()(x)
     estimated_roi_params = tf.keras.layers.Dense(3, activation='sigmoid')(x)
     roi_estimator = ROIEstimationModel(predictor,
                                        inputs=[image_input, joint_input, roi_input],
                                        outputs=[estimated_roi_params],
                                        name='roi_estimator')
-
-    roi_estimator.get_layer('encoder').trainable = False
-    roi_estimator.get_layer('lstm').trainable = False
     
     roi_estimator.summary()    
 
@@ -297,17 +298,22 @@ def train():
     val_ds = Dataset(dataset)
     val_ds.load(groups=val_groups, image_size=input_image_size)
     val_ds.preprocess(time_window_size)
-    tr = trainer.Trainer(predictor, train_ds, val_ds, time_window_size=time_window_size)
+    tr = trainer.Trainer(predictor, train_ds, val_ds, time_window_size=time_window_size)    
     tr.train()
     return tr
 
-def train_roi_estimator(predictor_cp='ae_cp.reaching-no-shadow.predictor.20220216182028'):
+def train_roi_estimator(predictor_cp='ae_cp.reaching.predictor.20220301135404'):
+    # 1. 'ae_cp.reaching-no-shadow.predictor.20220216182028'
     train_ds = Dataset(dataset)
     train_ds.load(groups=train_groups, image_size=input_image_size)
     train_ds.preprocess(time_window_size)
     val_ds = Dataset(dataset)
     val_ds.load(groups=val_groups, image_size=input_image_size)
     val_ds.preprocess(time_window_size)
+
+    roi_estimator.get_layer('encoder').trainable = False
+    roi_estimator.get_layer('lstm').trainable = False
+
     tr = trainer.Trainer(roi_estimator, train_ds, val_ds, time_window_size=time_window_size)
     d = os.path.join(os.path.dirname(os.getcwd()), 'runs')
     checkpoint_path = os.path.join(d, predictor_cp, 'cp.ckpt')
@@ -399,8 +405,11 @@ class Predictor(trainer.Trainer):
         return x,y,z,imgs[0]
 
     # evaluation of ROI estimator
-    def predict_images(self):
-        x,y = next(self.val_gen)
+    def predict_images(self, batch=None):
+        if batch == None:
+            x,y = next(self.val_gen)
+        else:
+            x,y = batch
         batch_sz = x[1].shape[0]
 
         roi_params = np.tile([0,0,1], (batch_sz,1))
@@ -421,14 +430,16 @@ class Predictor(trainer.Trainer):
         return pred_img, pred_joint, bboxes
 
         
-def prepare_for_predictor_test(cp='ae_cp.reaching-no-shadow.predictor.20220216182028'):
+def prepare_for_predictor_test(cp='ae_cp.reaching.predictor.20220301135404'):
+    # 1. 'ae_cp.reaching-no-shadow.predictor.20220216182028'
     val_ds = Dataset(dataset)
     val_ds.load(groups=val_groups, image_size=input_image_size)
     val_ds.preprocess(time_window_size)
     tr = Predictor(predictor, None, val_ds, time_window_size=time_window_size, checkpoint_file=cp)
     return tr
 
-def prepare_for_test(cp='ae_cp.reaching-no-shadow.roi_estimator.20220224121704'):
+def prepare_for_test(cp='ae_cp.reaching.roi_estimator.20220301211429'):
+    # 'ae_cp.reaching-no-shadow.roi_estimator.20220224121704'
     val_ds = Dataset(dataset)
     val_ds.load(groups=val_groups, image_size=input_image_size)
     val_ds.preprocess(time_window_size)
