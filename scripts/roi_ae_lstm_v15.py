@@ -227,7 +227,10 @@ def model_lstm_no_split(time_window_size, image_vec_dim, dof, lstm_units=50, use
     imgvec_input = tf.keras.Input(shape=(time_window_size, image_vec_dim))
     joint_input = tf.keras.Input(shape=(time_window_size, dof))
     state_dim = image_vec_dim + dof
-    x = tf.keras.layers.concatenate([imgvec_input, joint_input])
+
+    joint_input_noise = tf.keras.layers.GaussianNoise(0.03)(joint_input)
+    
+    x = tf.keras.layers.concatenate([imgvec_input, joint_input_noise])
 
     if use_stacked_lstm:
         x = tf.keras.layers.LSTM(state_dim, return_sequences=True)(x)
@@ -302,8 +305,9 @@ def train():
     tr.train()
     return tr
 
-def train_roi_estimator(predictor_cp='ae_cp.reaching.predictor.20220301135404'):
+def train_roi_estimator(predictor_cp='ae_cp.reaching.predictor.20220303165552'):    
     # 1. 'ae_cp.reaching-no-shadow.predictor.20220216182028'
+    # 2. 'ae_cp.reaching.predictor.20220301135404' # ROI estimation is working but motion is not
     train_ds = Dataset(dataset)
     train_ds.load(groups=train_groups, image_size=input_image_size)
     train_ds.preprocess(time_window_size)
@@ -412,7 +416,7 @@ class Predictor(trainer.Trainer):
             x,y = batch
         batch_sz = x[1].shape[0]
 
-        roi_params = np.tile([0,0,1], (batch_sz,1))
+        roi_params = np.tile([0.5,0.5,0.9], (batch_sz,1))
         roi_params = self.model.predict(x+(roi_params,))
         bboxes = roi_rect1((roi_params[:,:2], roi_params[:,2]))
         imgs = draw_bounding_boxes(x[0][:,-1], bboxes)
@@ -423,23 +427,33 @@ class Predictor(trainer.Trainer):
 
     def predict(self, x):
         batch_sz = x[1].shape[0]
-        roi_params = np.tile([0,0,1], (batch_sz,1))
-        roi_params = self.model.predict(x+(roi_params,))
+        roi_params0 = np.tile([0.5,0.5,0.9], (batch_sz,1))
+        roi_params = self.model.predict(x+(roi_params0,))
         pred_img, pred_joint = self.model.predictor.predict(x + (roi_params,))
         bboxes = roi_rect1((roi_params[:,:2], roi_params[:,2]))
         return pred_img, pred_joint, bboxes
 
+    # def predict(self, x):
+    #     'only used for Predictor test
+    #     batch_sz = x[1].shape[0]
+    #     roi_params0 = np.tile([0.5,0.5,0.9], (batch_sz,1))
+    #     pred_img, pred_joint = self.model.predict(x+(roi_params0,))
+    #     bboxes = roi_rect1((roi_params0[:,:2], roi_params0[:,2]))
+    #     return pred_img, pred_joint, bboxes
+
         
-def prepare_for_predictor_test(cp='ae_cp.reaching.predictor.20220301135404'):
+def prepare_for_predictor_test(cp='ae_cp.reaching.predictor.20220303165552'):
     # 1. 'ae_cp.reaching-no-shadow.predictor.20220216182028'
+    # 2. 'ae_cp.reaching.predictor.20220301135404' # w/o denoising
     val_ds = Dataset(dataset)
     val_ds.load(groups=val_groups, image_size=input_image_size)
     val_ds.preprocess(time_window_size)
     tr = Predictor(predictor, None, val_ds, time_window_size=time_window_size, checkpoint_file=cp)
     return tr
 
-def prepare_for_test(cp='ae_cp.reaching.roi_estimator.20220301211429'):
-    # 'ae_cp.reaching-no-shadow.roi_estimator.20220224121704'
+def prepare_for_test(cp='ae_cp.reaching.roi_estimator.20220303195307'):
+    # 1. 'ae_cp.reaching-no-shadow.roi_estimator.20220224121704'
+    # 2. 'ae_cp.reaching.roi_estimator.20220301211429' # w/o denoising
     val_ds = Dataset(dataset)
     val_ds.load(groups=val_groups, image_size=input_image_size)
     val_ds.preprocess(time_window_size)

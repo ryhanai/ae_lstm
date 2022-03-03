@@ -10,7 +10,7 @@ from core import trainer
 os.environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
 
 
-dataset='peg-in-hole-no-shadow'
+dataset='reaching'
 train_groups=range(1,300)
 val_groups=range(300,350)
 input_image_size=(80,160)
@@ -31,7 +31,7 @@ def train():
     tr.train()
     return tr
 
-def prepare_for_test(cp='ae_cp.peg-in-hole-no-shadow.ae_lstm.20220214142505'):
+def prepare_for_test(cp='ae_cp.reaching.ae_lstm.20220303113724'):
     val_ds = Dataset(dataset)
     val_ds.load(groups=val_groups, image_size=input_image_size)
     val_ds.preprocess(time_window_size)

@@ -8,7 +8,7 @@ from core.utils import *
 import SIM_ROI as S
 #import roi_ae_lstm_v13 as mdl
 import roi_ae_lstm_v15 as mdl
-#import ae_lstm as mdl
+#import ae_lstm_v3 as mdl # baseline w/o ROI, raeching
 
 tr = mdl.prepare_for_test()
 
@@ -46,9 +46,11 @@ def sync(steps=100):
 
 sm = StateManager(mdl.time_window_size)
 roi_hist = []
+predicted_images = []
 
 def reset():
     global roi_hist
+    global predicted_images
     env.setInitialPos()
     sync()
     img0 = captureRGB()
@@ -56,6 +58,7 @@ def reset():
     js0 = normalize_joint_position(js0)
     sm.initializeHistory(img0, js0)
     roi_hist = []
+    predicted_images = []
 
 def captureRGB():
     img = cam.getImg()[2][:,:,:3]
@@ -156,8 +159,9 @@ def rerender(groups=range(1,2), task='reaching'):
         
 n_runs = 0
         
-def run(max_steps=50, anim_gif=False):
+def run(max_steps=80, anim_gif=False):
     global n_runs
+    
     for i in range(max_steps):
         print('i = ', i)
         img = captureRGB()
@@ -174,6 +178,11 @@ def run(max_steps=50, anim_gif=False):
                 roi_hist.append(rois[0])
         else:
             imgs, jvs = res
+
+        predicted_images.append(imgs[0])
+        # plt.imshow(imgs[0])
+        # plt.pause(.01)
+
         jv = jvs[0]
         jv = unnormalize_joint_position(jv)
 
@@ -182,7 +191,7 @@ def run(max_steps=50, anim_gif=False):
         sync()
 
     if anim_gif:
-        create_anim_gif_from_images(sm.getFrameImages(), 'run{:0=5}.gif'.format(n_runs), roi_hist)
+        create_anim_gif_from_images(sm.getFrameImages(), 'run{:0=5}.gif'.format(n_runs), roi_hist, predicted_images)
     n_runs += 1
 
 def predict_sequence_open(group_num=0):
