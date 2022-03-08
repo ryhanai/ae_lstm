@@ -1,6 +1,7 @@
 from SIM import *
 import numpy as np
 import pandas as pd
+import yaml
 
 
 class CAMERA_ROI(CAMERA):
@@ -26,71 +27,72 @@ class CAMERA_ROI(CAMERA):
         return self.cameraConfig
 
 class SIM_ROI(SIM):
-    def __init__(self, scene='pushing', is_vr=False, obstacles=False):
+    def __init__(self, scene_file, is_vr=False):
         super().__init__(is_vr)
         self.armJoints = [1,2,3,4,5,6]
         self.gripperJoints = [13,15,17,18,20,22]
 
         p.removeBody(self.cabinet)
         p.setAdditionalSearchPath("../")
-        self.cabinet = p.loadURDF("specification/urdf/objects/large_table.urdf", [0,0,0], p.getQuaternionFromEuler([0,0,0]), useFixedBase=True)
-        self.scene = scene
-        self.loadScene(obstacles)
-
+        self.loadScene(scene_file)
         self.groupNo = 1
 
-    def loadScene(self, obstacles=False):
+    def loadScene(self, scene_file):
         p.removeBody(self.target)
         p.removeBody(self.box)
 
-        if self.scene == 'pushing':
-            self.target = p.loadURDF("specification/urdf/objects/flat_target.urdf", [0.3,-0.6,0.77], useFixedBase=True)
-            self.box = p.loadURDF("specification/urdf/objects/box30_real.urdf", [0.3,-0.6,0.77])
-            self.objects = {'target':self.target, 'box':self.box}
-        elif self.scene == 'reaching':
-            self.target = p.loadURDF("specification/urdf/objects/flat_target.urdf", [0.3,-0.6,0.77], useFixedBase=True)
-            self.objects = {'target':self.target}
+        with open(os.path.join('../specification/scenes', scene_file)) as f:
+            scene_desc = yaml.safe_load(f)
 
-        obstacle_layouts = [
-            [[0.2,-0.7,0.8], [-0.15,-0.73,0.8]],
-            [[0.3,-0.52,0.8], [-0.15,-0.73,0.8]]
-            ]
+        self.task = scene_desc['task']
+        self.shadow = scene_desc['rendering']['shadow']
+
+        self.cameras = {}
+        for cam_desc in scene_desc['cameras']:
+            name = cam_desc['name']
+            view_params = cam_desc['view_params']
+            fov = cam_desc['fov']
+            capture_size = cam_desc['capture_size']
+            cam = CAMERA_ROI(capture_size[1], capture_size[0], fov=fov, shadow=self.shadow)
+            cam.setViewMatrix(*view_params)
+            self.cameras[name] = cam
+        
+        self.armInitialValues = scene_desc['robot']['initial_arm_pose']
+        self.gripperInitialValues = scene_desc['robot']['initial_gripper_pose']
+        
+        d = scene_desc['environment'][0]
+        self.cabinet = p.loadURDF(d['object'], d['xyz'], p.getQuaternionFromEuler(d['rpy']), useFixedBase=True)
+
+        self.objects = {}
+        for d in scene_desc['objects']:
+            self.objects[d['name']] = p.loadURDF(d['object'], d['xyz'], p.getQuaternionFromEuler(d['rpy']), useFixedBase=True)
             
-        if obstacles:
-            i = 0
-            o1 = p.loadURDF("specification/urdf/objects/blue_cylinder.urdf", obstacle_layouts[i][0], useFixedBase=True)
-            o2 = p.loadURDF("specification/urdf/objects/yellow_cuboid.urdf", obstacle_layouts[i][1], useFixedBase=True)
-            self.objects['obstacle1'] = o1
-            self.objects['obstacle2'] = o2
+        if self.task == 'reaching':
+            self.target = self.objects['target']
+            
+        # if self.task == 'pushing':
+        #     self.target = p.loadURDF("specification/urdf/objects/flat_target.urdf", [0.3,-0.6,0.77], useFixedBase=True)
+        #     self.box = p.loadURDF("specification/urdf/objects/box30_real.urdf", [0.3,-0.6,0.77])
+        #     self.objects = {'target':self.target, 'box':self.box}
             
         self.setInitialPos()
         self.clearFrames()
 
+    def getCamera(self, name):
+        return self.cameras[name]
+    
     def resetRobot(self):
-        if self.scene == 'pushing':
-            armInitialValues = [-0.899109997666209,
-                                -0.5263515248505674,
-                                1.1386341089127756,
-                                -0.820088253279429,
-                                -0.7349581228169729,
-                                0.1551369530256832]
-            gripperInitialValues = [0, 0, 0, 0, 0, 0]
-            self.setJointValues(self.ur5, self.armJoints, armInitialValues)
-            self.setJointValues(self.ur5, self.gripperJoints, gripperInitialValues)
-        elif self.scene == 'reaching':
-            armInitialValues = [-0.899109997666209,
-                                -0.5263515248505674,
-                                1.1386341089127756,
-                                -0.820088253279429,
-                                -0.7349581228169729,
-                                0.1551369530256832]
-            self.moveArm(armInitialValues)
+        if self.task == 'pushing':
+            self.setJointValues(self.ur5, self.armJoints, self.armInitialValues)
+            self.setJointValues(self.ur5, self.gripperJoints, self.gripperInitialValues)
+        elif self.task == 'reaching':
+            self.moveArm(self.armInitialValues)
             self.openGripper()
 
         self.previous_js = self.getJointState()
 
     def setObjectPosition(self, *positions):
-        if self.scene == 'pushing':
+        if self.task == 'pushing':
             if len(positions) == 2:
                 box_pos = positions[0]
                 target_pos = positions[1]
@@ -100,11 +102,11 @@ class SIM_ROI(SIM):
             box_ori = p.getQuaternionFromEuler([0,0,0])
             target_ori = p.getQuaternionFromEuler([0,0,0])
             p.resetBasePositionAndOrientation(self.box, box_pos, box_ori)
-        elif self.scene == 'reaching':
+        elif self.task == 'reaching':
             if len(positions) == 1:
                 target_pos = positions[0]
             else:
-                target_pos = np.append([0.1, -0.75] + [0.2, 0.3] * np.random.random(2), 0.77)
+                target_pos = np.append([0.1, -0.75] + [0.2, 0.3] * np.random.random(2), 0.79)
             target_ori = p.getQuaternionFromEuler([0,0,0])
             p.resetBasePositionAndOrientation(self.target, target_pos, target_ori)
          

@@ -12,14 +12,9 @@ import roi_ae_lstm_v15 as mdl
 
 tr = mdl.prepare_for_test()
 
-capture_size = (180, 320)
-#view_params = ([0,-0.9,1.35], [0,-0.55,0.5], [0,0,1])
-view_params = [0,-0.7,1.4], [0,-0.6,0.5], [0,0,1]
-
-env = S.SIM_ROI(scene='reaching', is_vr=False, obstacles=False)
+env = S.SIM_ROI(scene_file='reaching_scene.yaml', is_vr=False)
 control = S.VRController_ROI(0)
-cam = S.CAMERA_ROI(capture_size[1], capture_size[0], fov=50, shadow=True)
-cam.setViewMatrix(*view_params)
+cam = env.getCamera('camera1')
 
 #S.p.setTimeStep(1./240)
 realSim = S.p.setRealTimeSimulation(False)
@@ -208,9 +203,10 @@ def visualize_predicted_vectors(groups=range(10)):
     plt.show()
 
 class CamState:
-    def __init__(self, fov=50, view_params=view_params):
+    def __init__(self, fov=50):
         self.fov = fov
-        self.view_params = view_params
+        c = cam.getCameraConfig()
+        self.view_params = [c['eyePosition'], c['targetPosition'], c['upVector']]
 
 class SimState:
     def __init__(self, object_pose, target_pose, robot_joint_positions):

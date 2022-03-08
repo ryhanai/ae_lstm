@@ -1,0 +1,11 @@
+obstacles:
+  -
+    name: obstacle1
+    object: "specification/urdf/objects/blue_cylinder.urdf"
+    xyz: [0.2, -0.7, 0.8]
+    rpy: [0, 0, 0]
+  -
+    name: obstacle2
+    object: "specification/urdf/objects/yellow_cuboid.urdf"
+    xyz: [-0.15,-0.73,0.8]
+    rpy: [0, 0, 0]
