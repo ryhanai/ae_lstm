@@ -19,6 +19,7 @@ if args.baseline:
 else:
     message('loading ROI model')
     import roi_ae_lstm_v15 as mdl
+    #import roi_ae_lstm_v16 as mdl
 
 message('scene = {}'.format(args.scene))
     
@@ -62,7 +63,7 @@ def reset(target_pose=None):
     env.resetRobot()
     if target_pose == None:
         target_pos = np.append([0.1, -0.75] + [0.2, 0.3] * np.random.random(2), 0.79)
-        target_ori = p.getQuaternionFromEuler([0,0,0])
+        target_ori = S.p.getQuaternionFromEuler([0,0,0])
     else:
         target_pos, target_ori = target_pose
     env.setObjectPosition(target_pos, target_ori)
