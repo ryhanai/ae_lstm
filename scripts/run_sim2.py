@@ -1,18 +1,30 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
-import cv2
+import cv2, argparse
 import matplotlib.pyplot as plt
 
 from core.utils import *
 import SIM_ROI as S
-#import roi_ae_lstm_v13 as mdl
-import roi_ae_lstm_v15 as mdl
-#import ae_lstm_v3 as mdl # baseline w/o ROI, raeching
 
+
+parser = argparse.ArgumentParser(description='')
+parser.add_argument('-s', '--scene', type=str, default='reaching_scene.yaml')
+parser.add_argument('-b', '--baseline', action='store_true')
+args = parser.parse_args()
+
+if args.baseline:
+    message('loading baseline model')
+    import ae_lstm_v3 as mdl # baseline w/o ROI, raeching
+else:
+    message('loading ROI model')
+    import roi_ae_lstm_v15 as mdl
+
+message('scene = {}'.format(args.scene))
+    
 tr = mdl.prepare_for_test()
 
-env = S.SIM_ROI(scene_file='reaching_scene.yaml', is_vr=False)
+env = S.SIM_ROI(scene_file=args.scene, is_vr=False)
 control = S.VRController_ROI(0)
 cam = env.getCamera('camera1')
 
@@ -43,11 +55,19 @@ sm = StateManager(mdl.time_window_size)
 roi_hist = []
 predicted_images = []
 
-def reset():
+def reset(target_pose=None):
     global roi_hist
     global predicted_images
-    env.setInitialPos()
+
+    env.resetRobot()
+    if target_pose == None:
+        target_pos = np.append([0.1, -0.75] + [0.2, 0.3] * np.random.random(2), 0.79)
+        target_ori = p.getQuaternionFromEuler([0,0,0])
+    else:
+        target_pos, target_ori = target_pose
+    env.setObjectPosition(target_pos, target_ori)
     sync()
+
     img0 = captureRGB()
     js0 = env.getJointState()
     js0 = normalize_joint_position(js0)
@@ -129,28 +149,6 @@ def rerender(groups=range(1,2), task='reaching'):
             env.frameNo += 1
         env.groupNo = g
         env.writeFrames(cam.getCameraConfig())
-
-
-def rerender(groups=range(1,2), task='reaching'):
-    for g in groups:
-        env.clearFrames()
-        env.resetRobot()
-        for s in pd.read_pickle('~/Dataset/dataset2/{}/{}/sim_states.pkl'.format(task, g))[1]:
-            q = s['jointPosition']
-            p_target = np.array(s['target'][0])
-            env.setObjectPosition(p_target)
-            env.moveArm(q[:6])
-            sync()
-            js = env.getJointState()
-            img = cam.getImg()
-            print('save:[{}]: {}'.format(env.frameNo, js))
-            d = {'frameNo':env.frameNo, 'jointPosition':js, 'image':img}
-            for k,id in env.objects.items():
-                d[k] = S.p.getBasePositionAndOrientation(id)
-            env.frames.append(d)
-            env.frameNo += 1
-        env.groupNo = g
-        env.writeFrames(cam.getCameraConfig())
         
 n_runs = 0
         
@@ -188,6 +186,13 @@ def run(max_steps=80, anim_gif=False):
     if anim_gif:
         create_anim_gif_from_images(sm.getFrameImages(), 'run{:0=5}.gif'.format(n_runs), roi_hist, predicted_images)
     n_runs += 1
+
+
+def run_test():
+    for i, pose in enumerate(env.getSceneDescription()['test']):
+        message(i, tag='[TEST]: ')
+        reset((pose['xyz'], S.p.getQuaternionFromEuler(pose['rpy'])))
+        run(80, anim_gif=True)
 
 def predict_sequence_open(group_num=0):
     trajs = tr.predict_sequence_open(group_num)

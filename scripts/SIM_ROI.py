@@ -44,6 +44,8 @@ class SIM_ROI(SIM):
         with open(os.path.join('../specification/scenes', scene_file)) as f:
             scene_desc = yaml.safe_load(f)
 
+        self.scene_desc = scene_desc
+            
         self.task = scene_desc['task']
         self.shadow = scene_desc['rendering']['shadow']
 
@@ -75,44 +77,39 @@ class SIM_ROI(SIM):
         #     self.box = p.loadURDF("specification/urdf/objects/box30_real.urdf", [0.3,-0.6,0.77])
         #     self.objects = {'target':self.target, 'box':self.box}
             
-        self.setInitialPos()
+        self.resetRobot()
         self.clearFrames()
 
+    def getSceneDescription(self):
+        return self.scene_desc
+        
     def getCamera(self, name):
         return self.cameras[name]
     
     def resetRobot(self):
-        if self.task == 'pushing':
-            self.setJointValues(self.ur5, self.armJoints, self.armInitialValues)
-            self.setJointValues(self.ur5, self.gripperJoints, self.gripperInitialValues)
-        elif self.task == 'reaching':
-            self.moveArm(self.armInitialValues)
-            self.openGripper()
-
+        self.moveArm(self.armInitialValues)
+        self.openGripper()
         self.previous_js = self.getJointState()
 
-    def setObjectPosition(self, *positions):
-        if self.task == 'pushing':
-            if len(positions) == 2:
-                box_pos = positions[0]
-                target_pos = positions[1]
-            else:
-                box_pos = np.append([-0.2, -0.75] + [0.2, 0.3] * np.random.random(2), 0.79)
-                target_pos = np.append([0.1, -0.75] + [0.2, 0.3] * np.random.random(2), 0.77)
-            box_ori = p.getQuaternionFromEuler([0,0,0])
-            target_ori = p.getQuaternionFromEuler([0,0,0])
-            p.resetBasePositionAndOrientation(self.box, box_pos, box_ori)
-        elif self.task == 'reaching':
-            if len(positions) == 1:
-                target_pos = positions[0]
-            else:
-                target_pos = np.append([0.1, -0.75] + [0.2, 0.3] * np.random.random(2), 0.79)
-            target_ori = p.getQuaternionFromEuler([0,0,0])
-            p.resetBasePositionAndOrientation(self.target, target_pos, target_ori)
-         
-    def setInitialPos(self):
-        self.resetRobot()
-        self.setObjectPosition()
+    def setObjectPosition(self, xyz, rpy):
+        # if self.task == 'pushing':
+        #     if len(positions) == 2:
+        #         box_pos = positions[0]
+        #         target_pos = positions[1]
+        #     else:
+        #         box_pos = np.append([-0.2, -0.75] + [0.2, 0.3] * np.random.random(2), 0.79)
+        #         target_pos = np.append([0.1, -0.75] + [0.2, 0.3] * np.random.random(2), 0.77)
+        #     box_ori = p.getQuaternionFromEuler([0,0,0])
+        #     target_ori = p.getQuaternionFromEuler([0,0,0])
+        #     p.resetBasePositionAndOrientation(self.box, box_pos, box_ori)
+
+        p.resetBasePositionAndOrientation(self.target, xyz, rpy)
+
+    # def setInitialPos(self):
+    #     self.resetRobot()
+    #     target_pos = np.append([0.1, -0.75] + [0.2, 0.3] * np.random.random(2), 0.79)
+    #     target_ori = p.getQuaternionFromEuler([0,0,0])
+    #     self.setObjectPosition(target_pos, target_ori)
 
     def clearFrames(self):
         self.frameNo = 0
@@ -213,7 +210,6 @@ class SIM_ROI(SIM):
         pd.to_pickle((cameraConfig, self.frames), os.path.join(group_dir, 'sim_states.pkl'))
         print('done')
         self.groupNo += 1
-        self.setInitialPos()
 
 class VRController_ROI(VRController):
     def __init__(self, isVR):
