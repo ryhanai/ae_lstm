@@ -1,4 +1,4 @@
-name: blue_bar_destructor_scene
+name: reaching_scene
 task: reaching
 
 rendering:
@@ -12,10 +12,13 @@ cameras:
     capture_size: [180, 320]
 
 robot:
+  # base_position:
+  #   xyz: [0.65,-0.7,0.795]
+  #   rpy: [0,0,3.14159]
   base_position:
     xyz: [0,0,0.795]
     rpy: [0,0,-1.57]
-  initial_arm_pose: [-0.899109997666209, -0.5263515248505674, 1.1386341089127756, -0.820088253279429, -0.7349581228169729, 0.1551369530256832]
+  initial_arm_pose: [-4.96533744e-01, -1.12837666e+00,  2.50529669e+00, -1.37769482e+00, 1.07197124e+00,  4.53721884e-04]
   initial_gripper_pose: [0, 0, 0, 0, 0, 0]
 
 environment:
@@ -30,12 +33,7 @@ objects:
     name: target
     object: "specification/urdf/objects/flat_target.urdf"
     xyz: [0.3,-0.6,0.79]
-    rpy: [0,0,0]
-  -
-    name: obstacle1
-    object: "specification/urdf/objects/blue_bar.urdf"
-    xyz: [0.25,-0.75,0.79]
-    rpy: [0,0,0]
+    rpy: [0, 0, 0]
 
 test:
   -

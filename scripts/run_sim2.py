@@ -26,7 +26,7 @@ message('scene = {}'.format(args.scene))
 tr = mdl.prepare_for_test()
 
 env = S.SIM_ROI(scene_file=args.scene, is_vr=False)
-control = S.VRController_ROI(0)
+control = S.VRController_ROI(False, use3Dmouse=False)
 cam = env.getCamera('camera1')
 
 #S.p.setTimeStep(1./240)

@@ -162,7 +162,11 @@ class ROIEstimationModel(tf.keras.Model):
 
         with tf.GradientTape() as tape:
             y_pred_roi = self([x[0], x[1], roi_param], training=True) # Forward pass
+
+            # predict 3 steps
             y_pred = self.predictor([x[0], x[1], y_pred_roi], training=False)
+            y_pred = self.predictor([y_pred[0], y_pred[1], y_pred_roi], training=False)
+            y_pred = self.predictor([y_pred[0], y_pred[1], y_pred_roi], training=False)
             loss = self.compute_loss(y, y_pred)
 
         trainable_vars = self.trainable_variables
