@@ -17,9 +17,10 @@ import matplotlib.ticker as ptick
 os.environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
 
 
-dataset = 'reaching'
+#dataset = 'reaching'
+dataset = 'reaching-2ways'
 train_groups=range(1,300)
-val_groups=range(300,350)
+val_groups=range(300,400)
 input_image_size=(80,160)
 time_window_size=20
 latent_dim=32
@@ -86,7 +87,8 @@ class PredictionModel(tf.keras.Model):
         x, y = data
 
         roi_pos = tf.random.uniform([batch_size, 2])
-        roi_scale = tf.random.uniform([batch_size], minval=0.3, maxval=0.9)
+        #roi_scale = tf.random.uniform([batch_size], minval=0.3, maxval=0.9)
+        roi_scale = tf.random.uniform([batch_size], minval=0.4, maxval=0.8)
         roi_param = tf.concat([roi_pos, tf.expand_dims(roi_scale, 1)], 1)
         rect = roi_rect1([roi_pos, roi_scale])
 
@@ -107,7 +109,8 @@ class PredictionModel(tf.keras.Model):
         x, y = data
 
         roi_pos = tf.random.uniform([batch_size, 2])
-        roi_scale = tf.random.uniform([batch_size])
+        #roi_scale = tf.random.uniform([batch_size], minval=0.3, maxval=0.9)
+        roi_scale = tf.random.uniform([batch_size], minval=0.4, maxval=0.8)
         roi_param = tf.concat([roi_pos, tf.expand_dims(roi_scale, 1)], 1)
         rect = roi_rect1([roi_pos, roi_scale])
 
@@ -156,7 +159,7 @@ class ROIEstimationModel(tf.keras.Model):
         x, y = data
 
         roi_pos = tf.tile([[0.5, 0.5]], (batch_size, 1))
-        roi_scale = tf.constant(np.full(batch_size, 0.9, dtype=np.float32))
+        roi_scale = tf.constant(np.full(batch_size, 0.8, dtype=np.float32))
         roi_param = tf.concat([roi_pos, tf.expand_dims(roi_scale, 1)], 1)
         rect = roi_rect1([roi_pos, roi_scale])
 
@@ -176,7 +179,7 @@ class ROIEstimationModel(tf.keras.Model):
         x, y = data
 
         roi_pos = tf.tile([[0.5, 0.5]], (batch_size, 1))
-        roi_scale = tf.constant(np.full(batch_size, 0.9, dtype=np.float32))
+        roi_scale = tf.constant(np.full(batch_size, 0.8, dtype=np.float32))
         roi_param = tf.concat([roi_pos, tf.expand_dims(roi_scale, 1)], 1)
         rect = roi_rect1([roi_pos, roi_scale])
 
@@ -231,7 +234,7 @@ def model_lstm_no_split(time_window_size, image_vec_dim, dof, lstm_units=50, use
     joint_input = tf.keras.Input(shape=(time_window_size, dof))
     state_dim = image_vec_dim + dof
 
-    joint_input_noise = tf.keras.layers.GaussianNoise(0.03)(joint_input)
+    joint_input_noise = tf.keras.layers.GaussianNoise(0.05)(joint_input)
     
     x = tf.keras.layers.concatenate([imgvec_input, joint_input_noise])
 
@@ -288,7 +291,7 @@ def model_prediction(input_image_shape, time_window_size, image_vec_dim, dof):
                                        inputs=[image_input, joint_input, roi_input],
                                        outputs=[estimated_roi_params],
                                        name='roi_estimator')
-    
+    'ae_cp.reaching-2ways.predictor.20220324185148'
     roi_estimator.summary()    
 
     return predictor, roi_estimator
@@ -314,9 +317,10 @@ def train(cp='', epochs=100, alpha=1.0):
     tr.train(epochs=epochs)
     return tr
 
-def train_roi_estimator(predictor_cp='ae_cp.reaching.predictor.20220317191602'):    
+def train_roi_estimator(predictor_cp='ae_cp.reaching-2ways.predictor.20220324185148'):    
     # 1. 'ae_cp.reaching-no-shadow.predictor.20220216182028'
     # 2. 'ae_cp.reaching.predictor.20220301135404' # ROI estimation is working but motion is not
+    # 3. 'ae_cp.reaching.predictor.20220323112049' # best
     train_ds = Dataset(dataset)
     train_ds.load(groups=train_groups, image_size=input_image_size)
     train_ds.preprocess(time_window_size)
@@ -425,7 +429,7 @@ class Predictor(trainer.Trainer):
             x,y = batch
         batch_sz = x[1].shape[0]
 
-        roi_params = np.tile([0.5,0.5,0.9], (batch_sz,1))
+        roi_params = np.tile([0.5,0.5,0.8], (batch_sz,1))
         roi_params = self.model.predict(x+(roi_params,))
         bboxes = roi_rect1((roi_params[:,:2], roi_params[:,2]))
         imgs = draw_bounding_boxes(x[0][:,-1], bboxes)
@@ -436,22 +440,23 @@ class Predictor(trainer.Trainer):
 
     def predict(self, x):
         batch_sz = x[1].shape[0]
-        roi_params0 = np.tile([0.5,0.5,0.9], (batch_sz,1))
+        roi_params0 = np.tile([0.5,0.5,0.8], (batch_sz,1))
         roi_params = self.model.predict(x+(roi_params0,))
         pred_img, pred_joint = self.model.predictor.predict(x + (roi_params,))
+        #pred_img, pred_joint = self.model.predictor.predict(x + (roi_params0,))
         bboxes = roi_rect1((roi_params[:,:2], roi_params[:,2]))
         return pred_img, pred_joint, bboxes
 
     # def predict(self, x):
-    #     'only used for Predictor test
+    #     'only used for Predictor test'
     #     batch_sz = x[1].shape[0]
-    #     roi_params0 = np.tile([0.5,0.5,0.9], (batch_sz,1))
+    #     roi_params0 = np.tile([0.5,0.5,0.8], (batch_sz,1))
     #     pred_img, pred_joint = self.model.predict(x+(roi_params0,))
     #     bboxes = roi_rect1((roi_params0[:,:2], roi_params0[:,2]))
     #     return pred_img, pred_joint, bboxes
 
         
-def prepare_for_predictor_test(cp='ae_cp.reaching.predictor.20220303165552'):
+def prepare_for_predictor_test(cp='ae_cp.reaching-2ways.predictor.20220324185148'):
     # 1. 'ae_cp.reaching-no-shadow.predictor.20220216182028'
     # 2. 'ae_cp.reaching.predictor.20220301135404' # w/o denoising
     val_ds = Dataset(dataset)
@@ -460,9 +465,10 @@ def prepare_for_predictor_test(cp='ae_cp.reaching.predictor.20220303165552'):
     tr = Predictor(predictor, None, val_ds, time_window_size=time_window_size, checkpoint_file=cp)
     return tr
 
-def prepare_for_test(cp='ae_cp.reaching.roi_estimator.20220317214109'):
+def prepare_for_test(cp='ae_cp.reaching-2ways.roi_estimator.20220325000614'):
     # 1. 'ae_cp.reaching-no-shadow.roi_estimator.20220224121704'
     # 2. 'ae_cp.reaching.roi_estimator.20220301211429' # w/o denoising
+    # 3. 'ae_cp.reaching.roi_estimator.20220323142827'
     val_ds = Dataset(dataset)
     val_ds.load(groups=val_groups, image_size=input_image_size)
     val_ds.preprocess(time_window_size)

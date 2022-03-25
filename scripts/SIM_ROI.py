@@ -126,7 +126,8 @@ class SIM_ROI(SIM):
         linkID = 7
         s = p.getLinkState(self.ur5, linkID)
         # transform from wrist link to tool center point
-        w2t_tf = ([0.174 -0.015, 0.004, 0], p.getQuaternionFromEuler([0,0,0]))
+        # w2t_tf = ([0.174 -0.015, 0.004, 0], p.getQuaternionFromEuler([0,0,0]))
+        w2t_tf = ([0.174-0.03, 0, 0], p.getQuaternionFromEuler([0,0,0]))
         goalPos, goalOri = self.multiplyTransforms(s, w2t_tf)
         return np.array(goalPos)
     
