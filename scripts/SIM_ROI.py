@@ -49,6 +49,9 @@ class SIM_ROI(SIM):
         self.task = scene_desc['task']
         self.shadow = scene_desc['rendering']['shadow']
 
+        pose = scene_desc['robot']['base_position']
+        p.resetBasePositionAndOrientation(self.ur5, pose['xyz'], p.getQuaternionFromEuler(pose['rpy']))
+        
         self.cameras = {}
         for cam_desc in scene_desc['cameras']:
             name = cam_desc['name']
@@ -123,7 +126,8 @@ class SIM_ROI(SIM):
         linkID = 7
         s = p.getLinkState(self.ur5, linkID)
         # transform from wrist link to tool center point
-        w2t_tf = ([0.174 -0.015, 0.004, 0], p.getQuaternionFromEuler([0,0,0]))
+        # w2t_tf = ([0.174 -0.015, 0.004, 0], p.getQuaternionFromEuler([0,0,0]))
+        w2t_tf = ([0.174-0.03, 0, 0], p.getQuaternionFromEuler([0,0,0]))
         goalPos, goalOri = self.multiplyTransforms(s, w2t_tf)
         return np.array(goalPos)
     
@@ -211,10 +215,24 @@ class SIM_ROI(SIM):
         print('done')
         self.groupNo += 1
 
-class VRController_ROI(VRController):
-    def __init__(self, isVR):
-        super().__init__(isVR)
 
+import rospy
+from geometry_msgs.msg import Vector3
+        
+class VRController_ROI(VRController):
+    def __init__(self, isVR, use3Dmouse):
+        super().__init__(isVR)
+        self.use3Dmouse = use3Dmouse
+
+        if use3Dmouse:
+            self.last_msg = Vector3()
+            rospy.init_node("spacenav_receiver")
+            rospy.Subscriber("/spacenav/offset", Vector3, self.spacenav_callback)
+
+    def spacenav_callback(self, msg):
+        self.last_msg = msg
+        # rospy.loginfo("%s", msg)
+        
     def update(self):
         super().update()
 
@@ -227,11 +245,12 @@ class VRController_ROI(VRController):
         self.KTRU = 0
         self.KTLD = 0
         self.KTRD = 0
-        self.KRL = 0
-        self.KRR = 0
+        self.KU = 0
+        self.KD = 0
         self.CG = 0
         self.OG = 0
         self.W = 0
+        self.BLK = 0
         aa = p.getKeyboardEvents()
         m = copy.copy(aa)
         qTranslate = ord('t')
@@ -244,6 +263,7 @@ class VRController_ROI(VRController):
         qWrite = ord('a')
         qCloseG = ord('f')
         qOpenG = ord('d')
+        qBreak = ord('b')
         if qTranslate in m and m[qTranslate]&p.KEY_IS_DOWN: # change the gripper position
             if qLeft in m:
                 if qUp in m:
@@ -264,10 +284,10 @@ class VRController_ROI(VRController):
             elif qDown in m:
                 self.KTD = 1
         if qRotate in m and m[qRotate]&p.KEY_IS_DOWN: # change the gripper orientation
-            if qLeft in m:
-                self.KRL = 1
-            elif qRight in m:
-                self.KRR = 1
+            if qUp in m:
+                self.KU = 1
+            elif qDown in m:
+                self.KD = 1
         if qReset in m and m[qReset]&p.KEY_WAS_TRIGGERED: # reset the environment
             self.B2 = 1
         if qWrite in m and m[qWrite]&p.KEY_WAS_TRIGGERED: # write the log to the files
@@ -276,4 +296,73 @@ class VRController_ROI(VRController):
             self.CG = 1
         if qOpenG in m and m[qOpenG]&p.KEY_WAS_TRIGGERED: # open gripper
             self.OG = 1
+        if qBreak in m and m[qBreak]&p.KEY_WAS_TRIGGERED: # break the control loop
+            self.BLK = 1
+
+
+# class VRController_ROI(VRController):
+#     def __init__(self, isVR):
+#         super().__init__(isVR)
+
+#     def update(self):
+#         super().update()
+
+#         self.B2 = 0
+#         self.KTL = 0
+#         self.KTR = 0
+#         self.KTU = 0
+#         self.KTD = 0
+#         self.KTLU = 0
+#         self.KTRU = 0
+#         self.KTLD = 0
+#         self.KTRD = 0
+#         self.KRL = 0
+#         self.KRR = 0
+#         self.CG = 0
+#         self.OG = 0
+#         self.W = 0
+#         aa = p.getKeyboardEvents()
+#         m = copy.copy(aa)
+#         qTranslate = ord('t')
+#         qRotate = ord('r')
+#         qLeft = 65295
+#         qRight = 65296
+#         qUp = 65297
+#         qDown = 65298
+#         qReset = ord('q')
+#         qWrite = ord('a')
+#         qCloseG = ord('f')
+#         qOpenG = ord('d')
+#         if qTranslate in m and m[qTranslate]&p.KEY_IS_DOWN: # change the gripper position
+#             if qLeft in m:
+#                 if qUp in m:
+#                     self.KTLU = 1
+#                 elif qDown in m:
+#                     self.KTLD = 1
+#                 else:
+#                     self.KTL = 1
+#             elif qRight in m:
+#                 if qUp in m:
+#                     self.KTRU = 1
+#                 elif qDown in m:
+#                     self.KTRD = 1
+#                 else:
+#                     self.KTR = 1
+#             elif qUp in m:
+#                 self.KTU = 1
+#             elif qDown in m:
+#                 self.KTD = 1
+#         if qRotate in m and m[qRotate]&p.KEY_IS_DOWN: # change the gripper orientation
+#             if qLeft in m:
+#                 self.KRL = 1
+#             elif qRight in m:
+#                 self.KRR = 1
+#         if qReset in m and m[qReset]&p.KEY_WAS_TRIGGERED: # reset the environment
+#             self.B2 = 1
+#         if qWrite in m and m[qWrite]&p.KEY_WAS_TRIGGERED: # write the log to the files
+#             self.W = 1
+#         if qCloseG in m and m[qCloseG]&p.KEY_WAS_TRIGGERED: # close gripper
+#             self.CG = 1
+#         if qOpenG in m and m[qOpenG]&p.KEY_WAS_TRIGGERED: # open gripper
+#             self.OG = 1
 

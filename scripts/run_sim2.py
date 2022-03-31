@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import math
 import numpy as np
 import cv2, argparse
 import matplotlib.pyplot as plt
@@ -24,9 +25,10 @@ else:
 message('scene = {}'.format(args.scene))
     
 tr = mdl.prepare_for_test()
+#tr = mdl.prepare_for_predictor_test()
 
 env = S.SIM_ROI(scene_file=args.scene, is_vr=False)
-control = S.VRController_ROI(0)
+control = S.VRController_ROI(False, use3Dmouse=False)
 cam = env.getCamera('camera1')
 
 #S.p.setTimeStep(1./240)
@@ -62,8 +64,16 @@ def reset(target_pose=None):
 
     env.resetRobot()
     if target_pose == None:
-        target_pos = np.append([0.1, -0.75] + [0.2, 0.3] * np.random.random(2), 0.79)
-        target_ori = S.p.getQuaternionFromEuler([0,0,0])
+        # 'reaching_scene'
+        # target_pos = np.append([0.1, -0.75] + [0.2, 0.3] * np.random.random(2), 0.79)
+        # target_ori = S.p.getQuaternionFromEuler([0,0,0])
+
+        # 'reaching_2ways_scene'
+        while True:
+            target_pos = np.append([-0.4, -0.75] + [0.75, 0.25] * np.random.random(2), 0.79)
+            target_ori = S.p.getQuaternionFromEuler([0,0,0])
+            if not (-0.15 < target_pos[0] and target_pos[0] < 0.15 and target_pos[1] > -0.65):
+                break
     else:
         target_pos, target_ori = target_pose
     env.setObjectPosition(target_pos, target_ori)
@@ -74,6 +84,7 @@ def reset(target_pose=None):
     js0 = normalize_joint_position(js0)
     sm.initializeHistory(img0, js0)
     roi_hist = []
+    env.clearFrames()
     predicted_images = []
 
 def captureRGB():
@@ -208,37 +219,68 @@ def visualize_predicted_vectors(groups=range(10)):
         draw_predictions_and_labels(ax, cs, ps, ls)
     plt.show()
 
-class CamState:
-    def __init__(self, fov=50):
-        self.fov = fov
-        c = cam.getCameraConfig()
-        self.view_params = [c['eyePosition'], c['targetPosition'], c['upVector']]
 
-class SimState:
-    def __init__(self, object_pose, target_pose, robot_joint_positions):
-        self.objectPose = object_pose
-        self.targetPose = target_pose
-        self.robotJointPositions = robot_joint_positions
-        # self.cam = S.CAMERA_ROI(width, height, fov=50)
+def task_completed():
+    p_tcp = env.getTCPXYZ()
+    p_target = np.array(S.p.getBasePositionAndOrientation(env.target)[0])
+    return scipy.linalg.norm(p_tcp[:2]-p_target[:2], 2) < 0.02
+    
+def teach():
+    #S.p.setTimeStep(1./240)
+    S.p.setRealTimeSimulation(True)
 
-def saveState(env):
-    box_pose = S.p.getBasePositionAndOrientation(env.box)
-    target_pose = S.p.getBasePositionAndOrientation(env.target)
-    js = env.getJointState()
-    return SimState(box_pose, target_pose, js)
+    while True:
+        img = cam.getImg()
+        control.update()
+        env.saveFrame(img)
 
-def loadState(env, sim_state):
-    js = sim_state.robotJointPositions
-    env.moveArm(js[:6])
-    env.moveGripper(js[6])
-    sync()
-    S.p.resetBasePositionAndOrientation(env.box, sim_state.objectPose[0], sim_state.objectPose[1])
-    S.p.resetBasePositionAndOrientation(env.target, sim_state.targetPose[0], sim_state.targetPose[1])
+        # finish task?
+        if task_completed():
+            env.writeFrames(cam.getCameraConfig())
+            reset()
+            continue
 
-s = SimState(
-    ((-0.0702149141398469, -0.6386324902206956, 0.7774899999999993),
-         (-2.78783798812622e-17, -2.4409568836878583e-16, 0.00025199415600674166, 0.9999999682494721)),
-    ((0.27426512264674074, -0.5566910719253673, 0.77), (0.0, 0.0, 0.0, 1.0)),
-    [-0.65681903, -0.63648103,  1.38169039, -1.01598524, -0.50431903, 0.23976613,
-         0, 0, 0, 0])
+        # if control.B1:  #VR
+        #     gripperOri = [1.75,0,1.57]
+        #     gripperOriQ = calc.get_QfE(gripperOri)
+        #     joy_pos = control.position
+        #     val = calc.get_IK(env.ur5, 8,joy_pos, gripperOriQ)
+        #     invJoints = [1,2,3,4,5,6,13,15,17,18,20,22]
+        #     env.setJointValues(env.ur5,invJoints,val)
+        if control.BLK:
+            break
+        if control.B2:
+            reset()
+            continue
 
+        v = 0.008
+        vx = vy = math.sqrt(v*v / 2.)
+        vtheta = 3
+
+        if control.use3Dmouse:
+            env.moveEF([v * (-control.last_msg.y), v * control.last_msg.x, v * control.last_msg.z])
+        else:
+            if control.KTL:
+                env.moveEF([-v, 0, 0])
+            if control.KTR:
+                env.moveEF([v, 0, 0])
+            if control.KTU:
+                env.moveEF([0, v, 0])
+            if control.KTD:
+                env.moveEF([0, -v, 0])
+            if control.KTLU:
+                env.moveEF([-vx, vy, 0])
+            if control.KTLD:
+                env.moveEF([-vx, -vy, 0])
+            if control.KTRU:
+                env.moveEF([vx, vy, 0])
+            if control.KTRD:
+                env.moveEF([vx, -vy, 0])
+            if control.KD:
+                env.moveEF([0, 0, -v])
+            if control.KU:
+                env.moveEF([0, 0, v])
+            if control.CG:
+                env.closeGripper()
+            if control.OG:
+                env.openGripper()
