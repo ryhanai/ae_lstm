@@ -25,7 +25,7 @@ def convert(group=5, save_threshold=5e-2):
     for i,frame in enumerate(data):
         command = frame[2]
         b = dict(zip(command.joint_names, command.points[0].positions))
-        js = np.array(b[b[k] for k in joint_names])
+        js = np.array([b[k] for k in joint_names])
         tm = command.header.stamp.to_time()
         if np.linalg.norm(js - previous_js, ord=1) > save_threshold:
             print('save:[{}]: {}'.format(frameNo, js))
@@ -35,14 +35,13 @@ def convert(group=5, save_threshold=5e-2):
             frameNo += 1
             previous_js = js
 
-
-    output_dir = os.path.join('data', str(group))
+    output_dir = os.path.join('converted_data', str(group))
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
     joint_positions = []
-    for frame in frames:
+    for d in frames:
         frameNo = d['frameNo']
         joint_positions.append(d['jointPosition'])
-        cv2.imwrite(os.path.join(output_dir, str(group), 'image_frame%05d.jpg'%frameNo))
-    np.savetxt(os.path.join(output_dir, str(group), 'joint_position.txt'), joint_positions)
+        cv2.imwrite(os.path.join(output_dir, 'image_frame%05d.jpg'%frameNo), d['image'])
+    np.savetxt(os.path.join(output_dir, 'joint_position.txt'), joint_positions)

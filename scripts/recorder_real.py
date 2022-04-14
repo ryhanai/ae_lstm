@@ -39,6 +39,7 @@ def start_recording():
 def stop_recording():
     global groupNo
     global recording_now
+    global frames
     recording_now = False
     print('stop recording')
     print('writing to files ...')
@@ -46,6 +47,8 @@ def stop_recording():
     if not os.path.exists(group_dir):
         os.makedirs(group_dir)
 
+    output = []
+        
     for i,frame in enumerate(frames):
         try:
             cv2_img = bridge.imgmsg_to_cv2(frame[0], "bgr8")
@@ -64,7 +67,9 @@ def stop_recording():
             msg.encoding = frame[0].encoding
             msg.is_bigendian = frame[0].is_bigendian
             msg.step = frame[0].step
-            pd.to_pickle([msg,frame[1],frame[2]], os.path.join(group_dir, 'states.pkl'))
+            output.append([msg,frame[1],frame[2]])
+
+    pd.to_pickle(output, os.path.join(group_dir, 'states.pkl'))
 
     print('done')
     groupNo += 1
