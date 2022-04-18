@@ -5,7 +5,7 @@ import os
 import numpy as np
 import cv2
 
-data_dir = os.path.join(os.environ['HOME'], 'Dataset/dataset2/reaching-real')
+data_dir = os.path.join(os.environ['HOME'], 'Dataset/dataset2/reaching-real-raw')
 joint_names = [
     'shoulder_pan_joint',
     'shoulder_lift_joint',
@@ -15,17 +15,17 @@ joint_names = [
     'wrist_3_joint'
     ]
 
-def convert(group=5, save_threshold=5e-2):
+def convert(group=5, save_threshold=2e-2):
     data = pd.read_pickle(os.path.join(data_dir, str(group), 'states.pkl'))
 
     frameNo = 0
-    previous_js = np.zeros(6)
+    previous_js = np.zeros(7)
     frames = []
 
     for i,frame in enumerate(data):
         command = frame[2]
         b = dict(zip(command.joint_names, command.points[0].positions))
-        js = np.array([b[k] for k in joint_names])
+        js = np.array([b[k] for k in joint_names] + [0])
         tm = command.header.stamp.to_time()
         if np.linalg.norm(js - previous_js, ord=1) > save_threshold:
             print('save:[{}]: {}'.format(frameNo, js))
