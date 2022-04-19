@@ -11,9 +11,9 @@ os.environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
 
 
 dataset='reaching-real'
-train_groups=range(3,39)
-val_groups=range(39,59)
-joint_range_data=range(3,59)
+train_groups=range(0,136)
+val_groups=range(136,156)
+joint_range_data=range(0,156)
 input_image_size=(80,160)
 time_window_size=20
 latent_dim=32
@@ -29,10 +29,10 @@ def train():
     val_ds.load(groups=val_groups, image_size=input_image_size)
     val_ds.preprocess(time_window_size)
     tr = trainer.Trainer(model, train_ds, val_ds, time_window_size=time_window_size)
-    tr.train(epochs=800, early_stop_patience=800, reduce_lr_patience=150)
+    tr.train(epochs=800, early_stop_patience=800, reduce_lr_patience=100)
     return tr
 
-def prepare_for_test(cp='ae_cp.reaching-real.ae_lstm.20220418162851'):
+def prepare_for_test(cp='ae_cp.reaching-real.ae_lstm.20220419144918'):
     # 20220414215231
     val_ds = Dataset(dataset, joint_range_data=joint_range_data)
     val_ds.load(groups=val_groups, image_size=input_image_size)
