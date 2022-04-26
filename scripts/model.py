@@ -88,3 +88,34 @@ def model_ae_lstm(input_image_shape, time_window_size, latent_dim, dof):
                            name='ae_lstm')
     model.summary()
     return model
+
+def augment(args, seed=1234):
+    images = args
+    def augment_aux(image):
+        return tf.image.random_hue(tf.image.random_contrast(tf.image.random_brightness(image, max_delta=0.2),
+                                                                lower=0.8, upper=1.2),
+                                       max_delta=0.2)
+    return tf.map_fn(fn=lambda x: augment_aux(x), elems=images)
+
+def model_ae_lstm_aug(input_image_shape, time_window_size, latent_dim, dof, joint_noise=0.03):
+    image_input = tf.keras.Input(shape=((time_window_size,) + input_image_shape))
+    joint_input = tf.keras.Input(shape=(time_window_size, dof))
+
+    # x = tf.keras.layers.TimeDistributed(tf.keras.layers.RandomTranslation(height_factor=0.03, width_factor=0.03, fill_mode='constant', interpolation='bilinear', seed=None, fill_value=0.0))(image_input)
+
+    #x = tf.keras.layers.TimeDistributed(tf.keras.layers.RandomContrast(factor=0.2))(image_input)
+    #x = tf.keras.layers.TimeDistributed(tf.keras.layers.RandomBrightness(factor=0.2))(x)
+
+    x = tf.keras.layers.Lambda(augment)(image_input)
+
+    encoded_img = model_encoder(input_image_shape, time_window_size, latent_dim)(x)
+
+    joint_input_with_noise = tf.keras.layers.GaussianNoise(joint_noise)(joint_input)
+    predicted_ivec, predicted_jvec = model_lstm(time_window_size, latent_dim, dof)([encoded_img, joint_input_with_noise])
+    decoded_img = model_decoder(input_image_shape, latent_dim)(predicted_ivec)
+
+    model = tf.keras.Model(inputs=[image_input, joint_input],
+                           outputs=[decoded_img, predicted_jvec],
+                           name='ae_lstm')
+    model.summary()
+    return model

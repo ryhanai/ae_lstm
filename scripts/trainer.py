@@ -108,15 +108,21 @@ class Trainer:
 
     def predict_images(self):
         x,y = next(self.val_gen)
-        predicted_images, _ = self.model.predict(x)
-        visualize_ds(y[0])
-        visualize_ds(x[0][:,0,:,:,:])
+        rois = []
+        y_pred = self.model.predict(x)
+        if len(y_pred) == 3:
+            predicted_images, _, rois = y_pred
+        else:
+            predicted_images, _ = y_pred
+        visualize_ds(y[0], rois)
+        visualize_ds(x[0][:,0,:,:,:], rois)
         visualize_ds(predicted_images)
         plt.show()
 
     def predict_joint_angles(self):
         x,y = next(self.val_gen)
-        _, predicted_joint_positions = self.model.predict(x)
+        y_pred = self.model.predict(x)
+        predicted_joint_positions = y_pred[1]
         data = np.concatenate((x[1], predicted_joint_positions[:,np.newaxis,:]), axis=1)
 
         fig = plt.figure()
@@ -176,11 +182,3 @@ class Trainer:
             res.append((current_joint_position, predicted_joint_position, label_joint_position))
         return list(zip(*res))
 
-    # def prepare_for_test(self, load_val_data=True):
-    #     if not self.val_data_loaded and load_val_data:
-    #         self.load_val_data()
-    #         self.val_data_loaded = True
-    #     if not self.model_loaded:
-    #         self.model.compile(loss='mse', optimizer=self.opt)
-    #         self.model.load_weights(self.checkpoint_path)
-    #         self.model_loaded = True
