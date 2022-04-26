@@ -89,14 +89,14 @@ def model_ae_lstm(input_image_shape, time_window_size, latent_dim, dof):
     model.summary()
     return model
 
-def augment(args, seed=1234):
+def augment(args, brightness_max_delta=0.2, contrast_lower=0.8, contrast_upper=1.2, hue_max_delta=0.2, seed=1234):
     images = args
     def augment_aux(image):
-        return tf.image.random_hue(tf.image.random_contrast(tf.image.random_brightness(image, max_delta=0.2),
-                                                                lower=0.8, upper=1.2),
-                                       max_delta=0.2)
+        return tf.image.random_hue(tf.image.random_contrast(tf.image.random_brightness(image, max_delta=brightness_max_delta),
+                                                                lower=contrast_lower, upper=contrast_upper),
+                                       max_delta=hue_max_delta)
     return tf.map_fn(fn=lambda x: augment_aux(x), elems=images)
-
+    
 def model_ae_lstm_aug(input_image_shape, time_window_size, latent_dim, dof, joint_noise=0.03):
     image_input = tf.keras.Input(shape=((time_window_size,) + input_image_shape))
     joint_input = tf.keras.Input(shape=(time_window_size, dof))
