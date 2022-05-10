@@ -34,7 +34,8 @@ def train():
     tr.train(epochs=800, early_stop_patience=800, reduce_lr_patience=100)
     return tr
 
-def prepare_for_test(cp='ae_cp.reaching-real.ae_lstm.20220426162642'):
+def prepare_for_test(cp='ae_cp.reaching-real.ae_lstm.20220428120930'):
+    # 20220426162642 # brightness-contrast-hue(0.2)
     # 20220426132636 # contrast augmentation
     # 20220426103749 # frame-wise random translation
     # 20220420174439
@@ -56,7 +57,7 @@ def prepare_for_test2(cp='ae_cp.reaching-real.ae_lstm.20220419144918'):
     tr = trainer.Trainer(model, train_ds, val_ds, time_window_size=time_window_size, checkpoint_file=cp)
     return tr
 
-def test_augment(batch, brightness_max_delta=0.2, contrast_lower=0.8, contrast_upper=1.2, hue_max_delta=0.2):
+def test_augment(batch, brightness_max_delta=0.2, contrast_lower=0.8, contrast_upper=1.2, hue_max_delta=0.05):
     imgs = batch[0][0][:,-1]
     aug_imgs = augment(imgs, brightness_max_delta=brightness_max_delta, contrast_lower=contrast_lower, contrast_upper=contrast_upper, hue_max_delta=hue_max_delta)
     visualize_ds(aug_imgs)

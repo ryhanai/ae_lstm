@@ -4,6 +4,9 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 from tensorflow.keras.models import Model
+import tensorflow.keras.backend as K
+import tensorflow_addons as tfa
+
 
 def conv_block(x, out_channels):
     x = tf.keras.layers.TimeDistributed(tf.keras.layers.Conv2D(out_channels, kernel_size=3, strides=1, padding='same', activation='selu'))(x)
@@ -89,24 +92,53 @@ def model_ae_lstm(input_image_shape, time_window_size, latent_dim, dof):
     model.summary()
     return model
 
-def augment(args, brightness_max_delta=0.2, contrast_lower=0.8, contrast_upper=1.2, hue_max_delta=0.2, seed=1234):
-    images = args
-    def augment_aux(image):
-        return tf.image.random_hue(tf.image.random_contrast(tf.image.random_brightness(image, max_delta=brightness_max_delta),
-                                                                lower=contrast_lower, upper=contrast_upper),
-                                       max_delta=hue_max_delta)
-    return tf.map_fn(fn=lambda x: augment_aux(x), elems=images)
-    
+
+class CustomAugmentation(tf.keras.layers.Layer):
+    def __init__(self, brightness_max_delta=0.2,
+                     contrast_lower=0.8, contrast_upper=1.2,
+                     hue_max_delta=0.05):
+        super().__init__()
+        self.brightness_max_delta = brightness_max_delta
+        self.contrast_lower = contrast_lower
+        self.contrast_upper = contrast_upper
+        self.hue_max_delta = hue_max_delta
+
+    def call(self, inputs, training=None):
+        return K.in_train_phase(tf.map_fn(self.augment_per_image, inputs),
+                                          inputs, training=training)
+
+    def augment_per_image(self, img):
+        img = tf.image.random_brightness(img, max_delta=self.brightness_max_delta)
+        img = tf.image.random_contrast(img, lower=self.contrast_lower, upper=self.contrast_upper)
+        img = tf.image.random_hue(img, max_delta=self.hue_max_delta)
+        # random_shift only works for array and eager tensor
+        # img = tf.keras.preprocessing.image.random_shift(img, 0.02, 0.02,
+        #                                                     row_axis=0, col_axis=1, channel_axis=2)
+        # tf.image.crop_to_bounding_box, tf.image.pad_to_bounding_box
+        
+        img = tfa.image.translate(img, translations=[80*0.05, 160*0.05], fill_mode='constant')
+        return img
+
+    def get_config(self):
+        config = {
+            "brightness_max_delta" : self.brightness_max_delta,
+            "contrast_lower" : self.contrast_lower,
+            "contrast_upper" : self.contrast_upper,
+            "hue_max_delta" : self.hue_max_delta
+            }
+        base_config = super().get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
+
 def model_ae_lstm_aug(input_image_shape, time_window_size, latent_dim, dof, joint_noise=0.03):
     image_input = tf.keras.Input(shape=((time_window_size,) + input_image_shape))
     joint_input = tf.keras.Input(shape=(time_window_size, dof))
 
-    # x = tf.keras.layers.TimeDistributed(tf.keras.layers.RandomTranslation(height_factor=0.03, width_factor=0.03, fill_mode='constant', interpolation='bilinear', seed=None, fill_value=0.0))(image_input)
-
     #x = tf.keras.layers.TimeDistributed(tf.keras.layers.RandomContrast(factor=0.2))(image_input)
     #x = tf.keras.layers.TimeDistributed(tf.keras.layers.RandomBrightness(factor=0.2))(x)
+    # x = tf.keras.layers.TimeDistributed(tf.keras.layers.RandomTranslation(height_factor=0.02, width_factor=0.02, fill_mode='constant', interpolation='bilinear', seed=None, fill_value=0.0))(x)
 
-    x = tf.keras.layers.Lambda(augment)(image_input)
+    x = CustomAugmentation()(image_input)
 
     encoded_img = model_encoder(input_image_shape, time_window_size, latent_dim)(x)
 
