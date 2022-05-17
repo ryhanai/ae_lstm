@@ -21,6 +21,7 @@ latent_dim=64
 dof=7
 
 model_ae = model_autoencoder(input_image_size+(3,), latent_dim)
+model_ae_lstm = model_ae_lstm_aug(input_image_size+(3,), time_window_size, latent_dim, dof, joint_noise=0.03)
 
 def train_ae():
     train_ds = Dataset(dataset, joint_range_data=joint_range_data)
@@ -31,6 +32,26 @@ def train_ae():
     tr.train(epochs=800, early_stop_patience=800, reduce_lr_patience=100)
     return tr
 
+def train_ae_lstm(ae_cp='ae_cp.reaching-real.autoencoder.20220517112615'):
+    """
+    train AE+LSTM jointly using pre-trained weight of AutoEncoder
+    """
+    train_ds = Dataset(dataset, joint_range_data=joint_range_data)
+    train_ds.load(groups=train_groups, image_size=input_image_size)
+    train_ds.preprocess(time_window_size)
+    val_ds = Dataset(dataset, joint_range_data=joint_range_data)
+    val_ds.load(groups=val_groups, image_size=input_image_size)
+    val_ds.preprocess(time_window_size)
+
+    # load AE weights and copy them to the encoder and decoder of AE-LSTM model
+    d = os.path.join(os.path.dirname(os.getcwd()), 'runs')
+    model_ae.load_weights(os.path.join(d, ae_cp, 'cp.ckpt'))
+    model_ae_lstm.get_layer('encoder').set_weights(model_ae.get_layer('encoder').get_weights())
+    model_ae_lstm.get_layer('decoder').set_weights(model_ae.get_layer('decoder').get_weights())
+
+    tr = trainer.TimeSequenceTrainer(model_ae_lstm, train_ds, val_ds, time_window_size=time_window_size)
+    tr.train(epochs=800, early_stop_patience=800, reduce_lr_patience=100)
+
 def prepare_for_test_ae(cp='ae_cp.reaching-real.autoencoder.20220517112615'):
     # ae_cp.reaching-real.autoencoder.20220516143855 # no augmentation
     val_ds = Dataset(dataset, joint_range_data=joint_range_data)
@@ -38,8 +59,20 @@ def prepare_for_test_ae(cp='ae_cp.reaching-real.autoencoder.20220517112615'):
     tr = trainer.Trainer(model_ae, None, val_ds, checkpoint_file=cp)
     return tr
 
-#model = model_ae_lstm(input_image_size+(3,), time_window_size, latent_dim, dof, joint_noise=0.03)
-#model = model_ae_lstm_aug(input_image_size+(3,), time_window_size, latent_dim, dof, joint_noise=0.03)
+def prepare_for_test(cp='ae_cp.reaching-real.ae_lstm_aug.20220517230019'):
+    # ae_cp.reaching-real.ae_lstm_aug.20220517213635 # AE pretraining, random_translation
+    # ae_cp.reaching-real.ae_lstm_aug.20220517145720 # AE pretraining, no augmentation
+    # 20220426162642 # brightness-contrast-hue(0.2)
+    # 20220426132636 # contrast augmentation
+    # 20220426103749 # frame-wise random translation
+    # 20220420174439
+    # 20220419144918
+    # 20220414215231
+    val_ds = Dataset(dataset, joint_range_data=joint_range_data)
+    val_ds.load(groups=val_groups, image_size=input_image_size)
+    val_ds.preprocess(time_window_size)
+    tr = trainer.TimeSequenceTrainer(model_ae_lstm, None, val_ds, time_window_size=time_window_size, checkpoint_file=cp)
+    return tr
 
 def train():
     train_ds = Dataset(dataset, joint_range_data=joint_range_data)
@@ -50,19 +83,6 @@ def train():
     val_ds.preprocess(time_window_size)
     tr = trainer.Trainer(model, train_ds, val_ds, time_window_size=time_window_size)
     tr.train(epochs=800, early_stop_patience=800, reduce_lr_patience=100)
-    return tr
-
-def prepare_for_test(cp='ae_cp.reaching-real.ae_lstm.20220428120930'):
-    # 20220426162642 # brightness-contrast-hue(0.2)
-    # 20220426132636 # contrast augmentation
-    # 20220426103749 # frame-wise random translation
-    # 20220420174439
-    # 20220419144918
-    # 20220414215231
-    val_ds = Dataset(dataset, joint_range_data=joint_range_data)
-    val_ds.load(groups=val_groups, image_size=input_image_size)
-    val_ds.preprocess(time_window_size)
-    tr = trainer.Trainer(model, None, val_ds, time_window_size=time_window_size, checkpoint_file=cp)
     return tr
 
 def prepare_for_test2(cp='ae_cp.reaching-real.ae_lstm.20220419144918'):
@@ -81,6 +101,8 @@ def test_augment(batch, brightness_max_delta=0.2, contrast_lower=0.8, contrast_u
     visualize_ds(aug_imgs)
     plt.show()
 
+
+# train_ae_lstm()
 
 # Training
 # In[1]: train()

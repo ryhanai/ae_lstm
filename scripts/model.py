@@ -145,6 +145,62 @@ class AutoEncoderModel(tf.keras.Model):
     def metrics(self):
         return list(self.train_trackers.values()) + list(self.test_trackers.values())
 
+class AeLstmModel(tf.keras.Model):
+    def __init__(self, *args, **kargs):
+        super(AeLstmModel, self).__init__(*args, **kargs)
+        tracker_names = ['image_loss', 'joint_loss','loss']
+        self.train_trackers = {}
+        self.test_trackers = {}
+        for n in tracker_names:
+            self.train_trackers[n] = keras.metrics.Mean(name=n)
+            self.test_trackers[n] = keras.metrics.Mean(name='val_'+n)
+
+    def train_step(self, data):
+        x, y = data
+        x_image, x_joint = x
+        batch_size = tf.shape(x_image)[0]
+        input_noise = tf.random.uniform(shape=(batch_size, 2), minval=-1, maxval=1)
+
+        with tf.GradientTape() as tape:
+            y_pred = self((x_image, x_joint, input_noise), training=True) # Forward pass
+            image_loss, joint_loss, loss = self.compute_loss(y, y_pred, input_noise)
+
+        trainable_vars = self.trainable_variables
+        gradients = tape.gradient(loss, trainable_vars)
+        self.optimizer.apply_gradients(zip(gradients, trainable_vars))
+
+        self.train_trackers['image_loss'].update_state(image_loss)
+        self.train_trackers['joint_loss'].update_state(joint_loss)
+        self.train_trackers['loss'].update_state(loss)
+        return dict([(trckr[0], trckr[1].result()) for trckr in self.train_trackers.items()])
+
+    def test_step(self, data):
+        x, y = data
+        x_image, x_joint = x
+        batch_size = tf.shape(x_image)[0]
+        input_noise = tf.zeros(shape=(batch_size, 2))
+
+        y_pred = self((x_image, x_joint, input_noise), training=False) # Forward pass
+        image_loss, joint_loss, loss = self.compute_loss(y, y_pred, input_noise)
+
+        self.test_trackers['image_loss'].update_state(image_loss)
+        self.test_trackers['joint_loss'].update_state(joint_loss)
+        self.test_trackers['loss'].update_state(loss)
+        return dict([(trckr[0], trckr[1].result()) for trckr in self.test_trackers.items()])
+
+    def compute_loss(self, y, y_pred, input_noise):
+        y_image, y_joint = y
+        y_image_aug = translate_image(y_image, input_noise)
+
+        image_loss = tf.reduce_mean(tf.square(y_image_aug - y_pred[0]))
+        joint_loss = tf.reduce_mean(tf.square(y_joint - y_pred[1]))
+        loss = image_loss + joint_loss
+        return image_loss, joint_loss, loss
+
+    @property
+    def metrics(self):
+        return list(self.train_trackers.values()) + list(self.test_trackers.values())
+
 
 def model_autoencoder(input_image_shape, latent_dim, use_color_augmentation=False, use_geometrical_augmentation=True):
     image_input = tf.keras.Input(shape=(input_image_shape))
@@ -212,6 +268,7 @@ class ColorAugmentation(tf.keras.layers.Layer):
         base_config = super().get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
+
 def translate_image(image, noise):
     # random_shift only works for array and eager tensor
     # img = tf.keras.preprocessing.image.random_shift(img, 0.02, 0.02,
@@ -229,6 +286,23 @@ class GeometricalAugmentation(tf.keras.layers.Layer):
 
     def augment_per_image(self, img, noise):
         return translate_image(img, noise)
+
+    def get_config(self):
+        config = {
+            }
+        base_config = super().get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
+class TimeDistributedGeometricalAugmentation(tf.keras.layers.Layer):
+    def __init__(self):
+        super().__init__()
+
+    def call(self, images, noise, training=None):
+        return K.in_train_phase(tf.map_fn(self.augment_per_seq, (images, noise), fn_output_signature=tf.TensorSpec(shape=[20,80,160,3],dtype=tf.float32)),
+                                    images, training=training)
+
+    def augment_per_seq(self, args):
+        return translate_image(args[0], args[1])
 
     def get_config(self):
         config = {
@@ -255,10 +329,6 @@ class CustomAugmentation(tf.keras.layers.Layer):
         img = tf.image.random_brightness(img, max_delta=self.brightness_max_delta)
         img = tf.image.random_contrast(img, lower=self.contrast_lower, upper=self.contrast_upper)
         img = tf.image.random_hue(img, max_delta=self.hue_max_delta)
-        # random_shift only works for array and eager tensor
-        # img = tf.keras.preprocessing.image.random_shift(img, 0.02, 0.02,
-        #                                                     row_axis=0, col_axis=1, channel_axis=2)
-        # tf.image.crop_to_bounding_box, tf.image.pad_to_bounding_box
 
         img = tfa.image.translate(img, translations=[80*0.05, 160*0.05], fill_mode='constant')
         return img
@@ -274,24 +344,26 @@ class CustomAugmentation(tf.keras.layers.Layer):
         return dict(list(base_config.items()) + list(config.items()))
 
 
-# def model_ae_lstm_aug(input_image_shape, time_window_size, latent_dim, dof, joint_noise=0.03):
-#     image_input = tf.keras.Input(shape=((time_window_size,) + input_image_shape))
-#     joint_input = tf.keras.Input(shape=(time_window_size, dof))
+def model_ae_lstm_aug(input_image_shape, time_window_size, latent_dim, dof, joint_noise=0.03):
+    image_input = tf.keras.Input(shape=((time_window_size,) + input_image_shape))
+    joint_input = tf.keras.Input(shape=(time_window_size, dof))
+    input_noise = tf.keras.Input(shape=(2,))
 
-#     #x = tf.keras.layers.TimeDistributed(tf.keras.layers.RandomContrast(factor=0.2))(image_input)
-#     #x = tf.keras.layers.TimeDistributed(tf.keras.layers.RandomBrightness(factor=0.2))(x)
-#     # x = tf.keras.layers.TimeDistributed(tf.keras.layers.RandomTranslation(height_factor=0.02, width_factor=0.02, fill_mode='constant', interpolation='bilinear', seed=None, fill_value=0.0))(x)
+    x = image_input
+    #x = tf.keras.layers.TimeDistributed(tf.keras.layers.RandomContrast(factor=0.2))(x)
+    #x = tf.keras.layers.TimeDistributed(tf.keras.layers.RandomBrightness(factor=0.2))(x)
+    # x = tf.keras.layers.TimeDistributed(tf.keras.layers.RandomTranslation(height_factor=0.02, width_factor=0.02, fill_mode='constant', interpolation='bilinear', seed=None, fill_value=0.0))(x)
 
-#     x = CustomAugmentation()(image_input)
+    x = TimeDistributedGeometricalAugmentation()(image_input, input_noise)
 
-#     encoded_img = model_encoder(input_image_shape, time_window_size, latent_dim)(x)
+    encoded_img = model_time_distributed_encoder(input_image_shape, time_window_size, latent_dim)(x)
 
-#     joint_input_with_noise = tf.keras.layers.GaussianNoise(joint_noise)(joint_input)
-#     predicted_ivec, predicted_jvec = model_lstm(time_window_size, latent_dim, dof)([encoded_img, joint_input_with_noise])
-#     decoded_img = model_decoder(input_image_shape, latent_dim)(predicted_ivec)
+    joint_input_with_noise = tf.keras.layers.GaussianNoise(joint_noise)(joint_input)
+    predicted_ivec, predicted_jvec = model_lstm(time_window_size, latent_dim, dof)([encoded_img, joint_input_with_noise])
+    decoded_img = model_decoder(input_image_shape, latent_dim)(predicted_ivec)
 
-#     model = tf.keras.Model(inputs=[image_input, joint_input],
-#                            outputs=[decoded_img, predicted_jvec],
-#                            name='ae_lstm')
-#     model.summary()
-#     return model
+    model = AeLstmModel(inputs=[image_input, joint_input, input_noise],
+                            outputs=[decoded_img, predicted_jvec],
+                            name='ae_lstm_aug')
+    model.summary()
+    return model
