@@ -27,7 +27,7 @@ input_image_size=(80,160)
 time_window_size=20
 latent_dim=32
 dof=7
-batch_size=128
+batch_size=32
 
 
 def crop_and_resize(args):

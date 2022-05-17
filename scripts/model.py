@@ -9,20 +9,41 @@ import tensorflow_addons as tfa
 
 
 def conv_block(x, out_channels):
+    x = tf.keras.layers.Conv2D(out_channels, kernel_size=3, strides=1, padding='same', activation='selu')(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    return tf.keras.layers.MaxPool2D(pool_size=2)(x)
+
+def time_distributed_conv_block(x, out_channels):
     x = tf.keras.layers.TimeDistributed(tf.keras.layers.Conv2D(out_channels, kernel_size=3, strides=1, padding='same', activation='selu'))(x)
     x = tf.keras.layers.TimeDistributed(tf.keras.layers.BatchNormalization())(x)
     return tf.keras.layers.TimeDistributed(tf.keras.layers.MaxPool2D(pool_size=2))(x)
 
-def model_encoder(input_shape, time_window_size, out_dim, noise_stddev=0.2, name='encoder'):
-    image_input = tf.keras.Input(shape=((time_window_size,) + input_shape))
+def model_encoder(input_shape, out_dim, noise_stddev=0.2, name='encoder'):
+    image_input = tf.keras.Input(shape=(input_shape))
 
-    # Denoising Autoencoder
-    x = tf.keras.layers.TimeDistributed(tf.keras.layers.GaussianNoise(noise_stddev))(image_input)
+    x = tf.keras.layers.GaussianNoise(noise_stddev)(image_input) # Denoising Autoencoder
 
     x = conv_block(x, 8)
     x = conv_block(x, 16)
     x = conv_block(x, 32)
     x = conv_block(x, 64)
+
+    x = tf.keras.layers.Flatten()(x)
+    encoder_output = tf.keras.layers.Dense(out_dim, activation='selu')(x)
+
+    encoder = keras.Model([image_input], encoder_output, name=name)
+    encoder.summary()
+    return encoder
+
+def model_time_distributed_encoder(input_shape, time_window_size, out_dim, noise_stddev=0.2, name='encoder'):
+    image_input = tf.keras.Input(shape=((time_window_size,) + input_shape))
+
+    x = tf.keras.layers.TimeDistributed(tf.keras.layers.GaussianNoise(noise_stddev))(image_input) # Denoising Autoencoder
+
+    x = time_distributed_conv_block(x, 8)
+    x = time_distributed_conv_block(x, 16)
+    x = time_distributed_conv_block(x, 32)
+    x = time_distributed_conv_block(x, 64)
 
     x = tf.keras.layers.TimeDistributed(tf.keras.layers.Flatten())(x)
     encoder_output = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(out_dim, activation='selu'))(x)
@@ -78,11 +99,80 @@ def model_decoder(output_shape, image_vec_dim, name='decoder'):
     decoder.summary()
     return decoder
 
+class AutoEncoderModel(tf.keras.Model):
+    def __init__(self, *args, **kargs):
+        super(AutoEncoderModel, self).__init__(*args, **kargs)
+        tracker_names = ['loss']
+        self.train_trackers = {}
+        self.test_trackers = {}
+        for n in tracker_names:
+            self.train_trackers[n] = keras.metrics.Mean(name=n)
+            self.test_trackers[n] = keras.metrics.Mean(name='val_'+n)
+
+    def train_step(self, data):
+        x, y = data
+        batch_size = tf.shape(x)[0]
+        input_noise = tf.random.uniform(shape=(batch_size, 2), minval=-1, maxval=1)
+
+        with tf.GradientTape() as tape:
+            y_pred = self((x, input_noise), training=True) # Forward pass
+            loss = self.compute_loss(y, y_pred, input_noise)
+
+        trainable_vars = self.trainable_variables
+        gradients = tape.gradient(loss, trainable_vars)
+        self.optimizer.apply_gradients(zip(gradients, trainable_vars))
+
+        self.train_trackers['loss'].update_state(loss)
+        return dict([(trckr[0], trckr[1].result()) for trckr in self.train_trackers.items()])
+
+    def test_step(self, data):
+        x, y = data
+        batch_size = tf.shape(x)[0]
+        input_noise = tf.zeros(shape=(batch_size, 2))
+
+        y_pred = self((x, input_noise), training=False) # Forward pass
+        loss = self.compute_loss(y, y_pred, input_noise)
+
+        self.test_trackers['loss'].update_state(loss)
+        return dict([(trckr[0], trckr[1].result()) for trckr in self.test_trackers.items()])
+
+    def compute_loss(self, y, y_pred, input_noise):
+        y_aug = translate_image(y, input_noise)
+        loss = tf.reduce_mean(tf.square(y_aug - y_pred))
+        return loss
+
+    @property
+    def metrics(self):
+        return list(self.train_trackers.values()) + list(self.test_trackers.values())
+
+
+def model_autoencoder(input_image_shape, latent_dim, use_color_augmentation=False, use_geometrical_augmentation=True):
+    image_input = tf.keras.Input(shape=(input_image_shape))
+    input_noise = tf.keras.Input(shape=(2,))
+
+    x = image_input
+
+    if use_color_augmentation:
+        x = ColorAugmentation()(x)
+    if use_geometrical_augmentation:
+        x = GeometricalAugmentation()(x, input_noise)
+
+    encoded_img = model_encoder(input_image_shape, latent_dim)(x)
+    decoded_img = model_decoder(input_image_shape, latent_dim)(encoded_img)
+
+    if use_geometrical_augmentation:
+        model = AutoEncoderModel(inputs=[image_input, input_noise], outputs=[decoded_img], name='autoencoder')
+    else:
+        model = Model(inputs=[image_input], outputs=[decoded_img], name='autoencoder')
+    model.summary()
+
+    return model
+
 def model_ae_lstm(input_image_shape, time_window_size, latent_dim, dof):
     image_input = tf.keras.Input(shape=((time_window_size,) + input_image_shape))
     joint_input = tf.keras.Input(shape=(time_window_size, dof))
 
-    encoded_img = model_encoder(input_image_shape, time_window_size, latent_dim)(image_input)
+    encoded_img = model_time_distributed_encoder(input_image_shape, time_window_size, latent_dim)(image_input)
     predicted_ivec, predicted_jvec = model_lstm(time_window_size, latent_dim, dof)([encoded_img, joint_input])
     decoded_img = model_decoder(input_image_shape, latent_dim)(predicted_ivec)
 
@@ -90,7 +180,61 @@ def model_ae_lstm(input_image_shape, time_window_size, latent_dim, dof):
                            outputs=[decoded_img, predicted_jvec],
                            name='ae_lstm')
     model.summary()
+
     return model
+
+class ColorAugmentation(tf.keras.layers.Layer):
+    def __init__(self, brightness_max_delta=0.2,
+                     contrast_lower=0.8, contrast_upper=1.2,
+                     hue_max_delta=0.05):
+        super().__init__()
+        self.brightness_max_delta = brightness_max_delta
+        self.contrast_lower = contrast_lower
+        self.contrast_upper = contrast_upper
+        self.hue_max_delta = hue_max_delta
+
+    def call(self, inputs, training=None):
+        return K.in_train_phase(self.augment_per_image(inputs), inputs, training=training)
+
+    def augment_per_image(self, img):
+        img = tf.image.random_brightness(img, max_delta=self.brightness_max_delta)
+        img = tf.image.random_contrast(img, lower=self.contrast_lower, upper=self.contrast_upper)
+        img = tf.image.random_hue(img, max_delta=self.hue_max_delta)
+        return img
+
+    def get_config(self):
+        config = {
+            "brightness_max_delta" : self.brightness_max_delta,
+            "contrast_lower" : self.contrast_lower,
+            "contrast_upper" : self.contrast_upper,
+            "hue_max_delta" : self.hue_max_delta
+            }
+        base_config = super().get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
+def translate_image(image, noise):
+    # random_shift only works for array and eager tensor
+    # img = tf.keras.preprocessing.image.random_shift(img, 0.02, 0.02,
+    #                                                     row_axis=0, col_axis=1, channel_axis=2)
+    # tf.image.crop_to_bounding_box, tf.image.pad_to_bounding_box
+    shift = 4
+    return tfa.image.translate(image, translations=shift*noise, fill_mode='constant')
+
+class GeometricalAugmentation(tf.keras.layers.Layer):
+    def __init__(self):
+        super().__init__()
+
+    def call(self, image, noise, training=None):
+        return K.in_train_phase(self.augment_per_image(image, noise), image, training=training)
+
+    def augment_per_image(self, img, noise):
+        return translate_image(img, noise)
+
+    def get_config(self):
+        config = {
+            }
+        base_config = super().get_config()
+        return dict(list(base_config.items()) + list(config.items()))
 
 
 class CustomAugmentation(tf.keras.layers.Layer):
@@ -115,7 +259,7 @@ class CustomAugmentation(tf.keras.layers.Layer):
         # img = tf.keras.preprocessing.image.random_shift(img, 0.02, 0.02,
         #                                                     row_axis=0, col_axis=1, channel_axis=2)
         # tf.image.crop_to_bounding_box, tf.image.pad_to_bounding_box
-        
+
         img = tfa.image.translate(img, translations=[80*0.05, 160*0.05], fill_mode='constant')
         return img
 
@@ -130,24 +274,24 @@ class CustomAugmentation(tf.keras.layers.Layer):
         return dict(list(base_config.items()) + list(config.items()))
 
 
-def model_ae_lstm_aug(input_image_shape, time_window_size, latent_dim, dof, joint_noise=0.03):
-    image_input = tf.keras.Input(shape=((time_window_size,) + input_image_shape))
-    joint_input = tf.keras.Input(shape=(time_window_size, dof))
+# def model_ae_lstm_aug(input_image_shape, time_window_size, latent_dim, dof, joint_noise=0.03):
+#     image_input = tf.keras.Input(shape=((time_window_size,) + input_image_shape))
+#     joint_input = tf.keras.Input(shape=(time_window_size, dof))
 
-    #x = tf.keras.layers.TimeDistributed(tf.keras.layers.RandomContrast(factor=0.2))(image_input)
-    #x = tf.keras.layers.TimeDistributed(tf.keras.layers.RandomBrightness(factor=0.2))(x)
-    # x = tf.keras.layers.TimeDistributed(tf.keras.layers.RandomTranslation(height_factor=0.02, width_factor=0.02, fill_mode='constant', interpolation='bilinear', seed=None, fill_value=0.0))(x)
+#     #x = tf.keras.layers.TimeDistributed(tf.keras.layers.RandomContrast(factor=0.2))(image_input)
+#     #x = tf.keras.layers.TimeDistributed(tf.keras.layers.RandomBrightness(factor=0.2))(x)
+#     # x = tf.keras.layers.TimeDistributed(tf.keras.layers.RandomTranslation(height_factor=0.02, width_factor=0.02, fill_mode='constant', interpolation='bilinear', seed=None, fill_value=0.0))(x)
 
-    x = CustomAugmentation()(image_input)
+#     x = CustomAugmentation()(image_input)
 
-    encoded_img = model_encoder(input_image_shape, time_window_size, latent_dim)(x)
+#     encoded_img = model_encoder(input_image_shape, time_window_size, latent_dim)(x)
 
-    joint_input_with_noise = tf.keras.layers.GaussianNoise(joint_noise)(joint_input)
-    predicted_ivec, predicted_jvec = model_lstm(time_window_size, latent_dim, dof)([encoded_img, joint_input_with_noise])
-    decoded_img = model_decoder(input_image_shape, latent_dim)(predicted_ivec)
+#     joint_input_with_noise = tf.keras.layers.GaussianNoise(joint_noise)(joint_input)
+#     predicted_ivec, predicted_jvec = model_lstm(time_window_size, latent_dim, dof)([encoded_img, joint_input_with_noise])
+#     decoded_img = model_decoder(input_image_shape, latent_dim)(predicted_ivec)
 
-    model = tf.keras.Model(inputs=[image_input, joint_input],
-                           outputs=[decoded_img, predicted_jvec],
-                           name='ae_lstm')
-    model.summary()
-    return model
+#     model = tf.keras.Model(inputs=[image_input, joint_input],
+#                            outputs=[decoded_img, predicted_jvec],
+#                            name='ae_lstm')
+#     model.summary()
+#     return model

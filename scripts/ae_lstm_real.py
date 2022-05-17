@@ -5,7 +5,7 @@ import os
 from core.utils import *
 #from core.model import *
 from model import *
-from core import trainer
+import trainer
 
 
 os.environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
@@ -17,11 +17,29 @@ val_groups=range(136,156)
 joint_range_data=range(0,156)
 input_image_size=(80,160)
 time_window_size=20
-latent_dim=32
+latent_dim=64
 dof=7
 
+model_ae = model_autoencoder(input_image_size+(3,), latent_dim)
+
+def train_ae():
+    train_ds = Dataset(dataset, joint_range_data=joint_range_data)
+    train_ds.load(groups=train_groups, image_size=input_image_size)
+    val_ds = Dataset(dataset, joint_range_data=joint_range_data)
+    val_ds.load(groups=val_groups, image_size=input_image_size)
+    tr = trainer.Trainer(model_ae, train_ds, val_ds)
+    tr.train(epochs=800, early_stop_patience=800, reduce_lr_patience=100)
+    return tr
+
+def prepare_for_test_ae(cp='ae_cp.reaching-real.autoencoder.20220517112615'):
+    # ae_cp.reaching-real.autoencoder.20220516143855 # no augmentation
+    val_ds = Dataset(dataset, joint_range_data=joint_range_data)
+    val_ds.load(groups=val_groups, image_size=input_image_size)
+    tr = trainer.Trainer(model_ae, None, val_ds, checkpoint_file=cp)
+    return tr
+
 #model = model_ae_lstm(input_image_size+(3,), time_window_size, latent_dim, dof, joint_noise=0.03)
-model = model_ae_lstm_aug(input_image_size+(3,), time_window_size, latent_dim, dof, joint_noise=0.03)
+#model = model_ae_lstm_aug(input_image_size+(3,), time_window_size, latent_dim, dof, joint_noise=0.03)
 
 def train():
     train_ds = Dataset(dataset, joint_range_data=joint_range_data)
