@@ -48,7 +48,7 @@ def roi_rect1(args):
     lt = tf.tile(tf.expand_dims(1-s, 1), (1,2)) * c
     rb = tf.tile(tf.expand_dims(1-s, 1), (1,2)) * c + tf.tile(tf.expand_dims(s, 1), (1,2))
     return tf.concat([lt, rb], axis=1)
-    
+
 def embed(args):
     whole_images, roi_images, rois = args
     roi = rois[0][0]
@@ -284,6 +284,29 @@ def model_lstm_no_split(time_window_size, image_vec_dim, dof, lstm_units=50, use
     lstm = keras.Model([imgvec_input, joint_input], x, name=name)
     lstm.summary()
     return lstm
+
+
+def model_autoencoder(input_image_shape, latent_dim, use_color_augmentation=False, use_geometrical_augmentation=True):
+    image_input = tf.keras.Input(shape=(input_image_shape))
+    input_noise = tf.keras.Input(shape=(2,))
+
+    x = image_input
+
+    if use_color_augmentation:
+        x = ColorAugmentation()(x)
+    if use_geometrical_augmentation:
+        x = GeometricalAugmentation()(x, input_noise)
+
+    encoded_img = model_encoder(input_image_shape, latent_dim)(x)
+    decoded_img = model_decoder(input_image_shape, latent_dim)(encoded_img)
+
+    if use_geometrical_augmentation:
+        model = AutoEncoderModel(inputs=[image_input, input_noise], outputs=[decoded_img], name='autoencoder')
+    else:
+        model = Model(inputs=[image_input], outputs=[decoded_img], name='autoencoder')
+    model.summary()
+
+    return model
 
 def model_prediction(input_image_shape, time_window_size, image_vec_dim, dof):
     image_input = tf.keras.Input(shape=((time_window_size,) + input_image_shape))
