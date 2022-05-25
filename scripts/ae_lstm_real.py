@@ -59,8 +59,10 @@ def prepare_for_test_ae(cp='ae_cp.reaching-real.autoencoder.20220517112615'):
     tr = trainer.Trainer(model_ae, None, val_ds, checkpoint_file=cp)
     return tr
 
-def prepare_for_test(cp='ae_cp.reaching-real.ae_lstm_aug.20220517230019'):
-    # ae_cp.reaching-real.ae_lstm_aug.20220517213635 # AE pretraining, random_translation
+def prepare_for_test(cp='ae_cp.reaching-real.ae_lstm_aug.20220524225920'):
+    # ae_cp.reaching-real.ae_lstm_aug.20220524193755 # AE pretraining, 5step, no random_translation
+    # ae_cp.reaching-real.ae_lstm_aug.20220524180842 # AE pretraining, 3step, no random_translation
+    # ae_cp.reaching-real.ae_lstm_aug.20220517230019 # AE pretraining, random_translation
     # ae_cp.reaching-real.ae_lstm_aug.20220517145720 # AE pretraining, no augmentation
     # 20220426162642 # brightness-contrast-hue(0.2)
     # 20220426132636 # contrast augmentation
@@ -101,8 +103,16 @@ def test_augment(batch, brightness_max_delta=0.2, contrast_lower=0.8, contrast_u
     visualize_ds(aug_imgs)
     plt.show()
 
+from PIL import ImageSequence
 
-# train_ae_lstm()
+def visualize_frames_from_anim_gif(gif_file):
+    im = Image.open(gif_file)
+    frames = list(frame.copy() for frame in ImageSequence.Iterator(im))
+    visualize_ds(frames)
+    plt.show()
+
+
+#train_ae_lstm()
 
 # Training
 # In[1]: train()

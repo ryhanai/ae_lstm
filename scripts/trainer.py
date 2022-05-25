@@ -135,6 +135,7 @@ class TimeSequenceTrainer(Trainer):
                                                                None,
                                                                batch_size=self.batch_size,
                                                                time_window_size=self.time_window,
+                                                               prediction_window_size=5,
                                                                add_roi=False)
 
         if val_dataset:
@@ -142,6 +143,7 @@ class TimeSequenceTrainer(Trainer):
                                                              None,
                                                              batch_size=self.batch_size,
                                                              time_window_size=self.time_window,
+                                                             prediction_window_size=5,
                                                              add_roi=False)
             self.val_data_loaded = True
 
@@ -188,7 +190,11 @@ class TimeSequenceTrainer(Trainer):
             predicted_images, _, rois = y_pred
         else:
             predicted_images, _ = y_pred
-        visualize_ds(y[0], rois)
+
+        if y[0].ndim == 5:
+            visualize_ds(y[0][:,0,:,:,:], rois)
+        else:
+            visualize_ds(y[0], rois)
         visualize_ds(x[0][:,0,:,:,:], rois)
         visualize_ds(predicted_images)
         plt.show()

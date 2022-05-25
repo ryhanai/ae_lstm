@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import numpy as np
 import threading
 import time
@@ -45,17 +47,18 @@ class Iterator(object):
 
 class ImageRNNIterator(Iterator):
     def __init__(self, dataset, data_generator, roi_fun,
-                     batch_size=32, time_window_size=20, add_roi=True, shuffle=False, seed=None):
+                     batch_size=32, time_window_size=20, prediction_window_size=5, add_roi=True, shuffle=False, seed=None):
         self.ds = dataset
         self.data_generator = data_generator
         self.window_size = time_window_size
+        self.prediction_window_size = prediction_window_size
         self.roi_fun = roi_fun
         self.add_roi = add_roi
 
         self.indices = []
         for g_num, group in enumerate(self.ds):
             jv_seq, images = group
-            n_seq = jv_seq.shape[0] - (self.window_size + 1)
+            n_seq = jv_seq.shape[0] - (self.window_size + self.prediction_window_size)
             self.indices.extend([(g_num, i) for i in range(n_seq)])
 
         self.batch_index = 0
@@ -77,18 +80,28 @@ class ImageRNNIterator(Iterator):
         jv_dim = self.ds[0][0].shape[1]
         batch_x_imgs = np.empty((current_batch_size, self.window_size, ishape[0], ishape[1], ishape[2]))
         batch_x_jvs = np.empty((current_batch_size, self.window_size, jv_dim))
-        batch_y_img = np.empty((current_batch_size, ishape[0], ishape[1], ishape[2]))
-        batch_y_jv = np.empty((current_batch_size, jv_dim))
+        if self.prediction_window_size == 1:
+            batch_y_imgs = np.empty((current_batch_size, ishape[0], ishape[1], ishape[2]))
+            batch_y_jvs = np.empty((current_batch_size, jv_dim))
+        else:
+            batch_y_imgs = np.empty((current_batch_size, self.prediction_window_size, ishape[0], ishape[1], ishape[2]))
+            batch_y_jvs = np.empty((current_batch_size, self.prediction_window_size, jv_dim))
 
         for i, seq_idx in enumerate(index_array):
             group_num, seq_num = self.indices[seq_idx]
             batch_x_jvs[i] = self.ds[group_num][0][seq_num:seq_num+self.window_size]
-            batch_y_jv[i] = self.ds[group_num][0][seq_num+self.window_size]
+            if self.prediction_window_size == 1:
+                batch_y_jvs[i] = self.ds[group_num][0][seq_num+self.window_size]
+            else:
+                batch_y_jvs[i] = self.ds[group_num][0][seq_num+self.window_size:seq_num+self.window_size+self.prediction_window_size]
 
         for i, seq_idx in enumerate(index_array):
             group_num, seq_num = self.indices[seq_idx]
             batch_x_imgs[i] = self.ds[group_num][1][seq_num:seq_num+self.window_size]
-            batch_y_img[i] = self.ds[group_num][1][seq_num+self.window_size]
+            if self.prediction_window_size == 1:
+                batch_y_imgs[i] = self.ds[group_num][1][seq_num+self.window_size]
+            else:
+                batch_y_imgs[i] = self.ds[group_num][1][seq_num+self.window_size:seq_num+self.window_size+self.prediction_window_size]
 
         # This is slower
         # a = []
@@ -105,9 +118,9 @@ class ImageRNNIterator(Iterator):
 
         if self.add_roi:
             batch_rois = np.array([self.roi_fun() for i in range(batch_size*self.window_size)]).reshape((batch_size, self.window_size, 4))
-            return (batch_x_imgs, batch_x_jvs, batch_rois), (batch_y_img, batch_y_jv)
+            return (batch_x_imgs, batch_x_jvs, batch_rois), (batch_y_imgs, batch_y_jvs)
         else:
-            return (batch_x_imgs, batch_x_jvs), (batch_y_img, batch_y_jv)
+            return (batch_x_imgs, batch_x_jvs), (batch_y_imgs, batch_y_jvs)
 
     def number_of_data(self):
         return len(self.indices)
@@ -132,8 +145,8 @@ class DPLGenerator(ImageDataGenerator):
         assert random_crop == None or len(random_crop) == 2
         self.random_crop_size = random_crop
 
-    def flow(self, dataset, roi_fun, batch_size=32, time_window_size=20, add_roi=True, shuffle=True, seed=None):
-        return ImageRNNIterator(dataset, self, roi_fun, batch_size, time_window_size, add_roi, shuffle, seed)
+    def flow(self, dataset, roi_fun, batch_size=32, time_window_size=20, prediction_window_size=1, add_roi=True, shuffle=True, seed=None):
+        return ImageRNNIterator(dataset, self, roi_fun, batch_size, time_window_size, prediction_window_size, add_roi, shuffle, seed)
     
     def get_random_transform(self, img_shape, seed=None):
         tf = super().get_random_transform(img_shape, seed)

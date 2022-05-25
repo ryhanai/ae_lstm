@@ -6,7 +6,7 @@ from tensorflow.keras import layers
 from tensorflow.keras.models import Model
 import tensorflow.keras.backend as K
 import tensorflow_addons as tfa
-
+import numpy as np
 
 def conv_block(x, out_channels):
     x = tf.keras.layers.Conv2D(out_channels, kernel_size=3, strides=1, padding='same', activation='selu')(x)
@@ -155,15 +155,43 @@ class AeLstmModel(tf.keras.Model):
             self.train_trackers[n] = keras.metrics.Mean(name=n)
             self.test_trackers[n] = keras.metrics.Mean(name='val_'+n)
 
+        self.n_steps = 5
+
     def train_step(self, data):
         x, y = data
         x_image, x_joint = x
         batch_size = tf.shape(x_image)[0]
         input_noise = tf.random.uniform(shape=(batch_size, 2), minval=-1, maxval=1)
 
+        image_loss = 0.0
+        joint_loss = 0.0
+        y_images, y_joints = y
+        y_images_tr = tf.transpose(y_images, [1,0,2,3,4])
+        y_joints_tr = tf.transpose(y_joints, [1,0,2])
+
         with tf.GradientTape() as tape:
-            y_pred = self((x_image, x_joint, input_noise), training=True) # Forward pass
-            image_loss, joint_loss, loss = self.compute_loss(y, y_pred, input_noise)
+            for n in range(self.n_steps):
+                pred_image, pred_joint = self((x_image, x_joint, input_noise), training=True) # Forward pass
+
+                y_image_aug = translate_image(y_images_tr[n], input_noise)
+                image_loss += tf.reduce_mean(tf.square(y_image_aug - pred_image))
+                joint_loss += tf.reduce_mean(tf.square(y_joints_tr[n] - pred_joint))
+
+                if n < self.n_steps:
+                    x_image_tr = tf.transpose(x_image, [1,0,2,3,4])
+                    x_image_tr_list = tf.unstack(x_image_tr)
+                    x_image_tr_list[1:].append(pred_image)
+                    x_image_tr = tf.stack(x_image_tr_list)
+                    x_image = tf.transpose(x_image_tr, [1,0,2,3,4])
+                    x_joint_tr = tf.transpose(x_joint, [1,0,2])
+                    x_joint_tr_list = tf.unstack(x_joint_tr)
+                    x_joint_tr_list[1:].append(pred_joint)
+                    x_joint_tr = tf.stack(x_joint_tr_list)
+                    x_joint = tf.transpose(x_joint_tr, [1,0,2])
+
+            image_loss /= self.n_steps
+            joint_loss /= self.n_steps
+            loss = image_loss + joint_loss
 
         trainable_vars = self.trainable_variables
         gradients = tape.gradient(loss, trainable_vars)
@@ -180,8 +208,35 @@ class AeLstmModel(tf.keras.Model):
         batch_size = tf.shape(x_image)[0]
         input_noise = tf.zeros(shape=(batch_size, 2))
 
-        y_pred = self((x_image, x_joint, input_noise), training=False) # Forward pass
-        image_loss, joint_loss, loss = self.compute_loss(y, y_pred, input_noise)
+        image_loss = 0.0
+        joint_loss = 0.0
+        y_images, y_joints = y
+
+        y_images_tr = tf.transpose(y_images, [1,0,2,3,4])
+        y_joints_tr = tf.transpose(y_joints, [1,0,2])
+
+        for n in range(self.n_steps):
+            pred_image, pred_joint = self((x_image, x_joint, input_noise), training=False) # Forward pass
+
+            y_image_aug = translate_image(y_images_tr[n], input_noise)
+            image_loss += tf.reduce_mean(tf.square(y_image_aug - pred_image))
+            joint_loss += tf.reduce_mean(tf.square(y_joints_tr[n] - pred_joint))
+
+            if n < self.n_steps:
+                x_image_tr = tf.transpose(x_image, [1,0,2,3,4])
+                x_image_tr_list = tf.unstack(x_image_tr)
+                x_image_tr_list[1:].append(pred_image)
+                x_image_tr = tf.stack(x_image_tr_list)
+                x_image = tf.transpose(x_image_tr, [1,0,2,3,4])
+                x_joint_tr = tf.transpose(x_joint, [1,0,2])
+                x_joint_tr_list = tf.unstack(x_joint_tr)
+                x_joint_tr_list[1:].append(pred_joint)
+                x_joint_tr = tf.stack(x_joint_tr_list)
+                x_joint = tf.transpose(x_joint_tr, [1,0,2])
+
+        image_loss /= self.n_steps
+        joint_loss /= self.n_steps
+        loss = image_loss + joint_loss
 
         self.test_trackers['image_loss'].update_state(image_loss)
         self.test_trackers['joint_loss'].update_state(joint_loss)
@@ -190,10 +245,23 @@ class AeLstmModel(tf.keras.Model):
 
     def compute_loss(self, y, y_pred, input_noise):
         y_image, y_joint = y
-        y_image_aug = translate_image(y_image, input_noise)
+        # image_aug = translate_image(y_image, input_noise)
+        y_image_aug = translate_image(y_image[:,0], input_noise[:,0])
 
         image_loss = tf.reduce_mean(tf.square(y_image_aug - y_pred[0]))
-        joint_loss = tf.reduce_mean(tf.square(y_joint - y_pred[1]))
+        # joint_loss = tf.reduce_mean(tf.square(y_joint - y_pred[1]))
+        joint_loss = tf.reduce_mean(tf.square(y_joint[:,0] - y_pred[1]))
+        loss = image_loss + joint_loss
+        return image_loss, joint_loss, loss
+
+    def compute_loss2(self, y, y_pred, input_noise):
+        y_images, y_joints = y
+        y_pred_images, y_pred_joints = y_pred
+
+         #image_aug = translate_image(y_image, input_noise)
+
+        image_loss = tf.reduce_mean(tf.square(y_images - y_pred_images)) / self.n_steps
+        joint_loss = tf.reduce_mean(tf.square(y_joints - y_pred_joints)) / self.n_steps
         loss = image_loss + joint_loss
         return image_loss, joint_loss, loss
 
