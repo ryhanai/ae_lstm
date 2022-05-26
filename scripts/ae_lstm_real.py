@@ -59,7 +59,9 @@ def prepare_for_test_ae(cp='ae_cp.reaching-real.autoencoder.20220517112615'):
     tr = trainer.Trainer(model_ae, None, val_ds, checkpoint_file=cp)
     return tr
 
-def prepare_for_test(cp='ae_cp.reaching-real.ae_lstm_aug.20220524225920'):
+
+def prepare_for_test(cp='ae_cp.reaching-real.ae_lstm_aug.20220525133825'):
+    # ae_cp.reaching-real.ae_lstm_aug.20220524225920 # AE pretraining, 5step, random_translation
     # ae_cp.reaching-real.ae_lstm_aug.20220524193755 # AE pretraining, 5step, no random_translation
     # ae_cp.reaching-real.ae_lstm_aug.20220524180842 # AE pretraining, 3step, no random_translation
     # ae_cp.reaching-real.ae_lstm_aug.20220517230019 # AE pretraining, random_translation

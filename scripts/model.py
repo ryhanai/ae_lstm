@@ -52,7 +52,7 @@ def model_time_distributed_encoder(input_shape, time_window_size, out_dim, noise
     encoder.summary()
     return encoder
 
-def model_lstm(time_window_size, image_vec_dim, dof, lstm_units=50, use_stacked_lstm=False, name='lstm'):
+def model_lstm(time_window_size, image_vec_dim, dof, lstm_units=50, use_stacked_lstm=True, name='lstm'):
     imgvec_input = tf.keras.Input(shape=(time_window_size, image_vec_dim))
     joint_input = tf.keras.Input(shape=(time_window_size, dof))
     state_dim = image_vec_dim + dof
@@ -361,6 +361,36 @@ class GeometricalAugmentation(tf.keras.layers.Layer):
         base_config = super().get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
+class TimeDistributedColorAugmentation(tf.keras.layers.Layer):
+    def __init__(self, brightness_max_delta=0.2,
+                     contrast_lower=0.8, contrast_upper=1.2,
+                     hue_max_delta=0.05):
+        super().__init__()
+        self.brightness_max_delta = brightness_max_delta
+        self.contrast_lower = contrast_lower
+        self.contrast_upper = contrast_upper
+        self.hue_max_delta = hue_max_delta
+
+    def call(self, images, training=None):
+        return K.in_train_phase(tf.map_fn(self.augment_per_seq, images, fn_output_signature=tf.TensorSpec(shape=[20,80,160,3],dtype=tf.float32)),
+                                    images, training=training)
+
+    def augment_per_seq(self, img):
+        img = tf.image.random_brightness(img, max_delta=self.brightness_max_delta)
+        img = tf.image.random_contrast(img, lower=self.contrast_lower, upper=self.contrast_upper)
+        img = tf.image.random_hue(img, max_delta=self.hue_max_delta)
+        return img
+
+    def get_config(self):
+        config = {
+            "brightness_max_delta" : self.brightness_max_delta,
+            "contrast_lower" : self.contrast_lower,
+            "contrast_upper" : self.contrast_upper,
+            "hue_max_delta" : self.hue_max_delta
+            }
+        base_config = super().get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+    
 class TimeDistributedGeometricalAugmentation(tf.keras.layers.Layer):
     def __init__(self):
         super().__init__()
@@ -422,7 +452,8 @@ def model_ae_lstm_aug(input_image_shape, time_window_size, latent_dim, dof, join
     #x = tf.keras.layers.TimeDistributed(tf.keras.layers.RandomBrightness(factor=0.2))(x)
     # x = tf.keras.layers.TimeDistributed(tf.keras.layers.RandomTranslation(height_factor=0.02, width_factor=0.02, fill_mode='constant', interpolation='bilinear', seed=None, fill_value=0.0))(x)
 
-    x = TimeDistributedGeometricalAugmentation()(image_input, input_noise)
+    x = TimeDistributedColorAugmentation()(x)
+    x = TimeDistributedGeometricalAugmentation()(x, input_noise)
 
     encoded_img = model_time_distributed_encoder(input_image_shape, time_window_size, latent_dim)(x)
 

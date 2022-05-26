@@ -11,8 +11,10 @@ import tensorflow.keras.backend as K
 import tensorflow_addons as tfa
 
 from core.utils import *
-from core.model import *
-from core import trainer
+#from core.model import *
+from model import *
+import trainer
+
 
 import matplotlib.ticker as ptick
 
@@ -25,9 +27,9 @@ val_groups=range(136,156)
 joint_range_data=range(0,156)
 input_image_size=(80,160)
 time_window_size=20
-latent_dim=32
+latent_dim=64
 dof=7
-batch_size=32
+#batch_size=32
 
 
 def crop_and_resize(args):
@@ -69,6 +71,65 @@ def embed(args):
     bg_mask = 1.0 - fg_mask
     merged_img = fg_mask * padded_roi_images + bg_mask * whole_images
     return merged_img
+
+
+class ROIConditionedAutoEncoderModel(tf.keras.Model):
+    """
+    override loss computation
+    """
+    def __init__(self, *args, **kargs):
+        super(ROIConditionedAutoEncoderModel, self).__init__(*args, **kargs)
+        tracker_names = ['loss']
+        self.train_trackers = {}
+        self.test_trackers = {}
+        for n in tracker_names:
+            self.train_trackers[n] = keras.metrics.Mean(name=n)
+            self.test_trackers[n] = keras.metrics.Mean(name='val_'+n)
+
+    def train_step(self, data):
+        x, y = data
+        batch_size = tf.shape(x)[0]
+
+        roi_pos = tf.random.uniform([batch_size, 2])
+        roi_scale = tf.random.uniform([batch_size], minval=0.4, maxval=0.8)
+        roi_param = tf.concat([roi_pos, tf.expand_dims(roi_scale, 1)], 1)
+        rect = roi_rect1([roi_pos, roi_scale])
+
+        with tf.GradientTape() as tape:
+            y_pred = self([x,roi_param], training=True) # Forward pass
+            loss = self.compute_loss(y, y_pred, rect)
+
+        trainable_vars = self.trainable_variables
+        gradients = tape.gradient(loss, trainable_vars)
+        self.optimizer.apply_gradients(zip(gradients, trainable_vars))
+
+        self.train_trackers['loss'].update_state(loss)
+        return dict([(trckr[0], trckr[1].result()) for trckr in self.train_trackers.items()])
+
+    def test_step(self, data):
+        x, y = data
+        batch_size = tf.shape(x)[0]
+
+        roi_pos = tf.random.uniform([batch_size, 2])
+        roi_scale = tf.random.uniform([batch_size], minval=0.4, maxval=0.8)
+        roi_param = tf.concat([roi_pos, tf.expand_dims(roi_scale, 1)], 1)
+        rect = roi_rect1([roi_pos, roi_scale])
+
+        y_pred = self([x,roi_param], training=False) # Forward pass
+        loss = self.compute_loss(y, y_pred, rect)
+
+        self.test_trackers['loss'].update_state(loss)
+        return dict([(trckr[0], trckr[1].result()) for trckr in self.test_trackers.items()])
+
+    def compute_loss(self, y, y_pred, rect):
+        y_cropped = crop_and_resize((y, rect))
+        loss = tf.reduce_mean(tf.square(y_cropped - y_pred))
+        return loss
+
+    @property
+    def metrics(self):
+        return list(self.train_trackers.values()) + list(self.test_trackers.values())
+
 
 class PredictionModel(tf.keras.Model):
     """
@@ -286,24 +347,25 @@ def model_lstm_no_split(time_window_size, image_vec_dim, dof, lstm_units=50, use
     return lstm
 
 
-def model_autoencoder(input_image_shape, latent_dim, use_color_augmentation=False, use_geometrical_augmentation=True):
+def model_roi_conditioned_autoencoder(input_image_shape, latent_dim, use_color_augmentation=False):
     image_input = tf.keras.Input(shape=(input_image_shape))
-    input_noise = tf.keras.Input(shape=(2,))
+    roi_input = tf.keras.Input(shape=(3,))
+    
+    # convert an ROI param to a rectangular region
+    center = tf.keras.layers.Lambda(lambda x:x[:,:2], output_shape=(2,))(roi_input)
+    scale = tf.keras.layers.Lambda(lambda x:x[:,2], output_shape=(1,))(roi_input)
+    rect = tf.keras.layers.Lambda(roi_rect1)([center, scale])
 
-    x = image_input
-
+    # crop&resize
+    roi_img = tf.keras.layers.Lambda(crop_and_resize, output_shape=input_image_shape) ([image_input, rect])
+    
     if use_color_augmentation:
-        x = ColorAugmentation()(x)
-    if use_geometrical_augmentation:
-        x = GeometricalAugmentation()(x, input_noise)
+        roi_img = ColorAugmentation()(roi_img)
 
-    encoded_img = model_encoder(input_image_shape, latent_dim)(x)
+    encoded_img = model_encoder(input_image_shape, latent_dim)(roi_img)
     decoded_img = model_decoder(input_image_shape, latent_dim)(encoded_img)
 
-    if use_geometrical_augmentation:
-        model = AutoEncoderModel(inputs=[image_input, input_noise], outputs=[decoded_img], name='autoencoder')
-    else:
-        model = Model(inputs=[image_input], outputs=[decoded_img], name='autoencoder')
+    model = ROIConditionedAutoEncoderModel(inputs=[image_input, roi_input], outputs=[decoded_img], name='roi_cond_autoencoder')
     model.summary()
 
     return model
@@ -359,8 +421,18 @@ def model_prediction(input_image_shape, time_window_size, image_vec_dim, dof):
     return predictor, roi_estimator
     
 
-predictor, roi_estimator = model_prediction(input_image_size+(3,), time_window_size, latent_dim, dof)
+model_ae = model_roi_conditioned_autoencoder(input_image_size+(3,), latent_dim)
+#predictor, roi_estimator = model_prediction(input_image_size+(3,), time_window_size, latent_dim, dof)
 
+
+def train_ae():
+    train_ds = Dataset(dataset, joint_range_data=joint_range_data)
+    train_ds.load(groups=train_groups, image_size=input_image_size)
+    val_ds = Dataset(dataset, joint_range_data=joint_range_data)
+    val_ds.load(groups=val_groups, image_size=input_image_size)
+    tr = trainer.Trainer(model_ae, train_ds, val_ds)
+    tr.train(epochs=800, early_stop_patience=800, reduce_lr_patience=100)
+    return tr
 
 def train(cp='', epochs=800, alpha=1.0):
     train_ds = Dataset(dataset, joint_range_data=joint_range_data)
