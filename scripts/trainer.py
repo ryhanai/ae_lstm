@@ -91,7 +91,7 @@ class Trainer:
         end = time.time()
         print('\ntotal time spent for training: {}[min]'.format((end-start)/60))
 
-    def predict_images(self, with_noise=True):
+    def predict_images(self, with_noise=False, roi_param=[0.5,0.5,0.8]):
         imgs = []
         for d in self.val_ds.data:
             for frame in d[1]:
@@ -102,6 +102,9 @@ class Trainer:
         if with_noise:
             noise = tf.zeros((xs.shape[0],2))
             y_pred = self.model.predict((xs, noise))
+        elif roi_param:
+            roi_params = np.tile(roi_param, (xs.shape[0],1))
+            y_pred = self.model.predict((xs,roi_params))
         else:
             y_pred = self.model.predict(xs)
         visualize_ds(xs)

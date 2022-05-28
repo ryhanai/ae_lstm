@@ -144,18 +144,47 @@ class PredictionModel(tf.keras.Model):
             self.train_trackers[n] = keras.metrics.Mean(name=n)
             self.test_trackers[n] = keras.metrics.Mean(name='val_'+n)
 
+        self.n_steps = 5
+
     def train_step(self, data):
         x, y = data
+        x_image, x_joint = x
+        batch_size = tf.shape(x_image)[0]
 
         roi_pos = tf.random.uniform([batch_size, 2])
-        #roi_scale = tf.random.uniform([batch_size], minval=0.3, maxval=0.9)
         roi_scale = tf.random.uniform([batch_size], minval=0.4, maxval=0.8)
         roi_param = tf.concat([roi_pos, tf.expand_dims(roi_scale, 1)], 1)
         rect = roi_rect1([roi_pos, roi_scale])
 
+        image_loss = 0.0
+        joint_loss = 0.0
+        y_images, y_joints = y
+        y_images_tr = tf.transpose(y_images, [1,0,2,3,4])
+        y_joints_tr = tf.transpose(y_joints, [1,0,2])
+
         with tf.GradientTape() as tape:
-            y_pred = self([x[0],x[1],roi_param], training=True) # Forward pass
-            image_loss, joint_loss, loss = self.compute_loss(y, y_pred, x, rect)
+            for n in range(self.n_steps):
+                pred_image, pred_joint = self((x_image, x_joint, roi_param), training=True) # Forward pass
+
+                y_image_aug = crop_and_resize((y_images_tr[n], rect))
+                image_loss += tf.reduce_mean(tf.square(y_image_aug - pred_image))
+                joint_loss += tf.reduce_mean(tf.square(y_joints_tr[n] - pred_joint))
+
+                if n < self.n_steps:
+                    x_image_tr = tf.transpose(x_image, [1,0,2,3,4])
+                    x_image_tr_list = tf.unstack(x_image_tr)
+                    x_image_tr_list[1:].append(pred_image)
+                    x_image_tr = tf.stack(x_image_tr_list)
+                    x_image = tf.transpose(x_image_tr, [1,0,2,3,4])
+                    x_joint_tr = tf.transpose(x_joint, [1,0,2])
+                    x_joint_tr_list = tf.unstack(x_joint_tr)
+                    x_joint_tr_list[1:].append(pred_joint)
+                    x_joint_tr = tf.stack(x_joint_tr_list)
+                    x_joint = tf.transpose(x_joint_tr, [1,0,2])
+
+            image_loss /= self.n_steps
+            joint_loss /= self.n_steps
+            loss = image_loss + joint_loss
 
         trainable_vars = self.trainable_variables
         gradients = tape.gradient(loss, trainable_vars)
@@ -168,35 +197,62 @@ class PredictionModel(tf.keras.Model):
 
     def test_step(self, data):
         x, y = data
+        x_image, x_joint = x
+        batch_size = tf.shape(x_image)[0]
 
         roi_pos = tf.random.uniform([batch_size, 2])
-        #roi_scale = tf.random.uniform([batch_size], minval=0.3, maxval=0.9)
         roi_scale = tf.random.uniform([batch_size], minval=0.4, maxval=0.8)
         roi_param = tf.concat([roi_pos, tf.expand_dims(roi_scale, 1)], 1)
         rect = roi_rect1([roi_pos, roi_scale])
 
-        y_pred = self([x[0],x[1],roi_param], training=False) # Forward pass
-        image_loss, joint_loss, loss = self.compute_loss(y, y_pred, x, rect)
+        image_loss = 0.0
+        joint_loss = 0.0
+        y_images, y_joints = y
+        y_images_tr = tf.transpose(y_images, [1,0,2,3,4])
+        y_joints_tr = tf.transpose(y_joints, [1,0,2])
+
+        for n in range(self.n_steps):
+            pred_image, pred_joint = self((x_image, x_joint, roi_param), training=False) # Forward pass
+
+            y_image_aug = crop_and_resize((y_images_tr[n], rect))
+            image_loss += tf.reduce_mean(tf.square(y_image_aug - pred_image))
+            joint_loss += tf.reduce_mean(tf.square(y_joints_tr[n] - pred_joint))
+
+            if n < self.n_steps:
+                x_image_tr = tf.transpose(x_image, [1,0,2,3,4])
+                x_image_tr_list = tf.unstack(x_image_tr)
+                x_image_tr_list[1:].append(pred_image)
+                x_image_tr = tf.stack(x_image_tr_list)
+                x_image = tf.transpose(x_image_tr, [1,0,2,3,4])
+                x_joint_tr = tf.transpose(x_joint, [1,0,2])
+                x_joint_tr_list = tf.unstack(x_joint_tr)
+                x_joint_tr_list[1:].append(pred_joint)
+                x_joint_tr = tf.stack(x_joint_tr_list)
+                x_joint = tf.transpose(x_joint_tr, [1,0,2])
+
+        image_loss /= self.n_steps
+        joint_loss /= self.n_steps
+        loss = image_loss + joint_loss
 
         self.test_trackers['image_loss'].update_state(image_loss)
         self.test_trackers['joint_loss'].update_state(joint_loss)
         self.test_trackers['loss'].update_state(loss)
         return dict([(trckr[0], trckr[1].result()) for trckr in self.test_trackers.items()])
 
-    def compute_loss(self, y, y_pred, x, rect):
-        x_image, x_joint = x
-        y_image, y_joint = y
+    # def compute_loss(self, y, y_pred, x, rect):
+    #     x_image, x_joint = x
+    #     y_image, y_joint = y
 
-        y_cropped = crop_and_resize((y_image, rect))
+    #     y_cropped = crop_and_resize((y_image, rect))
                           
-        image_loss = tf.reduce_mean(tf.square(y_cropped - y_pred[0]))
-        joint_loss = tf.reduce_mean(tf.square(y_joint - y_pred[1]))
+    #     image_loss = tf.reduce_mean(tf.square(y_cropped - y_pred[0]))
+    #     joint_loss = tf.reduce_mean(tf.square(y_joint - y_pred[1]))
 
-        loss = image_loss + self.alpha * joint_loss
-        return image_loss, joint_loss, loss
+    #     loss = image_loss + self.alpha * joint_loss
+    #     return image_loss, joint_loss, loss
 
-    def set_joint_weight(self, alpha):
-        self.alpha = alpha
+    # def set_joint_weight(self, alpha):
+    #     self.alpha = alpha
     
     @property
     def metrics(self):
@@ -326,7 +382,7 @@ def model_lstm(time_window_size, image_vec_dim, dof, lstm_units=50, use_stacked_
     m.summary()
     return m
 
-def model_lstm_no_split(time_window_size, image_vec_dim, dof, lstm_units=50, use_stacked_lstm=False, name='lstm'):
+def model_lstm_no_split(time_window_size, image_vec_dim, dof, lstm_units=50, use_stacked_lstm=True, name='lstm'):
     imgvec_input = tf.keras.Input(shape=(time_window_size, image_vec_dim))
     joint_input = tf.keras.Input(shape=(time_window_size, dof))
     state_dim = image_vec_dim + dof
@@ -345,7 +401,6 @@ def model_lstm_no_split(time_window_size, image_vec_dim, dof, lstm_units=50, use
     lstm = keras.Model([imgvec_input, joint_input], x, name=name)
     lstm.summary()
     return lstm
-
 
 def model_roi_conditioned_autoencoder(input_image_shape, latent_dim, use_color_augmentation=False):
     image_input = tf.keras.Input(shape=(input_image_shape))
@@ -370,7 +425,7 @@ def model_roi_conditioned_autoencoder(input_image_shape, latent_dim, use_color_a
 
     return model
 
-def model_prediction(input_image_shape, time_window_size, image_vec_dim, dof):
+def model_prediction(input_image_shape, time_window_size, image_vec_dim, dof, use_color_augmentation=False):
     image_input = tf.keras.Input(shape=((time_window_size,) + input_image_shape))
     joint_input = tf.keras.Input(shape=(time_window_size, dof))
     roi_input = tf.keras.Input(shape=(3,))
@@ -383,11 +438,11 @@ def model_prediction(input_image_shape, time_window_size, image_vec_dim, dof):
     # crop&resize
     roi_img = tf.keras.layers.TimeDistributed(tf.keras.layers.Lambda(crop_and_resize, output_shape=input_image_shape)) ([image_input, rect])
 
-    # augment
-    roi_img = CustomAugmentation()(roi_img)
+    if use_color_augmentation:
+        roi_img = TimeDistributedColorAugmentation()(roi_img)
 
     # encode
-    roi_encoding = model_encoder(input_image_shape, time_window_size, image_vec_dim)(roi_img)
+    roi_encoding = model_time_distributed_encoder(input_image_shape, time_window_size, image_vec_dim)(roi_img)
 
     # LSTM
     predicted_state = model_lstm_no_split(time_window_size, image_vec_dim, dof)([roi_encoding, joint_input])
@@ -404,25 +459,24 @@ def model_prediction(input_image_shape, time_window_size, image_vec_dim, dof):
                                 name='predictor')
     predictor.summary()
 
-    x = tf.keras.layers.Dense(32, activation='selu')(predicted_state)
-    x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.Dense(16, activation='selu')(x)
-    x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.Dense(8, activation='selu')(x)
-    x = tf.keras.layers.BatchNormalization()(x)
-    estimated_roi_params = tf.keras.layers.Dense(3, activation='sigmoid')(x)
-    roi_estimator = ROIEstimationModel(predictor,
-                                       inputs=[image_input, joint_input, roi_input],
-                                       outputs=[estimated_roi_params],
-                                       name='roi_estimator')
-    'ae_cp.reaching-2ways.predictor.20220324185148'
-    roi_estimator.summary()    
+    # x = tf.keras.layers.Dense(32, activation='selu')(predicted_state)
+    # x = tf.keras.layers.BatchNormalization()(x)
+    # x = tf.keras.layers.Dense(16, activation='selu')(x)
+    # x = tf.keras.layers.BatchNormalization()(x)
+    # x = tf.keras.layers.Dense(8, activation='selu')(x)
+    # x = tf.keras.layers.BatchNormalization()(x)
+    # estimated_roi_params = tf.keras.layers.Dense(3, activation='sigmoid')(x)
+    # roi_estimator = ROIEstimationModel(predictor,
+    #                                    inputs=[image_input, joint_input, roi_input],
+    #                                    outputs=[estimated_roi_params],
+    #                                    name='roi_estimator')
+    # roi_estimator.summary()    
 
-    return predictor, roi_estimator
+    return predictor
     
 
 model_ae = model_roi_conditioned_autoencoder(input_image_size+(3,), latent_dim)
-#predictor, roi_estimator = model_prediction(input_image_size+(3,), time_window_size, latent_dim, dof)
+predictor = model_prediction(input_image_size+(3,), time_window_size, latent_dim, dof)
 
 
 def train_ae():
@@ -432,7 +486,24 @@ def train_ae():
     val_ds.load(groups=val_groups, image_size=input_image_size)
     tr = trainer.Trainer(model_ae, train_ds, val_ds)
     tr.train(epochs=800, early_stop_patience=800, reduce_lr_patience=100)
-    return tr
+
+def train_predictor(cp='ae_cp.reaching-real.roi_cond_autoencoder.20220526184017'):
+    train_ds = Dataset(dataset, joint_range_data=joint_range_data)
+    train_ds.load(groups=train_groups, image_size=input_image_size)
+    train_ds.preprocess(time_window_size)
+    val_ds = Dataset(dataset, joint_range_data=joint_range_data)
+    val_ds.load(groups=val_groups, image_size=input_image_size)
+    val_ds.preprocess(time_window_size)
+
+    # load AE weights and copy them to the encoder and decoder of AE-LSTM model
+    d = os.path.join(os.path.dirname(os.getcwd()), 'runs')
+    model_ae.load_weights(os.path.join(d, cp, 'cp.ckpt'))
+    predictor.get_layer('encoder').set_weights(model_ae.get_layer('encoder').get_weights())
+    predictor.get_layer('decoder').set_weights(model_ae.get_layer('decoder').get_weights())
+
+    tr = trainer.TimeSequenceTrainer(predictor, train_ds, val_ds, time_window_size=time_window_size)
+    tr.train(epochs=800, early_stop_patience=800, reduce_lr_patience=100)
+
 
 def train(cp='', epochs=800, alpha=1.0):
     train_ds = Dataset(dataset, joint_range_data=joint_range_data)
@@ -476,8 +547,8 @@ def train_roi_estimator(predictor_cp='ae_cp.reaching-2ways.predictor.20220324185
 
 from mpl_toolkits.mplot3d import axes3d, Axes3D
 
-class Predictor(trainer.Trainer):
-    def __init__(self, *args, **kargs):
+class Predictor(trainer.TimeSequenceTrainer):
+    def __init__(self, *args, time_window_size=20,**kargs):
         super(Predictor, self).__init__(*args, **kargs)
 
     def get_data(self):
@@ -499,7 +570,13 @@ class Predictor(trainer.Trainer):
             roi_params = np.tile(roi_params, (batch_sz,1))
         predicted_images, predicted_joints = self.model.predict(x + (roi_params,))
         #visualize_ds(y[0], roi_params) # to draw ROI roi_params must be converted to rectangle
-        visualize_ds(y[0])
+
+        if y[0].ndim == 5:
+            bboxes = roi_rect1((roi_params[:,:2], roi_params[:,2]))
+            imgs = draw_bounding_boxes(x[0][:,-1], bboxes)
+            visualize_ds(imgs)
+        else:
+            visualize_ds(y[0])
         visualize_ds(predicted_images)
         plt.show()
 
@@ -524,13 +601,13 @@ class Predictor(trainer.Trainer):
         x,y = sample
         roi_params = np.expand_dims(roi_params, 0)
         predicted_images, predicted_joints = self.model.predict(x + (roi_params,))
-        error = tf.reduce_mean(tf.square(predicted_joints - y[1]))
+        error = tf.reduce_mean(tf.square(predicted_joints - y[1][:,0]))
         return error
 
     def prediction_errors(self, sample, nx=10, ny=10, ns=5):
-        x = np.linspace(0.2, 0.8, nx)
-        y = np.linspace(0.2, 0.8, ny)
-        s = np.linspace(0.3, 0.7, ns)
+        x = np.linspace(0.0, 1.0, nx)
+        y = np.linspace(0.0, 1.0, ny)
+        s = np.linspace(0.6, 0.8, ns)
         x,y,s = np.meshgrid(x, y, s)
         z = np.array([self.prediction_error(sample, [x,y,s]) for x,y,s in zip(x.flatten(), y.flatten(), s.flatten())]).reshape((nx,ny,ns))
 
@@ -589,8 +666,13 @@ class Predictor(trainer.Trainer):
         bboxes = roi_rect1((roi_params0[:,:2], roi_params0[:,2]))
         return pred_img, pred_joint, bboxes
 
-        
-def prepare_for_predictor_test(cp='ae_cp.reaching-real.predictor.20220510153522'):
+def prepare_for_test_roi_conditioned_ae(cp='ae_cp.reaching-real.roi_cond_autoencoder.20220526184017'):
+    val_ds = Dataset(dataset, joint_range_data=joint_range_data)
+    val_ds.load(groups=val_groups, image_size=input_image_size)
+    tr = trainer.Trainer(model_ae, None, val_ds, checkpoint_file=cp)
+    return tr
+    
+def prepare_for_test_predictor(cp='ae_cp.reaching-real.predictor.20220527174859'):
     val_ds = Dataset(dataset, joint_range_data=joint_range_data)
     val_ds.load(groups=val_groups, image_size=input_image_size)
     val_ds.preprocess(time_window_size)
