@@ -146,74 +146,28 @@ class PredictionModel(tf.keras.Model):
 
         self.n_steps = 5
 
-    def train_step(self, data):
+    def generate_roi(self, data):
         x, y = data
-        x_image, x_joint = x
-        batch_size = tf.shape(x_image)[0]
-
+        batch_size = tf.shape(x[0])[0]
         roi_pos = tf.random.uniform([batch_size, 2])
         roi_scale = tf.random.uniform([batch_size], minval=0.4, maxval=0.8)
-        roi_param = tf.concat([roi_pos, tf.expand_dims(roi_scale, 1)], 1)
-        rect = roi_rect1([roi_pos, roi_scale])
+        return roi_pos, roi_scale
 
-        image_loss = 0.0
-        joint_loss = 0.0
-        y_images, y_joints = y
-        y_images_tr = tf.transpose(y_images, [1,0,2,3,4])
-        y_joints_tr = tf.transpose(y_joints, [1,0,2])
-
-        with tf.GradientTape() as tape:
-            for n in range(self.n_steps):
-                pred_image, pred_joint = self((x_image, x_joint, roi_param), training=True) # Forward pass
-
-                y_image_aug = crop_and_resize((y_images_tr[n], rect))
-                image_loss += tf.reduce_mean(tf.square(y_image_aug - pred_image))
-                joint_loss += tf.reduce_mean(tf.square(y_joints_tr[n] - pred_joint))
-
-                if n < self.n_steps:
-                    x_image_tr = tf.transpose(x_image, [1,0,2,3,4])
-                    x_image_tr_list = tf.unstack(x_image_tr)
-                    x_image_tr_list[1:].append(pred_image)
-                    x_image_tr = tf.stack(x_image_tr_list)
-                    x_image = tf.transpose(x_image_tr, [1,0,2,3,4])
-                    x_joint_tr = tf.transpose(x_joint, [1,0,2])
-                    x_joint_tr_list = tf.unstack(x_joint_tr)
-                    x_joint_tr_list[1:].append(pred_joint)
-                    x_joint_tr = tf.stack(x_joint_tr_list)
-                    x_joint = tf.transpose(x_joint_tr, [1,0,2])
-
-            image_loss /= self.n_steps
-            joint_loss /= self.n_steps
-            loss = image_loss + joint_loss
-
-        trainable_vars = self.trainable_variables
-        gradients = tape.gradient(loss, trainable_vars)
-        self.optimizer.apply_gradients(zip(gradients, trainable_vars))
-
-        self.train_trackers['image_loss'].update_state(image_loss)
-        self.train_trackers['joint_loss'].update_state(joint_loss)
-        self.train_trackers['loss'].update_state(loss)
-        return dict([(trckr[0], trckr[1].result()) for trckr in self.train_trackers.items()])
-
-    def test_step(self, data):
-        x, y = data
+    def do_predict(self, x, y, roi_pos, roi_scale, training):
         x_image, x_joint = x
-        batch_size = tf.shape(x_image)[0]
-
-        roi_pos = tf.random.uniform([batch_size, 2])
-        roi_scale = tf.random.uniform([batch_size], minval=0.4, maxval=0.8)
-        roi_param = tf.concat([roi_pos, tf.expand_dims(roi_scale, 1)], 1)
-        rect = roi_rect1([roi_pos, roi_scale])
-
         image_loss = 0.0
         joint_loss = 0.0
+
+        roi_param = tf.concat([roi_pos, tf.expand_dims(roi_scale, 1)], 1)
+
         y_images, y_joints = y
-        y_images_tr = tf.transpose(y_images, [1,0,2,3,4])
-        y_joints_tr = tf.transpose(y_joints, [1,0,2])
+        y_images_tr = tf.transpose(y_images.astype('float32'), [1,0,2,3,4])
+        y_joints_tr = tf.transpose(y_joints.astype('float32'), [1,0,2])
 
         for n in range(self.n_steps):
-            pred_image, pred_joint = self((x_image, x_joint, roi_param), training=False) # Forward pass
+            pred_image, pred_joint = self((x_image, x_joint, roi_param), training=training) # Forward pass
 
+            rect = roi_rect1([roi_pos, roi_scale])
             y_image_aug = crop_and_resize((y_images_tr[n], rect))
             image_loss += tf.reduce_mean(tf.square(y_image_aug - pred_image))
             joint_loss += tf.reduce_mean(tf.square(y_joints_tr[n] - pred_joint))
@@ -233,7 +187,30 @@ class PredictionModel(tf.keras.Model):
         image_loss /= self.n_steps
         joint_loss /= self.n_steps
         loss = image_loss + joint_loss
+        return image_loss, joint_loss, loss
+    
+    def train_step(self, data):
+        x, y = data
+        roi_pos, roi_scale = self.generate_roi(data)
 
+        with tf.GradientTape() as tape:
+            image_loss, joint_loss, loss = self.do_predict(x, y, roi_pos, roi_scale, training=True)
+
+        trainable_vars = self.trainable_variables
+        gradients = tape.gradient(loss, trainable_vars)
+        self.optimizer.apply_gradients(zip(gradients, trainable_vars))
+
+        self.train_trackers['image_loss'].update_state(image_loss)
+        self.train_trackers['joint_loss'].update_state(joint_loss)
+        self.train_trackers['loss'].update_state(loss)
+        return dict([(trckr[0], trckr[1].result()) for trckr in self.train_trackers.items()])
+
+    def test_step(self, data):
+        x, y = data
+        roi_pos, roi_scale = self.generate_roi(data)
+
+        image_loss, joint_loss, loss = self.do_predict(x, y, roi_pos, roi_scale, training=False)
+  
         self.test_trackers['image_loss'].update_state(image_loss)
         self.test_trackers['joint_loss'].update_state(joint_loss)
         self.test_trackers['loss'].update_state(loss)
@@ -597,19 +574,20 @@ class Predictor(trainer.TimeSequenceTrainer):
             # plt.show()
         create_anim_gif_from_images(out_images, 'generated_roi_images.gif')
 
-    def prediction_error(self, sample, roi_params):
+    def prediction_error(self, sample, roi_pos=[0.5,0.5], roi_scale=0.8):
         x,y = sample
-        roi_params = np.expand_dims(roi_params, 0)
-        predicted_images, predicted_joints = self.model.predict(x + (roi_params,))
-        error = tf.reduce_mean(tf.square(predicted_joints - y[1][:,0]))
-        return error
-
+        batch_size = tf.shape(x[0])[0]
+        roi_pos = tf.tile([roi_pos], (batch_size, 1))
+        roi_scale = tf.repeat(roi_scale, batch_size)
+        image_loss, joint_loss, loss = self.model.do_predict(x, y, roi_pos, roi_scale, training=False)
+        return image_loss, joint_loss, loss
+        
     def prediction_errors(self, sample, nx=10, ny=10, ns=5):
-        x = np.linspace(0.0, 1.0, nx)
-        y = np.linspace(0.0, 1.0, ny)
-        s = np.linspace(0.6, 0.8, ns)
+        x = np.linspace(0.0, 1.0, nx, dtype='float32')
+        y = np.linspace(0.0, 1.0, ny, dtype='float32')
+        s = np.linspace(0.6, 0.8, ns, dtype='float32')
         x,y,s = np.meshgrid(x, y, s)
-        z = np.array([self.prediction_error(sample, [x,y,s]) for x,y,s in zip(x.flatten(), y.flatten(), s.flatten())]).reshape((nx,ny,ns))
+        z = np.array([self.prediction_error(sample, [x,y], s)[1] for x,y,s in zip(x.flatten(), y.flatten(), s.flatten())]).reshape((nx,ny,ns))
 
         idx = np.unravel_index(np.argmin(z), z.shape)
         xopt = x[idx]
