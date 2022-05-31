@@ -26,7 +26,8 @@ train_groups=range(0,136)
 val_groups=range(136,156)
 joint_range_data=range(0,156)
 input_image_size=(80,160)
-time_window_size=20
+#time_window_size=20
+time_window_size=10
 latent_dim=64
 dof=7
 #batch_size=32
@@ -163,6 +164,8 @@ class PredictionModel(tf.keras.Model):
         y_images, y_joints = y
         y_images_tr = tf.transpose(y_images.astype('float32'), [1,0,2,3,4])
         y_joints_tr = tf.transpose(y_joints.astype('float32'), [1,0,2])
+        # y_images_tr = tf.transpose(y_images, [1,0,2,3,4])
+        # y_joints_tr = tf.transpose(y_joints, [1,0,2])
 
         for n in range(self.n_steps):
             pred_image, pred_joint = self((x_image, x_joint, roi_param), training=training) # Forward pass
@@ -207,10 +210,23 @@ class PredictionModel(tf.keras.Model):
 
     def test_step(self, data):
         x, y = data
-        roi_pos, roi_scale = self.generate_roi(data)
 
-        image_loss, joint_loss, loss = self.do_predict(x, y, roi_pos, roi_scale, training=False)
-  
+        image_loss = 0.0
+        joint_loss = 0.0
+        loss = 0.0
+
+        n_iterations = 3
+        for n in range(n_iterations):
+            roi_pos, roi_scale = self.generate_roi(data)
+            il, jl, ll = self.do_predict(x, y, roi_pos, roi_scale, training=False)
+            image_loss += il
+            joint_loss += jl
+            loss += ll
+
+        image_loss /= n_iterations
+        joint_loss /= n_iterations
+        loss /= n_iterations
+
         self.test_trackers['image_loss'].update_state(image_loss)
         self.test_trackers['joint_loss'].update_state(joint_loss)
         self.test_trackers['loss'].update_state(loss)
@@ -467,7 +483,9 @@ def model_prediction(input_image_shape, time_window_size, image_vec_dim, dof, us
                                 name='predictor')
     predictor.summary()
 
-    x = tf.keras.layers.Dense(32, activation='selu')(predicted_state)
+    x = tf.keras.layers.Dense(64, activation='selu')(predicted_state)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Dense(32, activation='selu')(x)
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.Dense(16, activation='selu')(x)
     x = tf.keras.layers.BatchNormalization()(x)
@@ -529,7 +547,7 @@ def train_predictor(cp='ae_cp.reaching-real.roi_cond_autoencoder.20220526184017'
 #     tr.train(epochs=epochs, early_stop_patience=800, reduce_lr_patience=100)
 #     return tr
 
-def train_roi_estimator(predictor_cp='ae_cp.reaching-real.predictor.20220527174859'):
+def train_roi_estimator(predictor_cp='ae_cp.reaching-real.predictor.20220530232707'):
     train_ds = Dataset(dataset, joint_range_data=joint_range_data)
     train_ds.load(groups=train_groups, image_size=input_image_size)
     train_ds.preprocess(time_window_size)
@@ -553,7 +571,7 @@ from mpl_toolkits.mplot3d import axes3d, Axes3D
 
 class Predictor(trainer.TimeSequenceTrainer):
     def __init__(self, *args, time_window_size=20,**kargs):
-        super(Predictor, self).__init__(*args, **kargs)
+        super(Predictor, self).__init__(*args, time_window_size=time_window_size, **kargs)
 
     def get_data(self):
         return next(self.val_gen)
@@ -608,14 +626,13 @@ class Predictor(trainer.TimeSequenceTrainer):
         roi_scale = tf.repeat(roi_scale, batch_size)
         image_loss, joint_loss, loss = self.model.do_predict(x, y, roi_pos, roi_scale, training=False)
         return image_loss, joint_loss, loss
-        
-    def prediction_errors(self, sample, nx=10, ny=10, ns=5):
+
+    def prediction_errors(self, sample, nx=10, ny=10, ns=1, smin=0.6, smax=1.0):
         x = np.linspace(0.0, 1.0, nx, dtype='float32')
         y = np.linspace(0.0, 1.0, ny, dtype='float32')
-        s = np.linspace(0.6, 0.8, ns, dtype='float32')
+        s = np.linspace(smin, smax, ns, dtype='float32')
         x,y,s = np.meshgrid(x, y, s)
         z = np.array([self.prediction_error(sample, [x,y], s)[1] for x,y,s in zip(x.flatten(), y.flatten(), s.flatten())]).reshape((nx,ny,ns))
-
         idx = np.unravel_index(np.argmin(z), z.shape)
         xopt = x[idx]
         yopt = y[idx]
@@ -635,7 +652,7 @@ class Predictor(trainer.TimeSequenceTrainer):
         ax.plot_surface(x[:,:,sopt_idx], y[:,:,sopt_idx], z[:,:,sopt_idx], cmap='plasma')
 
         plt.show()
-        return x,y,z,imgs[0]
+        # return x,y,z,imgs[0]
 
     # evaluation of ROI estimator
     def predict_images(self, batch=None):
@@ -672,6 +689,19 @@ class Predictor(trainer.TimeSequenceTrainer):
         bboxes = roi_rect1((roi_params0[:,:2], roi_params0[:,2]))
         return pred_img, pred_joint, bboxes
 
+    def get_validation_sample(self, group_num=0, start_point=0):
+        res = []
+        d = self.val_ds.data
+        seq_len = len(d[group_num][1])
+        ishape = d[group_num][1][0].shape
+        jv_dim = d[group_num][0].shape[1]
+
+        batch_x_jv = np.expand_dims(d[group_num][0][start_point:start_point+self.time_window], axis=0)
+        batch_y_jv = np.expand_dims(d[group_num][0][start_point+self.time_window:start_point+self.time_window+self.val_gen.prediction_window_size], axis=0)
+        batch_x_img = np.expand_dims(np.array(d[group_num][1][start_point:start_point+self.time_window]), axis=0)
+        batch_y_img = np.expand_dims(np.array(d[group_num][1][start_point+self.time_window:start_point+self.time_window+self.val_gen.prediction_window_size]), axis=0)
+        return (batch_x_img, batch_x_jv), (batch_y_img, batch_y_jv)
+
     def predict_for_group(self, group_num=0):
         res = []
         d = self.val_ds.data
@@ -706,14 +736,16 @@ def prepare_for_test_roi_conditioned_ae(cp='ae_cp.reaching-real.roi_cond_autoenc
     tr = trainer.Trainer(model_ae, None, val_ds, checkpoint_file=cp)
     return tr
     
-def prepare_for_test_predictor(cp='ae_cp.reaching-real.predictor.20220527174859'):
+def prepare_for_test_predictor(cp='ae_cp.reaching-real.predictor.20220530232707'):
+    # 'ae_cp.reaching-real.predictor.20220527174859' # time_window=20, reconst. quality is good
     val_ds = Dataset(dataset, joint_range_data=joint_range_data)
     val_ds.load(groups=val_groups, image_size=input_image_size)
     val_ds.preprocess(time_window_size)
     tr = Predictor(predictor, None, val_ds, time_window_size=time_window_size, checkpoint_file=cp)
     return tr
 
-def prepare_for_test_roi_estimator(cp='ae_cp.reaching-real.roi_estimator.20220528172732'):
+def prepare_for_test_roi_estimator(cp='ae_cp.reaching-real.roi_estimator.20220531104056'):
+    # 'ae_cp.reaching-real.roi_estimator.20220528172732' # trained with predictor.20220527174859
     val_ds = Dataset(dataset, joint_range_data=joint_range_data)
     val_ds.load(groups=val_groups, image_size=input_image_size)
     val_ds.preprocess(time_window_size)
@@ -721,5 +753,6 @@ def prepare_for_test_roi_estimator(cp='ae_cp.reaching-real.roi_estimator.2022052
     return tr
 
 
-# if __name__ == "__main__":
-#     train_roi_estimator()
+#if __name__ == "__main__":
+#    train_predictor()
+#    train_roi_estimator()
