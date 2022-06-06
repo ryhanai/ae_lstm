@@ -26,8 +26,8 @@ train_groups=range(0,136)
 val_groups=range(136,156)
 joint_range_data=range(0,156)
 input_image_size=(80,160)
-#time_window_size=20
-time_window_size=10
+time_window_size=20
+#time_window_size=10
 latent_dim=64
 dof=7
 #batch_size=32
@@ -164,8 +164,8 @@ class PredictionModel(tf.keras.Model):
         y_images, y_joints = y
         y_images_tr = tf.transpose(y_images.astype('float32'), [1,0,2,3,4])
         y_joints_tr = tf.transpose(y_joints.astype('float32'), [1,0,2])
-        # y_images_tr = tf.transpose(y_images, [1,0,2,3,4])
-        # y_joints_tr = tf.transpose(y_joints, [1,0,2])
+        #y_images_tr = tf.transpose(y_images, [1,0,2,3,4])
+        #y_joints_tr = tf.transpose(y_joints, [1,0,2])
 
         for n in range(self.n_steps):
             pred_image, pred_joint = self((x_image, x_joint, roi_param), training=training) # Forward pass
@@ -281,8 +281,8 @@ class ROIEstimationModel(tf.keras.Model):
         roi_param = tf.concat([roi_pos, tf.expand_dims(roi_scale, 1)], 1)
 
         y_images, y_joints = y
-        # y_images_tr = tf.transpose(y_images.astype('float32'), [1,0,2,3,4])
-        # y_joints_tr = tf.transpose(y_joints.astype('float32'), [1,0,2])
+        #y_images_tr = tf.transpose(y_images.astype('float32'), [1,0,2,3,4])
+        #y_joints_tr = tf.transpose(y_joints.astype('float32'), [1,0,2])
         y_images_tr = tf.transpose(y_images, [1,0,2,3,4])
         y_joints_tr = tf.transpose(y_joints, [1,0,2])
 
@@ -483,9 +483,7 @@ def model_prediction(input_image_shape, time_window_size, image_vec_dim, dof, us
                                 name='predictor')
     predictor.summary()
 
-    x = tf.keras.layers.Dense(64, activation='selu')(predicted_state)
-    x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.Dense(32, activation='selu')(x)
+    x = tf.keras.layers.Dense(32, activation='selu')(predicted_state)
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.Dense(16, activation='selu')(x)
     x = tf.keras.layers.BatchNormalization()(x)
@@ -547,7 +545,8 @@ def train_predictor(cp='ae_cp.reaching-real.roi_cond_autoencoder.20220526184017'
 #     tr.train(epochs=epochs, early_stop_patience=800, reduce_lr_patience=100)
 #     return tr
 
-def train_roi_estimator(predictor_cp='ae_cp.reaching-real.predictor.20220530232707'):
+def train_roi_estimator(predictor_cp='ae_cp.reaching-real.predictor.20220531201107'):
+    # ae_cp.reaching-real.preadictor.20220530232707
     train_ds = Dataset(dataset, joint_range_data=joint_range_data)
     train_ds.load(groups=train_groups, image_size=input_image_size)
     train_ds.preprocess(time_window_size)
@@ -736,7 +735,8 @@ def prepare_for_test_roi_conditioned_ae(cp='ae_cp.reaching-real.roi_cond_autoenc
     tr = trainer.Trainer(model_ae, None, val_ds, checkpoint_file=cp)
     return tr
     
-def prepare_for_test_predictor(cp='ae_cp.reaching-real.predictor.20220530232707'):
+def prepare_for_test_predictor(cp='ae_cp.reaching-real.predictor.20220531201107'):
+    # 'ae_cp.reaching-real.predictor.20220530232707' # time_window=20, reconst. quality is not good, but estimated ROI is better
     # 'ae_cp.reaching-real.predictor.20220527174859' # time_window=20, reconst. quality is good
     val_ds = Dataset(dataset, joint_range_data=joint_range_data)
     val_ds.load(groups=val_groups, image_size=input_image_size)
@@ -744,7 +744,8 @@ def prepare_for_test_predictor(cp='ae_cp.reaching-real.predictor.20220530232707'
     tr = Predictor(predictor, None, val_ds, time_window_size=time_window_size, checkpoint_file=cp)
     return tr
 
-def prepare_for_test_roi_estimator(cp='ae_cp.reaching-real.roi_estimator.20220531104056'):
+def prepare_for_test_roi_estimator(cp='ae_cp.reaching-real.roi_estimator.20220601003053'):
+    # 'ae_cp.reaching-real.roi_estimator.20220531104056' # trained with predictor.20220530232707
     # 'ae_cp.reaching-real.roi_estimator.20220528172732' # trained with predictor.20220527174859
     val_ds = Dataset(dataset, joint_range_data=joint_range_data)
     val_ds.load(groups=val_groups, image_size=input_image_size)
