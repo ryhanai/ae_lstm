@@ -72,7 +72,7 @@ def model_lstm(time_window_size, image_vec_dim, dof, lstm_units=50, use_stacked_
     return lstm
 
 def deconv_block(x, out_channels):
-    x = tf.keras.layers.Conv2DTranspose(64, kernel_size=3, strides=1, padding='same', activation='selu')(x)
+    x = tf.keras.layers.Conv2DTranspose(out_channels, kernel_size=3, strides=1, padding='same', activation='selu')(x)
     x = tf.keras.layers.BatchNormalization()(x)
     return tf.keras.layers.UpSampling2D()(x)
 
