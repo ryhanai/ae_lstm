@@ -126,18 +126,20 @@ class StaticAttentionEstimatorModel(tf.keras.Model):
         return list(self.train_trackers.values()) + list(self.test_trackers.values())
 
 
-def conv_block(x, out_channels):
+def conv_block(x, out_channels, with_pooling=True):
     x = tf.keras.layers.Conv2D(out_channels, kernel_size=3, strides=1, padding='same', activation='selu')(x)
     x = tf.keras.layers.BatchNormalization()(x)
-    return tf.keras.layers.MaxPool2D(pool_size=2)(x)
+    if with_pooling:
+        x = tf.keras.layers.MaxPool2D(pool_size=2)(x)
+    return x
 
 def model_encoder(input_shape, name='encoder'):
     image_input = tf.keras.Input(shape=(input_shape))
     
-    x = conv_block(image_input, 8)
-    x = conv_block(x, 16)
+    x = conv_block(image_input, 16)
     x = conv_block(x, 32)
-    x = conv_block(x, 64)
+    x = conv_block(x, 64, with_pooling=False)
+    x = conv_block(x, 128, with_pooling=False)
     
     encoder = keras.Model([image_input], x, name=name)
     encoder.summary()
@@ -236,17 +238,6 @@ def model_static_attention_estimator(input_image_shape, noise_stddev=0.2, use_co
     x = tf.keras.layers.GaussianNoise(noise_stddev)(x)
     encoded_img = model_encoder(input_image_shape, name='encoder')(x)
 
-    # x = tf.keras.layers.Flatten()(encoded_img)
-    # x = tf.keras.layers.Dense(128, activation='selu')(x)
-
-    # channels = input_image_shape[2]
-    # nblocks = 4
-    # h = int(input_image_shape[0]/2**nblocks)
-    # w = int(input_image_shape[1]/2**nblocks)
-
-    # x = tf.keras.layers.Dense(h*w*64, activation='selu')(x)
-    # x = tf.keras.layers.BatchNormalization()(x)
-    # x = tf.keras.layers.Reshape(target_shape=(h,w,64))(x)
     
     decoded_img = model_decoder(input_image_shape, name='decoder')(encoded_img)
 
