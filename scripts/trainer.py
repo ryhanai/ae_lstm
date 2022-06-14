@@ -97,6 +97,37 @@ class Trainer:
         end = time.time()
         print('\ntotal time spent for training: {}[min]'.format((end-start)/60))
 
+    def train_prediction_task(self, epochs=100, early_stop_patience=100, reduce_lr_patience=50):
+        xs = []
+        ys = []
+        for d in self.train_ds.data:
+            for i in range(len(d[1])-3):
+                xs.append(d[1][i])
+                ys.append(d[1][i+3])
+        xs = np.array(xs)
+        ys = np.array(ys)
+        val_xs = []
+        val_ys = []
+        for d in self.val_ds.data:
+            for i in range(len(d[1])-3):
+                val_xs.append(d[1][i])
+                val_ys.append(d[1][i+3])
+        val_xs = np.array(val_xs)
+        val_ys = np.array(val_ys)
+
+        start = time.time()
+        callbacks = self.prepare_callbacks(early_stop_patience, reduce_lr_patience)
+
+        history = self.model.fit(xs, ys,
+                                     batch_size=self.batch_size,
+                                     epochs=epochs,
+                                     callbacks=callbacks,
+                                     validation_data=(val_xs,val_ys),
+                                     shuffle=True)
+
+        end = time.time()
+        print('\ntotal time spent for training: {}[min]'.format((end-start)/60))
+        
     def predict_images(self, with_noise=False, roi_param=[0.5,0.5,0.8]):
         xs = self.val_imgs[np.random.randint(0,1000,20)]
 

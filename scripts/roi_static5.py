@@ -130,11 +130,10 @@ class StaticAttentionEstimatorModel(tf.keras.Model):
         reconstruction_loss = tf.reduce_mean(tf.square(y_aug - y_decoded_img))
         prediction_loss = tf.reduce_mean(tf.square(y_aug - y_pred_img))
         area_loss = tf.reduce_mean(roi_params[:,2]*roi_params[:,3]) + tf.reduce_mean(roi_params[:,6]*roi_params[:,7])
-        shape_loss = tf.reduce_mean(tf.abs(tf.math.log(roi_params[:,2]) - tf.math.log(roi_params[:,3]))
-                                        + tf.abs(tf.math.log(roi_params[:,6]) - tf.math.log(roi_params[:,7])))
-        # shape_loss = tf.reduce_mean(tf.abs(roi_params[:,2] - roi_params[:,3])
-        #                                 + tf.abs(roi_params[:,6] - roi_params[:,7]))
-        loss = reconstruction_loss + prediction_loss + area_loss * 1e-3 + shape_loss * 1e-1
+        shape_loss = tf.reduce_mean(tf.abs(tf.math.log(roi_params[:,2]) - tf.math.log(2*roi_params[:,3]))
+                                        + tf.abs(tf.math.log(roi_params[:,6]) - tf.math.log(2*roi_params[:,7])))
+        #loss = reconstruction_loss + prediction_loss + area_loss * 1e-3 + shape_loss * 1e-2
+        loss = reconstruction_loss * 0. + prediction_loss + area_loss * 0. + shape_loss * 1e-3
         return reconstruction_loss, prediction_loss, area_loss, shape_loss, loss
 
     @property
@@ -195,7 +194,7 @@ def model_ae(input_image_shape, name='autoencoder'):
     image_input = tf.keras.Input(shape=(input_image_shape))
 
     encoded_img = model_encoder(input_image_shape)(image_input)
-    decoded_img = model_decoder(input_image_shape)(encoded_img)
+    decoded_img = model_decoder(input_shape=(20,40,128))(encoded_img)
 
     m = Model(inputs=[image_input], outputs=[decoded_img], name=name)
     m.summary()
@@ -216,7 +215,7 @@ def model_roi_estimator(input_image_shape, name='roi_estimator'):
     model.summary()
     return model
 
-def mask_images(args, filter_shape=(7,7), sigma=5.0):
+def mask_images(args, filter_shape=(5,5), sigma=4.0):
     img, r1, r2 = args
 
     def aux_fn(args):
@@ -247,25 +246,8 @@ def mask_images(args, filter_shape=(7,7), sigma=5.0):
 
     mask = tfa.image.gaussian_filter2d(mask, filter_shape=filter_shape, sigma=sigma)
 
-    return mask * img
+    return mask * img + 0.2 * img
 
-
-class ReParameterize(tf.keras.layers.Layer):
-    def __init__(self):
-        super().__init__()
-
-    def call(self, inputs, training=None):
-        return K.in_train_phase(self.reparameterize(inputs), inputs, training=training)
-
-    def reparameterize(self, args):
-        x = tf.random.normal(tf.shape(args), mean=args, stddev=0.5)
-        return tf.clip_by_value(x, 0., 1.)
-
-    def get_config(self):
-        config = {
-            }
-        base_config = super().get_config()
-        return dict(list(base_config.items()) + list(config.items()))
 
 def model_static_attention_estimator(input_image_shape, noise_stddev=0.2, use_color_augmentation=False, use_geometrical_augmentation=True, name='static_attention_estimator'):
     image_input = tf.keras.Input(shape=(input_image_shape))
@@ -284,30 +266,30 @@ def model_static_attention_estimator(input_image_shape, noise_stddev=0.2, use_co
     encoded_img_shape=(20,40,128)
     decoded_img = model_decoder(encoded_img_shape, name='decoder')(encoded_img)
 
-    # MLP -> roi_params
-    x = conv_block(encoded_img, 128)
-    x = conv_block(x, 128)
-    x = tf.keras.layers.Flatten()(x)
-    # x = tf.keras.layers.Dense(32, activation='selu')(x)
+    # attention map version
+    masked_img = tf.keras.layers.Conv2D(128, kernel_size=1, strides=1, padding='same', activation='sigmoid')(x)
+
+    # parametric ROI version
+    # x = conv_block(encoded_img, 128)
+    # x = conv_block(x, 128)
+    # x = tf.keras.layers.Flatten()(x)
+    # x = tf.keras.layers.Dense(16, activation='selu')(x)
     # x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.Dense(16, activation='selu')(x)
-    x = tf.keras.layers.BatchNormalization()(x)
-    roi_params = tf.keras.layers.Dense(8, activation='sigmoid')(x)
+    # roi_params = tf.keras.layers.Dense(8, activation='sigmoid')(x)
 
-    # roi_params = ReParameterize()(roi_params)
-    
-    c1 = tf.keras.layers.Lambda(lambda x:x[:,:2], output_shape=(2,))(roi_params)
-    s1 = tf.keras.layers.Lambda(lambda x:x[:,2:4], output_shape=(2,))(roi_params)
-    c2 = tf.keras.layers.Lambda(lambda x:x[:,4:6], output_shape=(2,))(roi_params)
-    s2 = tf.keras.layers.Lambda(lambda x:x[:,7:], output_shape=(2,))(roi_params)
-    r1 = tf.keras.layers.Lambda(roi_rect1)([c1, s1])
-    r2 = tf.keras.layers.Lambda(roi_rect1)([c2, s2])
-
-    masked_img = tf.keras.layers.Lambda(mask_images)([encoded_img, r1, r2])
+    # c1 = tf.keras.layers.Lambda(lambda x:x[:,:2], output_shape=(2,))(roi_params)
+    # s1 = tf.keras.layers.Lambda(lambda x:x[:,2:4], output_shape=(2,))(roi_params)
+    # c2 = tf.keras.layers.Lambda(lambda x:x[:,4:6], output_shape=(2,))(roi_params)
+    # s2 = tf.keras.layers.Lambda(lambda x:x[:,7:], output_shape=(2,))(roi_params)
+    # r1 = tf.keras.layers.Lambda(roi_rect1)([c1, s1])
+    # r2 = tf.keras.layers.Lambda(roi_rect1)([c2, s2])
+    # masked_img = tf.keras.layers.Lambda(mask_images)([encoded_img, r1, r2])
 
     predicted_img = model_decoder(encoded_img_shape, name='predictor')(masked_img) # predict the masked part of the image
     
     #m = Model(inputs=[image_input, input_noise], outputs=[encoded_img1, encoded_img2, roi_params], name=name)
+    m = StaticAttentionEstimatorModel(inputs=[image_input, input_noise],
+                                          outputs=[predicted_img, decoded_img, masked_img, roi_params], name='static_attention_estimator')
     m = StaticAttentionEstimatorModel(inputs=[image_input, input_noise],
                                           outputs=[predicted_img, decoded_img, masked_img, roi_params], name='static_attention_estimator')
     m.summary()
@@ -322,17 +304,13 @@ def train_sae():
     val_ds = Dataset(dataset, joint_range_data=joint_range_data)
     val_ds.load(groups=val_groups, image_size=input_image_size)
     tr = trainer.Trainer(model_sae, train_ds, val_ds)
-    tr.train(epochs=800, early_stop_patience=800, reduce_lr_patience=100)
+    # tr.train(epochs=800, early_stop_patience=800, reduce_lr_patience=100)
+    tr.train_prediction_task(epochs=800, early_stop_patience=800, reduce_lr_patience=100)
     return tr
 
-def prepare_for_test_sae(cp='ae_cp.reaching-real.static_attention_estimator.20220610223509'):
-    # 20220610194702
-    # 20220610184147
-    # 20220610164321 Line-like window
-    # 20220610144724 
-    # 20220610134732 variable aspect ratio
-    # 20220609212651 ROI spanned to the whole image
-    # 20220608191343
+def prepare_for_test_sae(cp='ae_cp.reaching-real.static_attention_estimator.20220614180752'):
+    # 20220614173114
+    # 20220614154818
     val_ds = Dataset(dataset, joint_range_data=joint_range_data)
     val_ds.load(groups=val_groups, image_size=input_image_size)
     tr = trainer.Trainer(model_sae, None, val_ds, checkpoint_file=cp)
@@ -348,10 +326,13 @@ def test(tr):
     ss2 = y_pred[3][:,6:8]
     a = draw_bounding_boxes(y_pred[0], roi_rect1((cs, ss)))
     b = draw_bounding_boxes(a, roi_rect1((cs2, ss2)))
+    visualize_ds(b)
+    visualize_ds(xs)
+    plt.show()
     return xs, b
 
-# if __name__ == "__main__":
-#     train_sae()
+#if __name__ == "__main__":
+#    train_sae()
 
 # val_ds = Dataset(dataset, joint_range_data=joint_range_data)
 # val_ds.load(groups=val_groups, image_size=input_image_size)
