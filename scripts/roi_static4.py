@@ -203,6 +203,26 @@ def model_roi_estimator(input_image_shape, name='roi_estimator'):
     model.summary()
     return model
 
+def spatial_soft_argmax(features):
+    # Assume features is of size [N, H, W, C] (batch_size, height, width, channels).
+    # Transpose it to [N, C, H, W], then reshape to [N * C, H * W] to compute softmax
+    # jointly over the image dimensions. 
+    features = tf.reshape(tf.transpose(features, [0, 3, 1, 2]), [N * C, H * W])
+    softmax = tf.nn.softmax(features)
+    # Reshape and transpose back to original format.
+    softmax = tf.transpose(tf.reshape(softmax, [N, C, H, W]), [0, 2, 3, 1])
+
+    # Assume that image_coords is a tensor of size [H, W, 2] representing the image
+    # coordinates of each pixel.
+    # Convert softmax to shape [N, H, W, C, 1]
+    softmax = tf.expand_dims(softmax, -1)
+    # Convert image coords to shape [H, W, 1, 2]
+    image_coords = tf.expand_dims(image_coords, 2)
+    # Multiply (with broadcasting) and reduce over image dimensions to get the result
+    # of shape [N, C, 2]
+    ss_argmax = tf.reduce_sum(softmax * image_coords, reduction_indices=[1, 2])
+    return ss_argmax
+
 def mask_images(args, filter_shape=(5,5), sigma=4.0):
     img, r1, r2 = args
 
@@ -236,7 +256,46 @@ def mask_images(args, filter_shape=(5,5), sigma=4.0):
 
     return mask * img + 0.2 * img
 
+def detect_rect_region(x, filter_size=(3,3), alpha=0.0):
+    a = np.average(np.average(x, axis=1), axis=1)
+    a = np.expand_dims(a, (1,2))
+    a = np.tile(a, (1,20,40,1))
+    x = x - a - alpha
+    W = tf.ones((filter_size[0],filter_size[1],1,1))
+    scores = tf.nn.conv2d(x, W, strides=[1,1,1,1], padding='SAME')
+    return scores
 
+# def detect_rect_region(x, filter_size=(3,3), alpha=0.0):
+#     # a = np.average(np.average(x, axis=1), axis=1)
+#     # a = np.expand_dims(a, (1,2))
+#     # a = np.tile(a, (1,20,40,1))
+#     x = x - np.sqrt(filter_size[0]*filter_size[1])
+#     W = tf.ones((filter_size[0],filter_size[1],1,1))
+#     scores = tf.nn.conv2d(x, W, strides=[1,1,1,1], padding='SAME')
+#     return scores
+
+kernel_sizes = [[3,3],[3,5],[3,7],[5,3],[5,5],[5,7],[7,3],[7,5],[7,7]]
+def idx2rect(idx):
+    n, h, w, ch = idx
+    c = [h/20., w/40.]
+    s = [kernel_sizes[n][0]/20., kernel_sizes[n][1]/40.]
+    return c, s
+
+def apply_filters(attention_map, alpha=1.5):
+    score = np.array([detect_rect_region(attention_map, kernel_sz, alpha) for kernel_sz in kernel_sizes])
+    cs = []
+    ss = []
+    for img_idx in range(20):
+        idx = np.unravel_index(np.argmax(score[:,img_idx]), score[:,img_idx].shape)
+        c,s = idx2rect(idx)
+        cs.append(c)
+        ss.append(s)
+
+    b = draw_bounding_boxes(xs, roi_rect1((np.array(cs), np.array(ss))))
+    visualize_ds(attention_map)
+    visualize_ds(b)
+    plt.show()
+    
 def model_static_attention_estimator(input_image_shape, noise_stddev=0.2, use_color_augmentation=False, use_geometrical_augmentation=True, name='static_attention_estimator'):
     image_input = tf.keras.Input(shape=(input_image_shape))
     input_noise = tf.keras.Input(shape=(2,))
@@ -283,14 +342,17 @@ def prepare_for_test_sae(cp='ae_cp.reaching-real.static_attention_estimator.2022
     tr = trainer.Trainer(model_sae, None, val_ds, checkpoint_file=cp)
     return tr
 
-def test(tr):
+def test(tr, visualize=True):
     xs = tr.val_imgs[np.random.randint(0,1000,20)]
     noise = tf.zeros((xs.shape[0],2))
     y_pred = tr.model.predict((xs,noise))
-    visualize_ds(xs)
-    visualize_ds(y_pred[0])
-    visualize_ds(np.repeat(y_pred[1], 3, axis=-1))
-    plt.show()
+    if visualize:
+        visualize_ds(xs)
+        visualize_ds(y_pred[0])
+        visualize_ds(np.repeat(y_pred[1], 3, axis=-1))
+        plt.show()
+    else:
+        return xs, y_pred
 
 #if __name__ == "__main__":
 #    train_sae()
