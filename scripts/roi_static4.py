@@ -274,14 +274,23 @@ def detect_rect_region(x, filter_size=(3,3), alpha=0.0):
 #     scores = tf.nn.conv2d(x, W, strides=[1,1,1,1], padding='SAME')
 #     return scores
 
-kernel_sizes = [[3,3],[3,5],[3,7],[5,3],[5,5],[5,7],[7,3],[7,5],[7,7]]
+
+kxs,kys = np.meshgrid(range(3,13),range(3,11))
+kernel_sizes = list(zip(kxs.ravel(), kys.ravel()))
+
 def idx2rect(idx):
     n, h, w, ch = idx
     c = [h/20., w/40.]
     s = [kernel_sizes[n][0]/20., kernel_sizes[n][1]/40.]
     return c, s
 
-def apply_filters(attention_map, alpha=1.5):
+def apply_filters(attention_map, alpha=0.0, beta=4.0, use_softmax=True):
+    if use_softmax:
+        a = attention_map.reshape(20, 20*40)
+        a2 = tf.nn.softmax(a*beta)
+        a3 = np.reshape(a2, (20,20,40,1))
+        attention_map = a3
+    
     score = np.array([detect_rect_region(attention_map, kernel_sz, alpha) for kernel_sz in kernel_sizes])
     cs = []
     ss = []

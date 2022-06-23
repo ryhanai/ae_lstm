@@ -8,15 +8,19 @@ import tensorflow.keras.backend as K
 import tensorflow_addons as tfa
 import numpy as np
 
-def conv_block(x, out_channels):
+def conv_block(x, out_channels, with_pooling=True):
     x = tf.keras.layers.Conv2D(out_channels, kernel_size=3, strides=1, padding='same', activation='selu')(x)
     x = tf.keras.layers.BatchNormalization()(x)
-    return tf.keras.layers.MaxPool2D(pool_size=2)(x)
+    if with_pooling:
+        x = tf.keras.layers.MaxPool2D(pool_size=2)(x)
+    return x
 
-def time_distributed_conv_block(x, out_channels):
+def time_distributed_conv_block(x, out_channels, with_pooling=True):
     x = tf.keras.layers.TimeDistributed(tf.keras.layers.Conv2D(out_channels, kernel_size=3, strides=1, padding='same', activation='selu'))(x)
     x = tf.keras.layers.TimeDistributed(tf.keras.layers.BatchNormalization())(x)
-    return tf.keras.layers.TimeDistributed(tf.keras.layers.MaxPool2D(pool_size=2))(x)
+    if with_pooling:
+        x = tf.keras.layers.TimeDistributed(tf.keras.layers.MaxPool2D(pool_size=2))(x)
+    return x
 
 def model_encoder(input_shape, out_dim, noise_stddev=0.2, name='encoder'):
     image_input = tf.keras.Input(shape=(input_shape))
@@ -71,10 +75,12 @@ def model_lstm(time_window_size, image_vec_dim, dof, lstm_units=50, use_stacked_
     lstm.summary()
     return lstm
 
-def deconv_block(x, out_channels):
+def deconv_block(x, out_channels, with_upsampling=True):
     x = tf.keras.layers.Conv2DTranspose(out_channels, kernel_size=3, strides=1, padding='same', activation='selu')(x)
     x = tf.keras.layers.BatchNormalization()(x)
-    return tf.keras.layers.UpSampling2D()(x)
+    if with_upsampling:
+        x = tf.keras.layers.UpSampling2D()(x)
+    return x
 
 def model_decoder(output_shape, image_vec_dim, name='decoder'):
     channels = output_shape[2]
@@ -466,3 +472,4 @@ def model_ae_lstm_aug(input_image_shape, time_window_size, latent_dim, dof, join
                             name='ae_lstm_aug')
     model.summary()
     return model
+
