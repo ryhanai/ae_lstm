@@ -14,7 +14,8 @@ from core.utils import *
 #from core.model import *
 from model import *
 import trainer
-
+import generator
+import attention_map2roi
 
 import matplotlib.ticker as ptick
 
@@ -430,11 +431,96 @@ class Predictor(trainer.TimeSequenceTrainer):
             results.append(imgs[0].numpy())
 
         create_anim_gif_from_images(results, out_filename='estimated_roi_g{:05d}.gif'.format(group_num))
-    
-def prepare_for_test(cp='ae_cp.reaching-real.weighted_feature_prediction.20220623173710'):
+
+
+class Tester(trainer.Trainer):
+
+    def __init__(self, model,
+                     val_dataset,
+                     time_window_size=time_window_size,
+                     batch_size=32,
+                     runs_directory=None,
+                     checkpoint_file=None):
+
+        super(Tester, self).__init__(model,
+                                     None,
+                                     val_dataset,
+                                     batch_size=batch_size,
+                                     runs_directory=runs_directory,
+                                     checkpoint_file=checkpoint_file)
+
+        self.time_window = time_window_size
+
+        if val_dataset:
+            self.val_gen = generator.DPLGenerator().flow(val_dataset.get(),
+                                                             None,
+                                                             batch_size=self.batch_size,
+                                                             time_window_size=self.time_window,
+                                                             prediction_window_size=5,
+                                                             add_roi=False)
+            self.val_data_loaded = True
+
+
+    def predict_images(self, random_shift=True, return_data=False):
+        x,y = next(self.val_gen)
+        rois = []
+
+        if random_shift:
+            noise = tf.zeros(shape=(x[0].shape[0], 2))
+            y_pred = self.model.predict(x+(noise,))
+        else:
+            y_pred = self.model.predict(x)
+
+        predicted_images, predicted_joints, attention_map = y_pred
+
+        # visualize_ds(x[0][:,-1,:,:,:])
+        # visualize_ds(predicted_images)
+
+        # a = attention_map[:,-1]
+        # a /= (np.max(a) - np.min(a))
+        # visualize_ds(a)
+        # plt.show()
+        if return_data:
+            return x, y_pred
+
+    def predict_for_group(self, group_num=0, random_shift=True):
+        res = []
+        d = self.val_ds.data
+        seq_len = len(d[group_num][1])
+        ishape = d[group_num][1][0].shape
+        jv_dim = d[group_num][0].shape[1]
+        batch_size = 1
+        batch_x_imgs = np.empty((batch_size, self.time_window) + ishape)
+        batch_x_jvs = np.empty((batch_size, self.time_window, jv_dim))
+        batch_y_img = np.empty((batch_size,) + ishape)
+        batch_y_jv = np.empty((batch_size, jv_dim))
+
+        results = []
+        
+        for seq_num in range(seq_len-self.time_window):
+            print(seq_num)
+            batch_x_jvs[:] = d[group_num][0][seq_num:seq_num+self.time_window]
+            batch_y_jv[:] = d[group_num][0][seq_num+self.time_window]
+            batch_x_imgs[:] = d[group_num][1][seq_num:seq_num+self.time_window]
+            batch_y_img[:] = d[group_num][1][seq_num+self.time_window]
+
+            if random_shift:
+                noise = tf.zeros(shape=(batch_size, 2))
+                y_pred = self.model.predict((batch_x_imgs, batch_x_jvs, noise))
+            else:
+                y_pred = self.model.predict((batch_x_imgs, batch_x_jvs))
+
+            predicted_images, predicted_joints, attention_maps = y_pred
+            b = attention_map2roi.apply_filters(batch_x_imgs[:,-1], attention_maps[:,-1], visualize_result=False, return_result=True)
+            results.append(b[0].numpy())
+
+        create_anim_gif_from_images(results, out_filename='estimated_roi_g{:05d}.gif'.format(group_num))
+
+        
+def prepare_for_test(cp='ae_cp.reaching-real.weighted_feature_prediction.20220623184031'):
     val_ds = Dataset(dataset, joint_range_data=joint_range_data)
     val_ds.load(groups=val_groups, image_size=input_image_size)
-    tr = trainer.Trainer(wf_predictor, None, val_ds, checkpoint_file=cp)
+    tr = Tester(wf_predictor, val_ds, checkpoint_file=cp)
     return tr
     
 def prepare_for_test_predictor(cp='ae_cp.reaching-real.predictor.20220531201107'):
@@ -457,5 +543,5 @@ def prepare_for_test_roi_estimator(cp='ae_cp.reaching-real.roi_estimator.2022060
 
 
 #if __name__ == "__main__":
-#    train_predictor()
+#    train()
 #    train_roi_estimator()

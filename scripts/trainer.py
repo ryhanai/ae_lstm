@@ -15,7 +15,7 @@ class Trainer:
     def __init__(self, model,
                      train_dataset,
                      val_dataset,
-                     load_weight=False,
+                     #load_weight=False,
                      batch_size=32,
                      runs_directory=None,
                      checkpoint_file=None):
@@ -149,7 +149,7 @@ class TimeSequenceTrainer(Trainer):
     def __init__(self, model,
                      train_dataset,
                      val_dataset,
-                     load_weight=False,
+                     #load_weight=False,
                      time_window_size=20,
                      batch_size=32,
                      runs_directory=None,
@@ -158,7 +158,7 @@ class TimeSequenceTrainer(Trainer):
         super(TimeSequenceTrainer, self).__init__(model,
                                                       train_dataset,
                                                       val_dataset,
-                                                      load_weight=load_weight,
+                                                      #load_weight=load_weight,
                                                       batch_size=batch_size,
                                                       runs_directory=runs_directory,
                                                       checkpoint_file=checkpoint_file)
