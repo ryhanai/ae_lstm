@@ -25,6 +25,7 @@ os.environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
 dataset = 'reaching-real'
 train_groups=range(0,136)
 val_groups=range(136,156)
+destructor_groups=range(1000,1029)
 joint_range_data=range(0,156)
 input_image_size=(80,160)
 time_window_size=20
@@ -473,13 +474,13 @@ class Tester(trainer.Trainer):
 
         predicted_images, predicted_joints, attention_map = y_pred
 
-        # visualize_ds(x[0][:,-1,:,:,:])
-        # visualize_ds(predicted_images)
+        visualize_ds(x[0][:,-1,:,:,:])
+        visualize_ds(predicted_images)
 
-        # a = attention_map[:,-1]
-        # a /= (np.max(a) - np.min(a))
-        # visualize_ds(a)
-        # plt.show()
+        a = attention_map[:,-1]
+        a /= (np.max(a) - np.min(a))
+        visualize_ds(a)
+        plt.show()
         if return_data:
             return x, y_pred
 
@@ -512,7 +513,9 @@ class Tester(trainer.Trainer):
 
             predicted_images, predicted_joints, attention_maps = y_pred
             b = attention_map2roi.apply_filters(batch_x_imgs[:,-1], attention_maps[:,-1], visualize_result=False, return_result=True)
-            results.append(b[0].numpy())
+            resized_attention_map = tf.image.grayscale_to_rgb(tf.image.resize(attention_maps[0,-1], b[0].shape[:2]))
+            res = tf.concat([b[0], resized_attention_map], axis=0)
+            results.append(res.numpy())
 
         create_anim_gif_from_images(results, out_filename='estimated_roi_g{:05d}.gif'.format(group_num))
 
@@ -522,23 +525,11 @@ def prepare_for_test(cp='ae_cp.reaching-real.weighted_feature_prediction.2022062
     val_ds.load(groups=val_groups, image_size=input_image_size)
     tr = Tester(wf_predictor, val_ds, checkpoint_file=cp)
     return tr
-    
-def prepare_for_test_predictor(cp='ae_cp.reaching-real.predictor.20220531201107'):
-    # 'ae_cp.reaching-real.predictor.20220530232707' # time_window=20, reconst. quality is not good, but estimated ROI is better
-    # 'ae_cp.reaching-real.predictor.20220527174859' # time_window=20, reconst. quality is good
-    val_ds = Dataset(dataset, joint_range_data=joint_range_data)
-    val_ds.load(groups=val_groups, image_size=input_image_size)
-    val_ds.preprocess(time_window_size)
-    tr = Predictor(predictor, None, val_ds, time_window_size=time_window_size, checkpoint_file=cp)
-    return tr
 
-def prepare_for_test_roi_estimator(cp='ae_cp.reaching-real.roi_estimator.20220601003053'):
-    # 'ae_cp.reaching-real.roi_estimator.20220531104056' # trained with predictor.20220530232707
-    # 'ae_cp.reaching-real.roi_estimator.20220528172732' # trained with predictor.20220527174859
+def prepare_for_test_destructor(cp='ae_cp.reaching-real.weighted_feature_prediction.20220623184031'):
     val_ds = Dataset(dataset, joint_range_data=joint_range_data)
-    val_ds.load(groups=val_groups, image_size=input_image_size)
-    val_ds.preprocess(time_window_size)
-    tr = Predictor(roi_estimator, None, val_ds, time_window_size=time_window_size, checkpoint_file=cp)
+    val_ds.load(groups=destructor_groups, image_size=input_image_size)
+    tr = Tester(wf_predictor, val_ds, checkpoint_file=cp)
     return tr
 
 
