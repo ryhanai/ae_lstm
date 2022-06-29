@@ -221,8 +221,12 @@ def model_weighted_feature_prediction(input_image_shape, time_window_size, image
     attention_map = tf.keras.layers.TimeDistributed(tf.keras.layers.Conv2D(1, kernel_size=1, strides=1, padding='same', activation='sigmoid'))(image_feature)
     weighted_img = attention_map * image_feature
 
+    # reduce the dimension of the feaature map
+    x = time_distributed_conv_block(weighted_img, 128)
+    x = time_distributed_conv_block(x, 128)
+    
     # prediction of time development
-    x = tf.keras.layers.TimeDistributed(tf.keras.layers.Flatten())(weighted_img)
+    x = tf.keras.layers.TimeDistributed(tf.keras.layers.Flatten())(x)
     current_ivec = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(image_vec_dim, activation='selu'))(x)
     
     #joint_input_with_noise = tf.keras.kayers.TimeDistributed(tf.keras.layers.GaussianNoise(joint_noise))(joint_input)
@@ -233,21 +237,21 @@ def model_weighted_feature_prediction(input_image_shape, time_window_size, image
     # nblocks = 4
     # h = int(output_shape[0]/2**nblocks)
     # w = int(output_shape[1]/2**nblocks)
+
     channels = 128
-    h = 20
-    w = 40
-    encoded_img_shape=(h,w,channels)
+    h = 5
+    w = 10
 
     x = tf.keras.layers.Dense(h*w*channels, activation='selu')(predicted_ivec)
-    x = tf.keras.layers.Reshape(target_shape=encoded_img_shape)(x)
+    x = tf.keras.layers.Reshape(target_shape=(h,w,channels))(x)
     x = tf.keras.layers.BatchNormalization()(x)
 
+    x = deconv_block(x, 128)
+    x = deconv_block(x, 128)
+    
     # decode to the next frame
-    predicted_img = model_decoder(encoded_img_shape)(x)
+    predicted_img = model_decoder((h*4,w*4,channels))(x)
 
-    # m = WeightedFeaturePredictionModel(inputs=[image_input, joint_input, noise_input],
-    #                                        outputs=[predicted_img, predicted_joint_positions, attention_map],
-    #                                        name='weighted_feature_prediction')
     m = WeightedFeaturePredictorModel(inputs=[image_input, joint_input, noise_input],
                                           outputs=[predicted_img, predicted_joint_positions, attention_map],
                                           name='weighted_feature_prediction')
@@ -520,19 +524,20 @@ class Tester(trainer.Trainer):
         create_anim_gif_from_images(results, out_filename='estimated_roi_g{:05d}.gif'.format(group_num))
 
         
-def prepare_for_test(cp='ae_cp.reaching-real.weighted_feature_prediction.20220623184031'):
+def prepare_for_test(cp='ae_cp.reaching-real.weighted_feature_prediction.20220628160446'):
+    # ae_cp.reaching-real.weighted_feature_prediction.20220623184031
     val_ds = Dataset(dataset, joint_range_data=joint_range_data)
     val_ds.load(groups=val_groups, image_size=input_image_size)
     tr = Tester(wf_predictor, val_ds, checkpoint_file=cp)
     return tr
 
-def prepare_for_test_destructor(cp='ae_cp.reaching-real.weighted_feature_prediction.20220623184031'):
+def prepare_for_test_destructor(cp='ae_cp.reaching-real.weighted_feature_prediction.20220628160446'):
+    # ae_cp.reaching-real.weighted_feature_prediction.20220623184031
     val_ds = Dataset(dataset, joint_range_data=joint_range_data)
     val_ds.load(groups=destructor_groups, image_size=input_image_size)
     tr = Tester(wf_predictor, val_ds, checkpoint_file=cp)
     return tr
 
 
-#if __name__ == "__main__":
+# if __name__ == "__main__":
 #    train()
-#    train_roi_estimator()
