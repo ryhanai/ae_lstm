@@ -10,20 +10,21 @@ import SIM_POURING as S
 
 
 parser = argparse.ArgumentParser(description='')
-parser.add_argument('-s', '--scene', type=str, default='reaching_scene.yaml')
+parser.add_argument('-s', '--scene', type=str, default='pouring_scene.yaml')
 parser.add_argument('-b', '--baseline', action='store_true')
 args = parser.parse_args()
 
 
 message('scene = {}'.format(args.scene))
-    
 
 env = S.SIM_ROI(scene_file=args.scene, is_vr=False)
-control = S.VRController_ROI(False, use3Dmouse=False)
+S.p.setCollisionFilterPair(env.ur5, env.cabinet, 23, 0, 0)
+
+control = S.VRController_ROI(False, use3Dmouse=True)
 cam = env.getCamera('camera1')
 
 #S.p.setTimeStep(1./240)
-realSim = S.p.setRealTimeSimulation(True)
+#realSim = S.p.setRealTimeSimulation(True)
 
 def normalize_joint_position(q):
     return tr.val_ds.normalize_joint_position(q)
@@ -244,12 +245,20 @@ def teach():
             reset()
             continue
 
-        v = 0.008
+        v = 0.02
         vx = vy = math.sqrt(v*v / 2.)
         vtheta = 3
 
         if control.use3Dmouse:
-            env.moveEF([v * (-control.last_msg.y), v * control.last_msg.x, v * control.last_msg.z])
+            #print("L: ", control.last_msg.linear)
+            #print("A: ", control.last_msg.angular)
+            #env.moveEF([v * (-control.last_msg.y), v * control.last_msg.x, v * control.last_msg.z])
+
+            l = control.last_msg.linear
+            a = control.last_msg.angular
+            w = 0.02
+            a = S.p.getQuaternionFromEuler([w * a.x, w * a.y, w * a.z])
+            env.moveEF([v * l.x, v * l.y, v * l.z], a)
         else:
             if control.KTL:
                 env.moveEF([-v, 0, 0])
@@ -278,3 +287,5 @@ def teach():
 
                 
                 
+# env.writeFrames(cam.getCameraConfig())
+# $ convert -delay 20 -loop 0 *.jpg image_frames.gif

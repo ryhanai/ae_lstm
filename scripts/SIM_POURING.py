@@ -134,13 +134,17 @@ class SIM_ROI(SIM):
     def moveArm(self, q):
         self.setJointValues(self.ur5, self.armJoints, q)
         
-    def moveEF(self, d):
+    def moveEF(self, dl, da=None):
         s = p.getLinkState(self.ur5, 7)
-        pos = s[0]
-        ori = s[1]
-        goalPos = np.array(pos) + d
-        goalPos[2] = 0.835
-        goalOri = ori
+        # pos = s[0]
+        # ori = s[1]
+        # goalPos = np.array(pos) + dl
+        # goalPos[2] = 0.835
+        # goalOri = ori
+        if (da is None):
+            da = unit_quat()
+        
+        goalPos, goalOri = self.multiplyTransforms(s, (dl, da))
         q = p.calculateInverseKinematics(self.ur5, 7, goalPos, goalOri)[:6]
         self.setJointValues(self.ur5, self.armJoints, q)
 
@@ -217,6 +221,7 @@ class SIM_ROI(SIM):
 
 
 import rospy
+from geometry_msgs.msg import Twist
 from geometry_msgs.msg import Vector3
         
 class VRController_ROI(VRController):
@@ -225,9 +230,9 @@ class VRController_ROI(VRController):
         self.use3Dmouse = use3Dmouse
 
         if use3Dmouse:
-            self.last_msg = Vector3()
+            self.last_msg = Twist()
             rospy.init_node("spacenav_receiver")
-            rospy.Subscriber("/spacenav/offset", Vector3, self.spacenav_callback)
+            rospy.Subscriber("/spacenav/twist", Twist, self.spacenav_callback)
 
     def spacenav_callback(self, msg):
         self.last_msg = msg
@@ -509,8 +514,9 @@ def create_sphere(radius, mass=STATIC_MASS, color=BLUE, **kwargs):
     collision_id, visual_id = create_shape(get_sphere_geometry(radius), color=color, **kwargs)
     return create_body(collision_id, visual_id, mass=mass)
 
-def fill_water(num_droplets = 30, pos=np.array([-0.14, -0.63, 1.02]), radius=0.0025):
+def fill_water(num_droplets = 80, pos=np.array([-0.14, -0.63, 0.9]), radius=0.002):
     # [-0.14, -0.63, 1.02]
+    # [0.27, -0.65, 0.9] glass
     droplets = [create_sphere(radius, mass=0.01) for _ in range(num_droplets)] # kg
     
     cup_thickness = 0.001
