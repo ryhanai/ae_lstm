@@ -14,8 +14,17 @@ parser.add_argument('-s', '--scene', type=str, default='pouring_scene.yaml')
 parser.add_argument('-b', '--baseline', action='store_true')
 args = parser.parse_args()
 
+# if args.baseline:
+#     message('loading baseline model')
+#     import ae_lstm_v3 as mdl # baseline w/o ROI, raeching
+# else:
+#     message('loading ROI model')
+#     import roi_ae_lstm_v15 as mdl
+#     #import roi_ae_lstm_v16 as mdl
 
 message('scene = {}'.format(args.scene))
+
+#tr = mdl.prepare_for_test()
 
 env = S.SIM_ROI(scene_file=args.scene, is_vr=False)
 S.p.setCollisionFilterPair(env.ur5, env.cabinet, 23, 0, 0)
@@ -46,7 +55,7 @@ def sync(steps=100):
         S.p.stepSimulation()
 
 
-# sm = StateManager(mdl.time_window_size)
+#sm = StateManager(mdl.time_window_size)
 roi_hist = []
 predicted_images = []
 
@@ -62,7 +71,7 @@ def reset(target_pose=None):
 
         # 'reaching_2ways_scene'
         while True:
-            target_pos = np.append([-0.4, -0.75] + [0.75, 0.25] * np.random.random(2), 0.79)
+            target_pos = np.append([0.0, -0.65] + [0.2, 0.2] * np.random.random(2), 0.79)
             target_ori = S.p.getQuaternionFromEuler([0,0,0])
             if not (-0.15 < target_pos[0] and target_pos[0] < 0.15 and target_pos[1] > -0.65):
                 break
@@ -70,23 +79,27 @@ def reset(target_pose=None):
         target_pos, target_ori = target_pose
     env.setObjectPosition(target_pos, target_ori)
     sync()
+    
+    env.fill_water()
+    sync()
+    sync()
 
     img0 = captureRGB()
     js0 = env.getJointState()
-    js0 = normalize_joint_position(js0)
-    sm.initializeHistory(img0, js0)
+    #js0 = normalize_joint_position(js0)
+    #sm.initializeHistory(img0, js0)
     roi_hist = []
     env.clearFrames()
     predicted_images = []
 
 def captureRGB():
     img = cam.getImg()[2][:,:,:3]
-    img = cv2.resize(img, swap(mdl.input_image_size))
+    #img = cv2.resize(img, swap(mdl.input_image_size))
     return img / 255.
 
 def captureSegImg():
     img = cam.getImg()[4]
-    img = cv2.resize(img, swap(mdl.input_image_size))
+    #img = cv2.resize(img, swap(mdl.input_image_size))
     return img / 255.
 
 def getEFPos():
@@ -97,7 +110,7 @@ def generate_eval_goal_acc_samples(n_samples):
     samples = []
     np.random.seed(0)
     for i in range(n_samples):
-        target_pos = np.append([0.1, -0.75] + [0.2, 0.3] * np.random.random(2), 0.77)
+        target_pos = np.append([0.1, -0.65] + [0.1, 0.1] * np.random.random(2), 0.77)
         samples.append(target_pos)
     return samples
 
@@ -212,10 +225,6 @@ def visualize_predicted_vectors(groups=range(10)):
     plt.show()
 
 
-def task_completed():
-    p_tcp = env.getTCPXYZ()
-    p_target = np.array(S.p.getBasePositionAndOrientation(env.target)[0])
-    return scipy.linalg.norm(p_tcp[:2]-p_target[:2], 2) < 0.02
     
 def teach():
     #S.p.setTimeStep(1./240)
@@ -226,39 +235,32 @@ def teach():
         control.update()
         env.saveFrame(img)
 
-        # finish task?
-        if task_completed():
-            env.writeFrames(cam.getCameraConfig())
-            reset()
-            continue
-
-        # if control.B1:  #VR
-        #     gripperOri = [1.75,0,1.57]
-        #     gripperOriQ = calc.get_QfE(gripperOri)
-        #     joy_pos = control.position
-        #     val = calc.get_IK(env.ur5, 8,joy_pos, gripperOriQ)
-        #     invJoints = [1,2,3,4,5,6,13,15,17,18,20,22]
-        #     env.setJointValues(env.ur5,invJoints,val)
         if control.BLK:
             break
         if control.B2:
             reset()
             continue
 
-        v = 0.02
+        v = 0.03
         vx = vy = math.sqrt(v*v / 2.)
         vtheta = 3
 
         if control.use3Dmouse:
+            if control.last_joy_msg.buttons[0] == 1: # left button is down, task_completed
+                env.writeFrames(cam.getCameraConfig())
+                reset()
+                continue
+
             #print("L: ", control.last_msg.linear)
             #print("A: ", control.last_msg.angular)
             #env.moveEF([v * (-control.last_msg.y), v * control.last_msg.x, v * control.last_msg.z])
 
             l = control.last_msg.linear
             a = control.last_msg.angular
-            w = 0.02
+            w = 0.05
             a = S.p.getQuaternionFromEuler([w * a.x, w * a.y, w * a.z])
             env.moveEF([v * l.x, v * l.y, v * l.z], a)
+                
         else:
             if control.KTL:
                 env.moveEF([-v, 0, 0])
