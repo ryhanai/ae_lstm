@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 
 from core.utils import *
 import SIM_KITTING as S
+import SpaceNavUI
 
 
 parser = argparse.ArgumentParser(description='')
@@ -19,12 +20,15 @@ message('scene = {}'.format(args.scene))
 #tr = mdl.prepare_for_test()
 
 env = S.SIM(scene_file=args.scene)
-S.p.setCollisionFilterPair(env.robot, env.cabinet, 23, 0, 0)
+S.p.changeDynamics(env.robot, 23, collisionMargin=0.0)
+S.p.changeDynamics(env.target, 0, collisionMargin=-0.01)
+S.p.changeDynamics(env.target, 1, collisionMargin=-0.01)
+
+#S.p.setCollisionFilterPair(env.robot, env.cabinet, 23, 0, 0)
 cam = env.getCamera('camera1')
 rec = S.RECORDER(cam.getCameraConfig())
 
-# from SpaceNavUI import *
-# control = SpaceNavUI()
+ui = SpaceNavUI.SpaceNavUI()
 
 def eventLoop():
     while True:
@@ -36,28 +40,18 @@ def teach():
 
     while True:
         img = cam.getImg()
-        control.update()
-        env.saveFrame(img)
+        #control.update()
+        js = env.getJointState()
+        rec.saveFrame(img, js, env)
 
-        v = 0.03
-        vx = vy = math.sqrt(v*v / 2.)
-        vtheta = 3
+        if ui.getEventSignal() == SpaceNavUI.UI_EV_RESET:
+            rec.writeFrames()
+            reset()
+            continue
 
-        if control.use3Dmouse:
-            if control.last_joy_msg.buttons[0] == 1: # left button is down, task_completed
-                env.writeFrames(cam.getCameraConfig())
-                reset()
-                continue
-
-            #print("L: ", control.last_msg.linear)
-            #print("A: ", control.last_msg.angular)
-            #env.moveEF([v * (-control.last_msg.y), v * control.last_msg.x, v * control.last_msg.z])
-
-            l = control.last_msg.linear
-            a = control.last_msg.angular
-            w = 0.05
-            a = S.p.getQuaternionFromEuler([w * a.x, w * a.y, w * a.z])
-            env.moveEF([v * l.x, v * l.y, v * l.z], a)
+        v,w = ui.getControlSignal()
+        w = S.p.getQuaternionFromEuler(w)
+        env.moveEF(v, w)
 
 def toCart(jv, unnormalize=True):
     jv = unnormalize_joint_position(jv)
@@ -86,8 +80,8 @@ def reset(target_pose=None):
         # target_ori = S.p.getQuaternionFromEuler([0,0,0])
 
         # 'reaching_2ways_scene'
-        target_pos = np.append([0.0, -0.60] + [0.2, 0.2] * np.random.random(2), 0.79)
-        target_ori = S.p.getQuaternionFromEuler(np.append([0,0], -0.6*np.random.random(1)))
+        target_pos = np.append([0.0, -0.72] + [0.05, 0.05] * np.random.random(2), 0.79)
+        target_ori = S.p.getQuaternionFromEuler(np.append([0,0], -1.0 + -0.5*np.random.random(1)))
     else:
         target_pos, target_ori = target_pose
     env.setObjectPosition(target_pos, target_ori)

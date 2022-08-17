@@ -1,7 +1,8 @@
 <?xml version="1.0"?>
 <robot name="cabinet">
     <material name="green">
-        <color rgba="0.1 1.0 0.1 1.0"/>
+      <color rgba="0.0 0.5 0.4 1.0"/>
+    <!--   <color rgba="0.1 1.0 0.1 1.0"/> -->
     </material>
     <link name="link_cab">
         <visual>

@@ -3,10 +3,11 @@ import pybullet_data
 import numpy as np
 import pandas as pd
 import yaml, os
+import matplotlib.pyplot as plt
 
 
 class CAMERA:
-    def __init__(self, width=300, height=300, fov=50, near=0.2, far=2.0, shadow=True):
+    def __init__(self, width=300, height=300, fov=50, near=0.1, far=2.0, shadow=True):
         self.cameraConfig = {}
         self.cameraConfig['shadow'] = shadow
         self.setProjectionMatrix(width, height, fov, near, far)
@@ -44,18 +45,21 @@ class RECORDER:
     def __init__(self, cameraConfig):
         self.cameraConfig = cameraConfig
         self.groupNo = 1
-        self.clearFrames()
+        self.reset()
 
+    def reset(self):
+        self.previous_js = None
+        self.clearFrames()
+        
     def clearFrames(self):
         self.frameNo = 0
         self.frames = []
 
-    def saveFrame(self, img, save_threshold=5e-2):
-        js = self.getJointState()
-        if np.linalg.norm(js - self.previous_js, ord=1) > save_threshold:
+    def saveFrame(self, img, js, env, save_threshold=5e-2):
+        if type(self.previous_js) != np.ndarray or np.linalg.norm(js - self.previous_js, ord=1) > save_threshold:
             print('save:[{}]: {}'.format(self.frameNo, js))
             d = {'frameNo':self.frameNo, 'jointPosition':js, 'image':img}
-            for k,id in self.objects.items():
+            for k,id in env.objects.items():
                 d[k] = p.getBasePositionAndOrientation(id)
             self.frames.append(d)
             self.frameNo += 1
@@ -83,6 +87,7 @@ class RECORDER:
         pd.to_pickle((self.cameraConfig, self.frames), os.path.join(group_dir, 'sim_states.pkl'))
         print('done')
         self.groupNo += 1
+        self.reset()
 
 class Environment:
     def __init__(self):
@@ -96,12 +101,12 @@ class SIM(Environment):
         self.gravity = p.setGravity(0, 0, -9.81)
 
         # p.setAdditionalSearchPath(pybullet_data.getDataPath())
-        p.setAdditionalSearchPath("/Users/ryo/Program/moonshot/pybullet_ur5")
+        p.setAdditionalSearchPath("/home/ryo/Program/moonshot/ae_lstm")
         plane = p.loadURDF("specification/urdf/plane/plane.urdf")
 
         cab_pos = [0,0,0]
         cab_ori = p.getQuaternionFromEuler([0,0,0])
-        self.cabinet = p.loadURDF("specification/urdf/objects/cabinet.urdf", cab_pos, cab_ori, useFixedBase=True)
+        #self.cabinet = p.loadURDF("specification/urdf/objects/cabinet.urdf", cab_pos, cab_ori, useFixedBase=True)
 
         ur5_pos = [0,0,0.795]
         ur5_ori = p.getQuaternionFromEuler([0,0,-1.57])
@@ -232,7 +237,7 @@ class SIM(Environment):
     def resetRobot(self):
         self.setArmJointPositions(self.armInitialValues)
         self.setGripperJointPositions(0.7)
-        self.previous_js = self.getJointState()
+
 
 class UI:
     def __init__(self):

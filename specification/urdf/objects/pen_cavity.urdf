@@ -8,10 +8,11 @@
         <mesh filename="../../meshes/objects/pen_cavity_out.obj" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
-    <collision>
+    <collision concave="yes">
       <origin xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="../../meshes/objects/pen_cavity_in_out_vhacd.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../../meshes/objects/pen_cavity_in_out.obj" scale="0.001 0.001 0.001"/>
+        <!-- <mesh filename="../../meshes/objects/pen_cavity_in_out_vhacd.obj" scale="0.001 0.001 0.001"/> -->
       </geometry>
     </collision>
   </link>
