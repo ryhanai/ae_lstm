@@ -12,6 +12,9 @@ cameras:
     capture_size: [320, 480]
 
 robot:
+  robot_model: "specification/urdf/arm_and_gripper/xxx.urdf"
+  arm_joints: [1,2,3,4,5,6]
+  gripper_joints: [13,15,17,18,20,22]
   base_position:
     xyz: [0,0,0.795]
     rpy: [0,0,-1.57]

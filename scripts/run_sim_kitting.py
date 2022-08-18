@@ -7,15 +7,15 @@ import matplotlib.pyplot as plt
 
 from core.utils import *
 import SIM_KITTING as S
-import SpaceNavUI
-
 
 parser = argparse.ArgumentParser(description='')
 parser.add_argument('-s', '--scene', type=str, default='kitting_scene.yaml')
 parser.add_argument('-b', '--baseline', action='store_true')
+parser.add_argument('-u', '--ui', type=str, default='none')
 args = parser.parse_args()
 
 message('scene = {}'.format(args.scene))
+message('ui = {}'.format(args.ui))
 
 #tr = mdl.prepare_for_test()
 
@@ -28,7 +28,9 @@ S.p.changeDynamics(env.target, 1, collisionMargin=-0.01)
 cam = env.getCamera('camera1')
 rec = S.RECORDER(cam.getCameraConfig())
 
-ui = SpaceNavUI.SpaceNavUI()
+if args.ui == '3dmouse':
+    import SpaceNavUI
+    ui = SpaceNavUI.SpaceNavUI()
 
 def eventLoop():
     while True:
@@ -87,7 +89,7 @@ def reset(target_pose=None):
     env.setObjectPosition(target_pos, target_ori)
     sync()
     
-    #img0 = captureRGB()
+    img0 = captureRGB()
     js0 = env.getJointState()
     #js0 = normalize_joint_position(js0)
     #sm.initializeHistory(img0, js0)

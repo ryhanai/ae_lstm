@@ -1,10 +1,10 @@
 import pybullet as p
-import pybullet_data
 import numpy as np
 import pandas as pd
 import yaml, os
 import matplotlib.pyplot as plt
 
+import forceGL3D
 
 class CAMERA:
     def __init__(self, width=300, height=300, fov=50, near=0.1, far=2.0, shadow=True):
@@ -40,6 +40,28 @@ class CAMERA:
 
     def getCameraConfig(self):
         return self.cameraConfig
+
+class ForceCamera(CAMERA):
+    def __init__(self):
+        self.window_height = 240
+        self.window_width = 320
+        self.frc = forceGL3D.forceGL(self.window_width, self.window_height)
+        # self.frc.setForceLimits()
+        # copy values from the simulator
+        self.frc.computeViewMatrix()
+        self.frc.computeProjectionMatrixFOV()
+
+    def getImg(self):
+        self.frc.setForces()
+
+    def setViewMatrix(self, eyePosition, targetPosition, upVector):
+        super().setViewMatrix(eyePosition, targetPosition, upVector)
+        self.frc.computeViewMatrix(eyePosition, targetPosition, upVector)
+ 
+    def setProjectionMatrix(self, width, height, fov, near, far):
+        super().setProjectionMatrix(width, height, fov, near, far)
+        self.frc.computeProjectionMatrixFOV(fov, width / height, near, far)
+
 
 class RECORDER:
     def __init__(self, cameraConfig):
@@ -96,38 +118,23 @@ class Environment:
 class SIM(Environment):
     def __init__(self, scene_file):
         super().__init__()
+        self.rootdir = "../"
         self.connection = p.connect(p.GUI)
         p.resetSimulation()
         self.gravity = p.setGravity(0, 0, -9.81)
-
         # p.setAdditionalSearchPath(pybullet_data.getDataPath())
-        p.setAdditionalSearchPath("/home/ryo/Program/moonshot/ae_lstm")
+        p.setAdditionalSearchPath(self.rootdir)
         plane = p.loadURDF("specification/urdf/plane/plane.urdf")
-
-        cab_pos = [0,0,0]
-        cab_ori = p.getQuaternionFromEuler([0,0,0])
-        #self.cabinet = p.loadURDF("specification/urdf/objects/cabinet.urdf", cab_pos, cab_ori, useFixedBase=True)
-
-        ur5_pos = [0,0,0.795]
-        ur5_ori = p.getQuaternionFromEuler([0,0,-1.57])
-        self.robot = p.loadURDF("specification/urdf/arm_and_gripper/xxx.urdf", ur5_pos, ur5_ori, useFixedBase=True)        
-        self.armJoints = [1,2,3,4,5,6]
-        self.gripperJoints = [13,15,17,18,20,22]
-
-        p.setAdditionalSearchPath("../")
         self.loadScene(scene_file)
 
     def loadScene(self, scene_file):
-        with open(os.path.join('../specification/scenes', scene_file)) as f:
+        with open(os.path.join(self.rootdir, 'specification/scenes', scene_file)) as f:
             scene_desc = yaml.safe_load(f)
 
         self.scene_desc = scene_desc
         self.task = scene_desc['task']
         self.shadow = scene_desc['rendering']['shadow']
-
-        pose = scene_desc['robot']['base_position']
-        p.resetBasePositionAndOrientation(self.robot, pose['xyz'], p.getQuaternionFromEuler(pose['rpy']))
-        
+       
         self.cameras = {}
         for cam_desc in scene_desc['cameras']:
             name = cam_desc['name']
@@ -137,17 +144,20 @@ class SIM(Environment):
             cam = CAMERA(capture_size[1], capture_size[0], fov=fov, shadow=self.shadow)
             cam.setViewMatrix(*view_params)
             self.cameras[name] = cam
-        
+
+        robot_desc = scene_desc['robot']
+        base_pose = robot_desc['base_position']
+        self.robot = p.loadURDF(robot_desc['robot_model'], base_pose['xyz'], p.getQuaternionFromEuler(base_pose['rpy']), useFixedBase=True)
+        self.armJoints = robot_desc['arm_joints']
+        self.gripperJoints = robot_desc['gripper_joints']
         self.armInitialValues = scene_desc['robot']['initial_arm_pose']
         self.gripperInitialValues = scene_desc['robot']['initial_gripper_pose']
-        
+
         d = scene_desc['environment'][0]
         self.cabinet = p.loadURDF(d['object'], d['xyz'], p.getQuaternionFromEuler(d['rpy']), useFixedBase=True, useMaximalCoordinates=True)
-
         self.objects = {}
         for d in scene_desc['objects']:
             self.objects[d['name']] = p.loadURDF(d['object'], d['xyz'], p.getQuaternionFromEuler(d['rpy']), useFixedBase=True, useMaximalCoordinates=True)
-            
         self.target = self.objects.get('target')
             
         self.resetRobot()
