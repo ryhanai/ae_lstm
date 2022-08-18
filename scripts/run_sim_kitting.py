@@ -26,6 +26,7 @@ S.p.changeDynamics(env.target, 1, collisionMargin=-0.01)
 
 #S.p.setCollisionFilterPair(env.robot, env.cabinet, 23, 0, 0)
 cam = env.getCamera('camera1')
+fcam = env.getCamera('force_camera1')
 rec = S.RECORDER(cam.getCameraConfig())
 
 if args.ui == '3dmouse':
@@ -42,9 +43,10 @@ def teach():
 
     while True:
         img = cam.getImg()
+        fimg = fcam.getImg()
         #control.update()
         js = env.getJointState()
-        rec.saveFrame(img, js, env)
+        rec.saveFrame(img, fimg, js, env)
 
         if ui.getEventSignal() == SpaceNavUI.UI_EV_RESET:
             rec.writeFrames()

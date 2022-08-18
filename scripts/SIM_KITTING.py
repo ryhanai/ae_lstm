@@ -6,12 +6,27 @@ import matplotlib.pyplot as plt
 
 import forceGL3D
 
-class CAMERA:
-    def __init__(self, width=300, height=300, fov=50, near=0.1, far=2.0, shadow=True):
+class VirtualCamera:
+    def __init__(self, fov=50, near=0.1, far=2.0):
         self.cameraConfig = {}
-        self.cameraConfig['shadow'] = shadow
-        self.setProjectionMatrix(width, height, fov, near, far)
+        self.setProjectionMatrix(320, 240, fov, near, far)        
         self.setViewMatrix([0.0, -1.0, 2.0], [0.0, -0.9, 0.8], [0, 1, -1])
+
+    def setViewMatrixParam(self, eyePosition, targetPosition, upVector):
+        self.cameraConfig['eyePosition'] = eyePosition
+        self.cameraConfig['targetPosition'] = targetPosition
+        self.cameraConfig['upVector'] = upVector
+
+    def setProjectionMatrixParam(self, width, height, fov, near, far):
+        self.cameraConfig['imageSize'] = (width,height)
+        self.cameraConfig['fov'] = fov
+        self.cameraConfig['near'] = near
+        self.cameraConfig['far'] = far
+
+class Camera(VirtualCamera):
+    def __init__(self, fov=50, near=0.1, far=2.0, shadow=True):
+        super().__init__(fov, near, far)
+        self.cameraConfig['shadow'] = shadow
  
     def getImg(self):
         width,height = self.cameraConfig['imageSize']
@@ -25,41 +40,45 @@ class CAMERA:
                                 renderer=p.ER_BULLET_HARDWARE_OPENGL if shadow == True else p.ER_TINY_RENDERER)
 
     def setViewMatrix(self, eyePosition, targetPosition, upVector):
-        self.cameraConfig['eyePosition'] = eyePosition
-        self.cameraConfig['targetPosition'] = targetPosition
-        self.cameraConfig['upVector'] = upVector
+        self.setViewMatrixParam(eyePosition, targetPosition, upVector)
         self.view_matrix = p.computeViewMatrix(eyePosition, targetPosition, upVector)
 
     def setProjectionMatrix(self, width, height, fov, near, far):
-        self.cameraConfig['imageSize'] = (width,height)
-        self.cameraConfig['fov'] = fov
-        self.cameraConfig['near'] = near
-        self.cameraConfig['far'] = far
+        self.setProjectionMatrixParam(width, height, fov, near, far)
         aspect = width / height
         self.projection_matrix = p.computeProjectionMatrixFOV(fov, aspect, near, far)
 
     def getCameraConfig(self):
         return self.cameraConfig
 
-class ForceCamera(CAMERA):
-    def __init__(self):
-        self.window_height = 240
-        self.window_width = 320
-        self.frc = forceGL3D.forceGL(self.window_width, self.window_height)
-        # self.frc.setForceLimits()
-        # copy values from the simulator
-        self.frc.computeViewMatrix()
-        self.frc.computeProjectionMatrixFOV()
+class ForceCamera(VirtualCamera):
+    def __init__(self, fov=50, near=0.1, far=2.0):
+        super().__init__(fov, near, far)
 
     def getImg(self):
-        self.frc.setForces()
-
+        cp = p.getContactPoints()
+        pos = []
+        nor = []
+        f = []
+        for i in cp:
+            pos.append(i[6])
+            nor.append(i[7])
+            f.append(i[9])
+        self.pos = pos
+        self.nor = nor
+        self.f = f
+        self.frc.setForces(nor, pos, [1,1,1])
+        self.frc.draw()
+        self.frc.EventLoopGLUT()
+        return self.frc.getImg()
+        
     def setViewMatrix(self, eyePosition, targetPosition, upVector):
-        super().setViewMatrix(eyePosition, targetPosition, upVector)
+        self.setViewMatrixParam(eyePosition, targetPosition, upVector)
         self.frc.computeViewMatrix(eyePosition, targetPosition, upVector)
  
     def setProjectionMatrix(self, width, height, fov, near, far):
-        super().setProjectionMatrix(width, height, fov, near, far)
+        self.setProjectionMatrixParam(width, height, fov, near, far)
+        self.frc = forceGL3D.forceGL(width, height)        
         self.frc.computeProjectionMatrixFOV(fov, width / height, near, far)
 
 
@@ -77,10 +96,10 @@ class RECORDER:
         self.frameNo = 0
         self.frames = []
 
-    def saveFrame(self, img, js, env, save_threshold=5e-2):
+    def saveFrame(self, img, fimg, js, env, save_threshold=5e-2):
         if type(self.previous_js) != np.ndarray or np.linalg.norm(js - self.previous_js, ord=1) > save_threshold:
             print('save:[{}]: {}'.format(self.frameNo, js))
-            d = {'frameNo':self.frameNo, 'jointPosition':js, 'image':img}
+            d = {'frameNo':self.frameNo, 'jointPosition':js, 'image':img, 'force_image':fimg}
             for k,id in env.objects.items():
                 d[k] = p.getBasePositionAndOrientation(id)
             self.frames.append(d)
@@ -99,6 +118,8 @@ class RECORDER:
             frameNo = frame['frameNo']
             w,h,rgb,depth,seg = frame['image']
             plt.imsave(os.path.join(group_dir, 'image_frame{:05d}.jpg'.format(frameNo)), rgb)
+            fimg = frame['force_image']
+            plt.imsave(os.path.join(group_dir, 'fimage_frame{:05d}.jpg'.format(frameNo)), fimg)
             # plt.imsave(os.path.join(group_dir, 'image_frame{:05d}_depth.jpg'.format(frameNo)), depth, cmap=plt.cm.gray)
             # plt.imsave(os.path.join(group_dir, 'image_frame{:05d}_seg.jpg'.format(frameNo)), seg)
 
@@ -106,6 +127,7 @@ class RECORDER:
 
         for f in self.frames:
             f.pop('image')
+            f.pop('force_image')
         pd.to_pickle((self.cameraConfig, self.frames), os.path.join(group_dir, 'sim_states.pkl'))
         print('done')
         self.groupNo += 1
@@ -141,7 +163,11 @@ class SIM(Environment):
             view_params = cam_desc['view_params']
             fov = cam_desc['fov']
             capture_size = cam_desc['capture_size']
-            cam = CAMERA(capture_size[1], capture_size[0], fov=fov, shadow=self.shadow)
+            print(cam_desc)
+            if cam_desc['type'] == 'rgb':
+                cam = Camera(fov=fov, shadow=self.shadow)
+            if cam_desc['type'] == 'force':
+                cam = ForceCamera(fov=fov)
             cam.setViewMatrix(*view_params)
             self.cameras[name] = cam
 

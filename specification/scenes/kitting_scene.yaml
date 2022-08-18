@@ -7,9 +7,16 @@ rendering:
 cameras:
   -
     name: camera1
+    type: rgb
     view_params: [[0,-0.95,1.1], [0,-0.45,0.6], [0,0,1]]
     fov: 50
     capture_size: [320, 480]
+  -
+    name: force_camera1
+    type: force
+    view_params: [[0,-0.95,1.1], [0,-0.45,0.6], [0,0,1]]
+    fov: 50
+    capture_size: [240, 320]
 
 robot:
   robot_model: "specification/urdf/arm_and_gripper/xxx.urdf"

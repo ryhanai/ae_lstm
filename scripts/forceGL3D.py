@@ -3,6 +3,7 @@ from OpenGL.GLUT import *
 from OpenGL.GLU import *
 import numpy as np
 import math
+from PIL import Image
 #
 class forceGL:
     def __init__(self, w, h):
@@ -39,6 +40,13 @@ class forceGL:
         data = glReadPixels(0, 0, self.w, self.h, GL_RGBA, GL_UNSIGNED_BYTE,outputType=0 ) 
         data = np.flipud(data).copy(order='C')
         return data
+
+    def getImg(self):
+        pixels = glReadPixels(0, 0, self.w, self.h, GL_RGBA, GL_UNSIGNED_BYTE)
+        img = Image.frombytes('RGBA', (self.w,self.h), pixels)
+        img = img.transpose(Image.FLIP_TOP_BOTTOM)
+        img = np.array(img)[:,:,:3]
+        return img
     
     def computeViewMatrix(self, cameraPos, target, up):
         self.cameraPos = cameraPos
