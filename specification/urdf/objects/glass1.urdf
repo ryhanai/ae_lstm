@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<robot name="glass1">
+  <material name="glass">
+    <color rgba="0.1 0.1 0.1 0.3"/>
+  </material>
+
+  <link name="root">
+    <visual>
+      <origin xyz="0.0 0.0 0.0"/>
+      <material name="glass"/>
+      <geometry>
+        <mesh filename="../../meshes/objects/glass1.obj" scale="0.04 0.04 0.04"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="../../meshes/objects/glass1_vhacd.obj" scale="0.04 0.04 0.04"/>
+      </geometry>
+    </collision>
+  </link>
+
+</robot>

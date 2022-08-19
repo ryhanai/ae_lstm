@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<robot name="pen_cavity">
+
+  <link name="pen_cavity_out">
+    <visual>
+      <origin xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="../../meshes/objects/pen_cavity_out.obj" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+    <collision concave="yes">
+      <origin xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="../../meshes/objects/pen_cavity_in_out.obj" scale="0.001 0.001 0.001"/>
+        <!-- <mesh filename="../../meshes/objects/pen_cavity_in_out_vhacd.obj" scale="0.001 0.001 0.001"/> -->
+      </geometry>
+    </collision>
+  </link>
+  <link name="pen_cavity_in">
+    <visual>
+      <origin xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="../../meshes/objects/pen_cavity_in.obj" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+  </link>
+  <link name="pen_slot">
+    <visual>
+      <origin xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="../../meshes/objects/pen_slot.obj" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+  </link>
+  <joint name="j1" type="fixed">
+    <parent link="pen_cavity_out"/>
+    <child link="pen_cavity_in"/>
+  </joint>
+  <joint name="j2" type="fixed">
+    <parent link="pen_cavity_out"/>
+    <child link="pen_slot"/>
+  </joint>
+  
+</robot>
+
