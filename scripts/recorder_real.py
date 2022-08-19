@@ -12,6 +12,7 @@ import numpy as np
 import message_filters
 import os
 import pandas as pd
+from tf.transformations import *
 
 bridge = CvBridge()
 groupNo = 1
@@ -133,19 +134,31 @@ listener = tf2_ros.TransformListener(tfBuffer)
 
 pub = rospy.Publisher('/jog_frame', JogFrame, queue_size=1)
 
-initial_position = np.array([-0.0778662, 0.36922, -0.187572])
+# initial position for 'red cube reacing task'
+# initial_position = np.array([-0.0778662, 0.36922, -0.187572])
+
+# initial position for 'kitting task'
+initial_position = np.array([-0.097, 0.5, -0.147])
+initial_rotation = np.array([-0.720, 0.012, -0.011, 0.694])
 moving_to_initial_position = False
 
 rate = rospy.Rate(15.0)
 
 while not rospy.is_shutdown():
+    trans = tfBuffer.lookup_transform('base_link', 'tool0', rospy.Time.now(), rospy.Duration(0.2))
+    # p = trans.transform.translation
+    # print('translation = ', np.array([p.x, p.y, p.z]))
+    # p = trans.transform.rotation
+    # print('rotation = ', np.array([p.x, p.y, p.z, p.w]))
+
     if moving_to_initial_position:
         try:
             trans = tfBuffer.lookup_transform('base_link', 'tool0', rospy.Time.now(), rospy.Duration(0.2))
             p = trans.transform.translation
             p = np.array([p.x, p.y, p.z])
             print(p)
-            dp = initial_position - p
+            next_subgoal = initial_position
+            dp = next_subgoal - p
             if np.linalg.norm(dp) < 1e-2: # reached goal
                 print('reached the initial position')
                 moving_to_initial_position = False
