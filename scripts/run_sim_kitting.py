@@ -57,6 +57,20 @@ def teach():
         w = S.p.getQuaternionFromEuler(w)
         env.moveEF(v, w)
 
+def teach_procedurally():
+    pass
+
+# Goal State
+# pen (robot, 23)
+((-0.017692740719823713, -0.576889217947411, 0.9643172426373876),
+ (0.20246230441044286,
+  0.48696186786075113,
+  -0.44897447561643516,
+  0.7213175963383458),
+# target 
+((0.0357585360256706, -0.7082623626571669, 0.79),
+ (0.0, 0.0, -0.49191971406401885, 0.8706405658566421))
+
 def toCart(jv, unnormalize=True):
     jv = unnormalize_joint_position(jv)
     env.moveArm(jv[:6])
