@@ -5,7 +5,8 @@ from geometry_msgs.msg import Twist
 from geometry_msgs.msg import Vector3
 from sensor_msgs.msg import Joy
 
-UI_EV_RESET = 1
+UI_EV_LEFT_CLICK = 0
+UI_EV_RIGHT_CLICK = 1
 
 class SpaceNavUI(UI):
     def __init__(self):
@@ -28,12 +29,14 @@ class SpaceNavUI(UI):
 
     def getEventSignal(self):
         if self.last_joy_msg.buttons[0] == 1: # left button is down, task_completed
-            return UI_EV_RESET
+            return UI_EV_LEFT_CLICK
+        if self.last_joy_msg.buttons[1] == 1:
+            return UI_EV_RIGHT_CLICK
 
             #print("L: ", control.last_msg.linear)
             #print("A: ", control.last_msg.angular)
             #env.moveEF([v * (-control.last_msg.y), v * control.last_msg.x, v * control.last_msg.z])
-            
+
     def spacenav_callback(self, msg):
         self.last_msg = msg
         # rospy.loginfo("%s", msg)

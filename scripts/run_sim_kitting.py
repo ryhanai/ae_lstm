@@ -21,14 +21,14 @@ message('ui = {}'.format(args.ui))
 #tr = mdl.prepare_for_test()
 
 env = S.SIM(scene_file=args.scene)
-S.p.changeDynamics(env.robot, 23, collisionMargin=0.0)
-S.p.changeDynamics(env.target, 0, collisionMargin=-0.01)
-S.p.changeDynamics(env.target, 1, collisionMargin=-0.01)
+#S.p.changeDynamics(env.robot, 23, collisionMargin=0.0)
+S.p.changeDynamics(env.target, 0, collisionMargin=-0.03)
+S.p.changeDynamics(env.target, 1, collisionMargin=-0.03)
 
 #S.p.setCollisionFilterPair(env.robot, env.cabinet, 23, 0, 0)
 cam = env.getCamera('camera1')
 fcam = env.getCamera('force_camera1')
-rec = S.RECORDER(cam.getCameraConfig())
+rec = S.RECORDER_KITTING(cam.getCameraConfig())
 
 if args.ui == '3dmouse':
     import SpaceNavUI
@@ -49,7 +49,10 @@ def teach():
         js = env.getJointState()
         rec.saveFrame(img, fimg, js, env)
 
-        if ui.getEventSignal() == SpaceNavUI.UI_EV_RESET:
+        if ui.getEventSignal() == SpaceNavUI.UI_EV_LEFT_CLICK:
+            release_object()
+
+        if ui.getEventSignal() == SpaceNavUI.UI_EV_RIGHT_CLICK:
             rec.writeFrames()
             reset()
             continue
@@ -59,7 +62,18 @@ def teach():
         env.moveEF(v, w)
 
 def teach_procedurally():
-    pass
+    S.p.setRealTimeSimulation(True)
+
+    follow_trajectory(generate_trajectory(tf_target_approach))
+    follow_trajectory(generate_trajectory(tf_target_fitted))
+    release_object()
+    start = time.time()
+    while time.time() - start < 1.0:
+        img = cam.getImg()
+        fimg = fcam.getImg()
+        js = env.getJointState()
+        rec.saveFrame(img, fimg, js, env, save_threshold=0.)
+    rec.writeFrames()
 
 from scipy.spatial.transform import Slerp
 from scipy.spatial.transform import Rotation as R
@@ -81,26 +95,32 @@ tf_target = ((0.03975343991738431, -0.6731654428797486, 0.79),
 # approach waypoint relative to tf_target
 #tf_target_approach = ([-0.13951663,  0.01909836,  0.17542246],
 #                    [-0.02402769,  0.52414153, -0.01857238,  0.85108954])
-tf_target_approach = ([-0.13951663,  0.01709836,  0.19042246],
+tf_target_approach = ([-0.14751663,  0.01109836,  0.19042246],
                     [-0.02402769,  0.52414153, -0.01857238,  0.85108954])
-tf_target_fitted = ([-0.13951663,  0.01709836,  0.17042246],
+tf_target_fitted = ([-0.13951663,  0.01109836,  0.17042246],
                     [-0.02402769,  0.52414153, -0.01857238,  0.85108954])
 
+# tf_hand_pen: <origin rpy="0 -1.0 0" xyz="0.19 0 0.05"/>
+
 def generate_trajectory(tf_target_approach):
-    tf_cur = S.p.getLinkState(env.robot, 23)[0:2]
+    tf_cur = S.p.getLinkState(env.robot, 11)[0:2]
     tf_target = S.p.getBasePositionAndOrientation(env.target)
     m_approach = np.dot(transform2homogeneousM(tf_target), transform2homogeneousM(tf_target_approach))
     tf_approach = homogeneousM2transform(m_approach)
     return interpolate_cartesian(tf_cur, tf_approach)
 
 def goto_waypoint(tf_wp):
-    q = S.p.calculateInverseKinematics(env.robot, 23, tf_wp[0], tf_wp[1])[:6]
+    q = S.p.calculateInverseKinematics(env.robot, 11, tf_wp[0], tf_wp[1])[:6]
     env.setJointValues(env.robot, env.armJoints, q)
 
 def follow_trajectory(traj):
     for tf_wp in traj:
         goto_waypoint(tf_wp)
         sync()
+        img = cam.getImg()
+        fimg = fcam.getImg()
+        js = env.getJointState()
+        rec.saveFrame(img, fimg, js, env)      
 
 def interpolate_cartesian(tf_cur, tf_goal):
     duration = 3.0
@@ -140,8 +160,34 @@ def sync(steps=100):
 roi_hist = []
 predicted_images = []
 
-def reset(target_pose=None):
+def grasp_object(name='pen', tf_hand_obj=([0.19, 0, 0.05], tf.transformations.quaternion_from_euler(0, -1, 0))):
+    # tf_hand = S.p.getLinkState(env.robot, 11)[0:2] # gripper_base_joint
+    # m_hand = transform2homogeneousM(tf_hand)
+    # m_hand_pen = transform2homogeneousM(tf_hand_obj)
+    # m_pen = np.dot(m_hand, m_hand_pen)
+    # tf_pen = homogeneousM2transform(m_pen)
+    # env.setObjectPosition('pen', tf_pen[0], tf_pen[1])
+    # sync()
 
+    cstr = S.p.createConstraint(
+        parentBodyUniqueId=env.robot,
+        parentLinkIndex=11,
+        childBodyUniqueId=env.objects[name],
+        childLinkIndex=-1,
+        jointType=S.p.JOINT_FIXED,
+        jointAxis=[0,0,1],
+        parentFramePosition=tf_hand_obj[0],
+        childFramePosition=[0, 0, 0],
+        parentFrameOrientation=tf_hand_obj[1]
+    )
+    return cstr
+
+def release_object():
+    cstr_ids = [S.p.getConstraintUniqueId(n) for n in range(S.p.getNumConstraints())]
+    for cstr_id in cstr_ids:
+        S.p.removeConstraint(cstr_id)
+
+def reset(target_pose=None):
     env.resetRobot()
     if target_pose == None:
         # 'reaching_scene'
@@ -153,9 +199,14 @@ def reset(target_pose=None):
         target_ori = S.p.getQuaternionFromEuler(np.append([0,0], -1.0 + -0.5*np.random.random(1)))
     else:
         target_pos, target_ori = target_pose
-    env.setObjectPosition(target_pos, target_ori)
+    env.setObjectPosition('target', target_pos, target_ori)
+
+    env.setGripperJointPositions(0.0)
+    grasp_object('pen')
     sync()
-    
+    env.setGripperJointPositions(0.7)
+    sync()
+
     img0 = captureRGB()
     js0 = env.getJointState()
     #js0 = normalize_joint_position(js0)
