@@ -133,6 +133,28 @@ class RECORDER:
         self.groupNo += 1
         self.reset()
 
+class RECORDER_KITTING(RECORDER):
+    def __init__(self, cameraConfig):
+        super().__init__(cameraConfig)
+
+    def reset(self):
+        self.previous_s = None
+        super().reset()
+
+    def saveFrame(self, img, fimg, js, env, save_threshold=5e-2):
+        tf_pen = p.getBasePositionAndOrientation(env.objects['pen'])
+        s = np.array(tf_pen[0])
+
+        if type(self.previous_js) != np.ndarray or np.linalg.norm(js - self.previous_js, ord=1) + np.linalg.norm(s - self.previous_s, ord=2) > save_threshold:
+            print('save:[{}]: {}'.format(self.frameNo, js))
+            d = {'frameNo':self.frameNo, 'jointPosition':js, 'image':img, 'force_image':fimg}
+            for k,id in env.objects.items():
+                d[k] = p.getBasePositionAndOrientation(id)
+            self.frames.append(d)
+            self.frameNo += 1
+            self.previous_js = js
+            self.previous_s = s
+
 class Environment:
     def __init__(self):
         pass
@@ -183,7 +205,7 @@ class SIM(Environment):
         self.cabinet = p.loadURDF(d['object'], d['xyz'], p.getQuaternionFromEuler(d['rpy']), useFixedBase=True, useMaximalCoordinates=True)
         self.objects = {}
         for d in scene_desc['objects']:
-            self.objects[d['name']] = p.loadURDF(d['object'], d['xyz'], p.getQuaternionFromEuler(d['rpy']), useFixedBase=True, useMaximalCoordinates=True)
+            self.objects[d['name']] = p.loadURDF(d['object'], d['xyz'], p.getQuaternionFromEuler(d['rpy']), useFixedBase=d['static'], useMaximalCoordinates=True)
         self.target = self.objects.get('target')
             
         self.resetRobot()
@@ -194,8 +216,8 @@ class SIM(Environment):
     def getCamera(self, name):
         return self.cameras[name]
 
-    def setObjectPosition(self, xyz, rpy):
-        p.resetBasePositionAndOrientation(self.target, xyz, rpy)
+    def setObjectPosition(self, name, xyz, rpy):
+        p.resetBasePositionAndOrientation(self.objects[name], xyz, rpy)
         
     def getTargetXYZ(self):
         pos, ori = p.getBasePositionAndOrientation(self.box)

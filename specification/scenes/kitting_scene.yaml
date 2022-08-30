@@ -41,6 +41,13 @@ objects:
     object: "specification/urdf/objects/pen_cavity.urdf"
     xyz: [0.2,-0.6,0.79]
     rpy: [0, 0, 0]
+    static: True
+  -
+    name: pen
+    object: "specification/urdf/objects/pen.urdf"
+    xyz: [-0.2,-0.6,0.79]
+    rpy: [0, 0, 0]
+    static: False
 
 test:
   -

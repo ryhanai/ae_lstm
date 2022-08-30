@@ -29,34 +29,4 @@
     <origin xyz="0 0 0" rpy="0 0 0"/>
   </xacro:robotiq_85_gripper>
 
-
-  <link name="pitcher">
-    <inertial>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
-      <mass value="0.2"/>
-      <inertia ixx="0.0094" ixy="0" ixz="0" iyy="0.0008" iyz="0" izz="0.0094"/>
-    </inertial>
-    <visual>
-      <origin rpy="0 ${pi} 0" xyz="0.18 0 0.1"/>
-      <geometry>
-        <mesh filename="../../meshes/objects/pitcher1.obj" scale="0.03 0.03 0.03"/>
-      </geometry>
-      <material name="glass">
-        <color rgba="0.1 0.1 0.1 0.15"/>
-      </material>
-    </visual>
-    <collision>
-      <origin rpy="0 ${pi} 0" xyz="0.18 0 0.1"/>
-      <geometry>
-        <mesh filename="../../meshes/objects/pitcher1.obj" scale="0.03 0.03 0.03"/>
-      </geometry>
-    </collision>
-  </link>
-
-  <joint name="hand_to_pitcher" type="fixed">
-    <parent link="c_bot_gripper_coupling_flange_link"/>
-    <child link="pitcher"/>
-    <axis xyz="0 0 1"/>
-  </joint>
-
 </robot>
