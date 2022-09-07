@@ -46,10 +46,11 @@ def teach():
         img = cam.getImg()
         fimg = fcam.getImg()
         #control.update()
-        js = env.getJointState()
+        js = env.getJointState(min_closed=0.7)
         rec.saveFrame(img, fimg, js, env)
 
         if ui.getEventSignal() == SpaceNavUI.UI_EV_LEFT_CLICK:
+            env.setGripperJointPositions(0.65)
             release_object()
 
         if ui.getEventSignal() == SpaceNavUI.UI_EV_RIGHT_CLICK:
@@ -67,11 +68,12 @@ def teach_procedurally():
     follow_trajectory(generate_trajectory(tf_target_approach))
     follow_trajectory(generate_trajectory(tf_target_fitted))
     release_object()
+    env.setGripperJointPositions(0.65)
     start = time.time()
     while time.time() - start < 1.0:
         img = cam.getImg()
         fimg = fcam.getImg()
-        js = env.getJointState()
+        js = env.getJointState(min_closed=0.7)
         rec.saveFrame(img, fimg, js, env, save_threshold=0.)
     rec.writeFrames()
 
@@ -204,7 +206,7 @@ def reset(target_pose=None):
     env.setGripperJointPositions(0.0)
     grasp_object('pen')
     sync()
-    env.setGripperJointPositions(0.7)
+    env.setGripperJointPositions(0.72)
     sync()
 
     img0 = captureRGB()

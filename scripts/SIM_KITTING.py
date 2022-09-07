@@ -278,7 +278,7 @@ class SIM(Environment):
         q = p.calculateInverseKinematics(self.robot, linkID, goalPos, goalOri)[:6]
         self.setJointValues(self.robot, self.armJoints, q)     
 
-    def getJointState(self, encode_gripper_state=True):
+    def getJointState(self, min_closed = 0.3, encode_gripper_state=True):
         js = p.getJointStates(self.robot, self.armJoints)
         armjv = list(zip(*js))[0]
         js = p.getJointStates(self.robot, self.gripperJoints)
@@ -287,7 +287,7 @@ class SIM(Environment):
         grpforce = js[3]
         if encode_gripper_state:
             # gripperClosed = np.max(grpforce) > 1.0
-            gripperClosed = grpjv[0] > 0.3
+            gripperClosed = grpjv[0] > min_closed
             return np.append(armjv, gripperClosed)
         else:
             return np.append(armjv, grpjv)
