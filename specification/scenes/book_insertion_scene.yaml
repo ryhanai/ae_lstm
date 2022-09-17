@@ -1,0 +1,44 @@
+name: book_insertion_scene
+task: book_insertion
+
+rendering:
+  shadow: true
+  
+cameras:
+  -
+    name: camera1
+    view_params: [[0,-0.7,1.4], [0,-0.6,0.5], [0,0,1]]
+    fov: 50
+    capture_size: [180, 320]
+
+robot:
+  base_position:
+    xyz: [0,0,0.795]
+    rpy: [0,0,-1.57]
+  initial_arm_pose: [-0.899109997666209, -0.5263515248505674, 1.1386341089127756, -0.820088253279429, -0.7349581228169729, 0.1551369530256832]
+  initial_gripper_pose: [0, 0, 0, 0, 0, 0]
+
+environment:
+  -
+    name: table
+    object: "specification/urdf/objects/large_table.urdf"
+    xyz: [0,0,0]
+    rpy: [0,0,0]
+  
+objects:
+  -
+    name: target
+    object: "specification/urdf/objects/book1.urdf"
+    xyz: [0.3,-0.6,0.79]
+    rpy: [0, 0, 0]
+
+test:
+  -
+    xyz: [0.27,-0.55,0.79]
+    rpy: [0,0,0]
+  -
+    xyz: [0.11,-0.55,0.79]
+    rpy: [0,0,0]
+  -
+    xyz: [0.11,-0.72,0.79]
+    rpy: [0,0,0]

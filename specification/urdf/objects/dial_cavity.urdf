@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<robot name="dial_cavity">
+
+  <link name="dial_cavity_out">
+    <visual>
+      <origin xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="../../meshes/objects/dial_cavity_out.obj" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+  </link>
+  <link name="dial_cavity_slot">
+    <visual>
+      <origin xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="../../meshes/objects/dial_cavity_slot.obj" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+  </link>
+  <joint name="j1" type="fixed">
+    <parent link="dial_cavity_out"/>
+    <child link="dial_cavity_slot"/>
+  </joint>
+  
+</robot>
+
