@@ -76,7 +76,8 @@ def apply_filters(images, attention_map, alpha=0.0, beta=4.0, use_softmax=True, 
         cs.append(c)
         ss.append(s)
 
-    b = draw_bounding_boxes(images, roi_rect1((np.array(cs), np.array(ss))))
+    rect = roi_rect1((np.array(cs), np.array(ss)))
+    b = draw_bounding_boxes(images, rect)
 
     if visualize_result:
         visualize_ds(attention_map)
@@ -84,7 +85,7 @@ def apply_filters(images, attention_map, alpha=0.0, beta=4.0, use_softmax=True, 
         plt.show()
 
     if return_result:
-        return b
+        return b, rect
 
 def compute_offset(density, max_coords, d=[1,0,0,0]):
     ky,kx,y,x = max_coords

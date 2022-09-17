@@ -5,7 +5,7 @@ import os
 import numpy as np
 import cv2
 
-data_dir = os.path.join(os.environ['HOME'], 'Dataset/dataset2/reaching-real-raw')
+data_dir = os.path.join(os.environ['HOME'], 'Dataset/dataset2/reaching-real-raw220615')
 joint_names = [
     'shoulder_pan_joint',
     'shoulder_lift_joint',

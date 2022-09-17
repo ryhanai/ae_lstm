@@ -189,19 +189,20 @@ def release_object():
     for cstr_id in cstr_ids:
         S.p.removeConstraint(cstr_id)
 
-def reset(target_pose=None):
+def reset(target_pose=None, relocate_target=True):
     env.resetRobot()
-    if target_pose == None:
-        # 'reaching_scene'
-        # target_pos = np.append([0.1, -0.75] + [0.2, 0.3] * np.random.random(2), 0.79)
-        # target_ori = S.p.getQuaternionFromEuler([0,0,0])
+    if relocate_target:
+        if target_pose == None:
+            # 'reaching_scene'
+            # target_pos = np.append([0.1, -0.75] + [0.2, 0.3] * np.random.random(2), 0.79)
+            # target_ori = S.p.getQuaternionFromEuler([0,0,0])
 
-        # 'reaching_2ways_scene'
-        target_pos = np.append([0.0, -0.72] + [0.05, 0.05] * np.random.random(2), 0.79)
-        target_ori = S.p.getQuaternionFromEuler(np.append([0,0], -1.0 + -0.5*np.random.random(1)))
-    else:
-        target_pos, target_ori = target_pose
-    env.setObjectPosition('target', target_pos, target_ori)
+            # 'reaching_2ways_scene'
+            target_pos = np.append([0.0, -0.72] + [0.05, 0.05] * np.random.random(2), 0.79)
+            target_ori = S.p.getQuaternionFromEuler(np.append([0,0], -1.0 + -0.5*np.random.random(1)))
+        else:
+            target_pos, target_ori = target_pose
+        env.setObjectPosition('target', target_pos, target_ori)
 
     env.setGripperJointPositions(0.0)
     grasp_object('pen')
