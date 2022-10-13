@@ -164,6 +164,7 @@ class SIM(Environment):
         super().__init__()
         self.rootdir = "../"
         self.connection = p.connect(p.GUI)
+
         p.resetSimulation()
         self.gravity = p.setGravity(0, 0, -9.81)
         # p.setAdditionalSearchPath(pybullet_data.getDataPath())
@@ -193,13 +194,14 @@ class SIM(Environment):
             cam.setViewMatrix(*view_params)
             self.cameras[name] = cam
 
-        robot_desc = scene_desc['robot']
-        base_pose = robot_desc['base_position']
-        self.robot = p.loadURDF(robot_desc['robot_model'], base_pose['xyz'], p.getQuaternionFromEuler(base_pose['rpy']), useFixedBase=True)
-        self.armJoints = robot_desc['arm_joints']
-        self.gripperJoints = robot_desc['gripper_joints']
-        self.armInitialValues = scene_desc['robot']['initial_arm_pose']
-        self.gripperInitialValues = scene_desc['robot']['initial_gripper_pose']
+        for robot_desc in scene_desc['robot']:
+            base_pose = robot_desc['base_position']
+            self.robot = p.loadURDF(robot_desc['robot_model'], base_pose['xyz'], p.getQuaternionFromEuler(base_pose['rpy']), useFixedBase=True)
+            self.armJoints = robot_desc['arm_joints']
+            self.gripperJoints = robot_desc['gripper_joints']
+            self.armInitialValues = scene_desc['robot']['initial_arm_pose']
+            self.gripperInitialValues = scene_desc['robot']['initial_gripper_pose']
+            self.resetRobot()
 
         d = scene_desc['environment'][0]
         self.cabinet = p.loadURDF(d['object'], d['xyz'], p.getQuaternionFromEuler(d['rpy']), useFixedBase=True, useMaximalCoordinates=True)
@@ -208,8 +210,6 @@ class SIM(Environment):
             self.objects[d['name']] = p.loadURDF(d['object'], d['xyz'], p.getQuaternionFromEuler(d['rpy']), useFixedBase=d['static'], useMaximalCoordinates=True)
         self.target = self.objects.get('target')
             
-        self.resetRobot()
-
     def getSceneDescription(self):
         return self.scene_desc
         

@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<robot name="sony_box">
+
+  <link name="sony_box_outside">
+    <visual>
+      <origin xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="../../meshes/objects/sony_box_outside.obj" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+    <collision concave="yes">
+      <origin xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="../../meshes/objects/sony_box_outside.obj" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="sony_box_inside">
+    <visual>
+      <origin xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="../../meshes/objects/sony_box_inside.obj" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+    <collision concave="yes">
+      <origin xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="../../meshes/objects/sony_box_inside.obj" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="j1"  type="fixed">
+    <parent link="sony_box_outside"/>
+    <child link="sony_box_inside"/>
+  </joint>
+</robot>
+
