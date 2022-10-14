@@ -41,6 +41,7 @@ objects = [
   '016_pear',
 ]
 
+
 def sample_place_pose():
   xy = 0.1 * (np.array([-0.5,-0.5]) + np.random.random(2))
   z = 0.785+0.3
@@ -60,17 +61,27 @@ def create_random_scene(n_objects=3):
   print(selected_objects)
   for o in selected_objects:
     p = sample_place_pose()
-    valid_object_ids.append(place_object(o, p))
+    valid_object_ids.append((o, place_object(o, p)))
     img = cam.getImg()
     fimg = fcam.getImg()
     time.sleep(0.5)
 
 def clear_scene():
-  for i in valid_object_ids:
+  global valid_object_ids
+  for n,i in valid_object_ids:
     S.p.removeBody(i)
+    valid_object_ids = []
 
+from publish_force_distribution import *
+    
 def keep_updating(n_frames=100):
   for i in range(n_frames):
     cam.getImg()
     fcam.getImg()
+    positions, fd = fcam.getDensity()
+    bin_state = []
+    for name, oid in valid_object_ids:
+      bin_state.append((name, get_pose(oid)))
+    publish_bin_state(bin_state, (positions, fd))
+    rate.sleep
     

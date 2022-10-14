@@ -51,6 +51,8 @@ class Camera(VirtualCamera):
     def getCameraConfig(self):
         return self.cameraConfig
 
+from scipy import stats
+    
 class ForceCamera(VirtualCamera):
     def __init__(self, fov=50, near=0.1, far=2.0):
         super().__init__(fov, near, far)
@@ -71,7 +73,24 @@ class ForceCamera(VirtualCamera):
         self.frc.draw()
         self.frc.EventLoopGLUT()
         return self.frc.getImg()
-        
+
+    def getDensity(self):
+        cps = p.getContactPoints()
+        l = len(cps)
+        sample_coords = np.empty((3, l))
+        sample_weights = np.empty(l)
+        for i,cp in enumerate(cps):
+            sample_coords[0][i] = cp[6][0]
+            sample_coords[1][i] = cp[6][1]
+            sample_coords[2][i] = cp[6][2]
+            sample_weights[i] = cp[9]
+        kernel = stats.gaussian_kde(sample_coords, bw_method=0.15)
+        X,Y,Z = np.mgrid[-0.12:0.12:40j, -0.12:0.12:40j, 0.85:1.09:40j]
+        positions = np.vstack([X.ravel(), Y.ravel(), Z.ravel()])
+        V = kernel(positions)
+        #V = np.reshape(kernel(positions).T, X.shape)
+        return positions.T, V
+    
     def setViewMatrix(self, eyePosition, targetPosition, upVector):
         self.setViewMatrixParam(eyePosition, targetPosition, upVector)
         self.frc.computeViewMatrix(eyePosition, targetPosition, upVector)
