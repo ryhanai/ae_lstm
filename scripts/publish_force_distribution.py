@@ -7,40 +7,7 @@ import colorsys
 
 rospy.init_node("force_distribution_publisher")
 pub = rospy.Publisher("scene_objects", MarkerArray, queue_size=1)
-rate = rospy.Rate(25)
-
-objects = [
-  '004_sugar_box',
-  '006_mustard_bottle',
-  '007_tuna_fish_can',
-  '010_potted_meat_can',
-  '026_sponge', # soft body
-  '011_banana',
-  '012_strawberry',
-  '013_apple',
-  '016_pear',
-]
-
-bin_state = [
-('006_mustard_bottle',
- ((0.009855880221905401, 0.028207773275998566, 0.9440576706538131),
-  (0.011163616068588768,
-   0.4002768767076521,
-   -0.7339873110271562,
-   0.5485584954228357))),
- ('026_sponge',
- ((0.0012394144997380288, -0.050092795870262746, 0.9854077186320029),
-  (0.71195269789557,
-   -0.16976341416280127,
-   -0.14132606874538753,
-   0.6665813389707085))),
- ('010_potted_meat_can',
- ((-0.046273377364551976, 0.00846329317874374, 0.9703276334581414),
-  (-0.08147422565819812,
-   0.3094228301753092,
-   -0.7295036407507537,
-   0.6045195620086203)))
- ]
+rate = rospy.Rate(10)
 
 def mesh_message(mesh_file, message_id, pose, rgba=(0.5,0.5,0.5,0.3)):
     marker = Marker()
@@ -83,7 +50,7 @@ def publish_bin_state(bin_state, force_distribution, draw_bin=True):
     markerArray.markers.append(markerD)
 
     if draw_bin:
-        marker = mesh_message("package://ycb_dataset/meshes_extra/sony_box.dae",
+        marker = mesh_message("package://fmap_visualizer/meshes_extra/sony_box.dae",
                               mid,
                               ((0,0,0.79),(0,0,0,1)),
                               (0.5,0.5,0.5,0.2))
@@ -93,7 +60,7 @@ def publish_bin_state(bin_state, force_distribution, draw_bin=True):
     for object_state in bin_state:
         name, pose = object_state
         print(name)
-        marker = mesh_message("package://ycb_dataset/meshes/{}/google_16k/textured.dae".format(name),
+        marker = mesh_message("package://fmap_visualizer/meshes/{}/google_16k/textured.dae".format(name),
                               mid,
                               pose,
                               (0.5,0.5,0.5,0.3))
