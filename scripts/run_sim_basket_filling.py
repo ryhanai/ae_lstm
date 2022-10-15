@@ -23,8 +23,10 @@ env = S.SIM(scene_file=args.scene)
 #S.p.changeDynamics(env.robot, 23, collisionMargin=0.0)
 S.p.changeDynamics(env.target, 0, collisionMargin=-0.03)
 S.p.changeDynamics(env.target, 1, collisionMargin=-0.03)
-
 #S.p.setCollisionFilterPair(env.robot, env.cabinet, 23, 0, 0)
+
+S.p.setRealTimeSimulation(True)
+
 cam = env.getCamera('camera1')
 fcam = env.getCamera('force_camera1')
 rec = S.RECORDER_KITTING(cam.getCameraConfig())
@@ -41,30 +43,31 @@ objects = [
   '016_pear',
 ]
 
-
 def sample_place_pose():
   xy = 0.1 * (np.array([-0.5,-0.5]) + np.random.random(2))
   z = 0.785+0.3
   return (np.append(xy, z), unit_quat())
 
-def place_object(name, pose):
-  body = create_mesh_body('specification/meshes/objects/ycb/{}/google_16k/textured.obj'.format(name))
-  set_pose(body, pose)
-  return body
-
 valid_object_ids = []
 
-def create_random_scene(n_objects=3):
+def place(name, pose):
   global valid_object_ids
-  S.p.setRealTimeSimulation(True)
+  body = create_mesh_body('specification/meshes/objects/ycb/{}/google_16k/textured.obj'.format(name))
+  set_pose(body, pose)
+  valid_object_ids.append((name, body))
+  t0 = time.time()
+  while time.time() - t0 < 2.0:
+    observe(n_frames=10)
+  return body
+
+def place_object(object):
+  place(object, sample_place_pose())
+
+def create_random_scene(n_objects=3):
   selected_objects = np.random.choice(objects, n_objects)
   print(selected_objects)
-  for o in selected_objects:
-    p = sample_place_pose()
-    valid_object_ids.append((o, place_object(o, p)))
-    img = cam.getImg()
-    fimg = fcam.getImg()
-    time.sleep(0.5)
+  for object in selected_objects:
+    place_object(object)
 
 def clear_scene():
   global valid_object_ids
@@ -74,11 +77,11 @@ def clear_scene():
 
 from publish_force_distribution import *
     
-def keep_updating(n_frames=100):
+def observe(n_frames=10, moving_average=True):
   for i in range(n_frames):
     cam.getImg()
-    fcam.getImg()
-    positions, fd = fcam.getDensity()
+    # fcam.getImg()
+    positions, fd = fcam.getDensity(moving_average)
     bin_state = []
     for name, oid in valid_object_ids:
       bin_state.append((name, get_pose(oid)))

@@ -59,7 +59,6 @@ def publish_bin_state(bin_state, force_distribution, draw_bin=True):
     
     for object_state in bin_state:
         name, pose = object_state
-        print(name)
         marker = mesh_message("package://fmap_visualizer/meshes/{}/google_16k/textured.dae".format(name),
                               mid,
                               pose,
@@ -90,12 +89,16 @@ def publish_bin_state(bin_state, force_distribution, draw_bin=True):
         marker.scale.z = 0.002
 
         positions, fvals = force_distribution
-        for (x,y,z), f in zip(positions, fvals):
-            v = min(f/500, 1.0)
-            if (v > 0.1):
-                marker.points.append(Point(x,y,z))
-                r,g,b = colorsys.hsv_to_rgb(1./3 * (1-v),1,1)
-                marker.colors.append(ColorRGBA(r, g, b, 1))
+        fmax = np.max(fvals)
+        fmin = np.min(fvals)
+        if fmax - fmin > 1e-3:
+            std_fvals = np.clip(5.0 * (fvals - fmin) / (fmax - fmin), 0.0, 1.0)
+            #std_fvals = (fvals - fmin) / (fmax - fmin)
+            for (x,y,z), f in zip(positions, std_fvals):
+                if f > 0.1:
+                    marker.points.append(Point(x,y,z))
+                    r,g,b = colorsys.hsv_to_rgb(1./3 * (1-f),1,1)
+                    marker.colors.append(ColorRGBA(r, g, b, 1))
 
         marker.lifetime = rospy.Duration()
         markerArray.markers.append(marker)
