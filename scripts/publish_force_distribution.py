@@ -7,7 +7,7 @@ import colorsys
 
 rospy.init_node("force_distribution_publisher")
 pub = rospy.Publisher("scene_objects", MarkerArray, queue_size=1)
-rate = rospy.Rate(10)
+rate = rospy.Rate(30)
 
 def mesh_message(mesh_file, message_id, pose, rgba=(0.5,0.5,0.5,0.3)):
     marker = Marker()
@@ -84,18 +84,18 @@ def publish_bin_state(bin_state, force_distribution, draw_bin=True):
         marker.pose.orientation.z = 0.0
         marker.pose.orientation.w = 1.0
 
-        marker.scale.x = 0.002
-        marker.scale.y = 0.002
-        marker.scale.z = 0.002
+        marker.scale.x = 0.0015
+        marker.scale.y = 0.0015
+        marker.scale.z = 0.0015
 
         positions, fvals = force_distribution
         fmax = np.max(fvals)
         fmin = np.min(fvals)
         if fmax - fmin > 1e-3:
-            std_fvals = np.clip(5.0 * (fvals - fmin) / (fmax - fmin), 0.0, 1.0)
-            #std_fvals = (fvals - fmin) / (fmax - fmin)
+            #std_fvals = np.clip(5.0 * (fvals - fmin) / (fmax - fmin), 0.0, 1.0)
+            std_fvals = (fvals - fmin) / (fmax - fmin)
             for (x,y,z), f in zip(positions, std_fvals):
-                if f > 0.1:
+                if f > 0.08:
                     marker.points.append(Point(x,y,z))
                     r,g,b = colorsys.hsv_to_rgb(1./3 * (1-f),1,1)
                     marker.colors.append(ColorRGBA(r, g, b, 1))
