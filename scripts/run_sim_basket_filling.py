@@ -124,18 +124,6 @@ class SceneWriter:
     pd.to_pickle(get_bin_state(), os.path.join(self.group_dir, 'bin_state{:05d}.pkl'.format(self.frameNo)))
     self.frameNo += 1
 
-def visualize_forcemaps(force_distribution):
-    f = force_distribution / np.max(force_distribution)
-    fig = plt.figure(figsize=(10,10))
-    fig.subplots_adjust(hspace=0.1)
-
-    channels = f.shape[-1]
-    for p in range(channels):
-        ax = fig.add_subplot(channels//10, 10, p+1)
-        ax.axis('off')
-        ax.imshow(f[:,:,p], cmap='gray', vmin=0, vmax=1.0)
-    plt.show()
-
 def create_dataset(n_sequence=3):
   sw = SceneWriter()
   for n in range(n_sequence):
