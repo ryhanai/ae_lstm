@@ -5,18 +5,27 @@ rendering:
   shadow: true
 
 cameras:
+#  -
+#    name: camera1 # realsense D415
+#    type: rgb
+#    view_params: [[0,0,1.4], [0,0,0.6], [0,1,0]]    
+#    fov: 69.4
+#    aspect_ratio: 1.63294
+#    capture_size: [720, 1280]
   -
-    name: camera1
+    name: camera1 # center of realsense D415
     type: rgb
-    view_params: [[0,-0.05,1.28], [0,0.08,0.6], [0,0,1]]    
-    fov: 50
-    capture_size: [480, 640]
+    view_params: [[0,0,1.4], [0,0,0.6], [0,1,0]]    
+    fov: 34.7
+    aspect_ratio: 1.63294
+    capture_size: [360, 640]
   -
     name: force_camera1
     type: force
-    view_params: [[0,-0.2,1.28], [0,0.12,0.6], [0,0,1]]    
-    fov: 50
-    capture_size: [240, 320]
+    view_params: [[0,0,1.4], [0,0,0.6], [0,1,0]]    
+    fov: 34.7
+    aspect_ratio: 1.63294
+    capture_size: [180, 320]
 
 robot: []
 # robot_model: "specification/urdf/arm_and_gripper/xxx.urdf"
@@ -38,7 +47,8 @@ environment:
 objects:
   -
     name: target
-    object: "specification/urdf/objects/sony_box.urdf"
+    object: "specification/urdf/objects/ipad_box.urdf"
+    #object: "specification/urdf/objects/sony_box.urdf"
     xyz: [0, 0, 0.79]
     #xyz: [0, 0, 0.79]
     rpy: [0, 0, 0]

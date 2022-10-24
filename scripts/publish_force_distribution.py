@@ -50,7 +50,7 @@ def publish_bin_state(bin_state, force_distribution, draw_bin=True):
     markerArray.markers.append(markerD)
 
     if draw_bin:
-        marker = mesh_message("package://fmap_visualizer/meshes_extra/sony_box.dae",
+        marker = mesh_message("package://fmap_visualizer/meshes_extra/ipad_box.dae",
                               mid,
                               ((0,0,0.79),(0,0,0,1)),
                               (0.5,0.5,0.5,0.2))

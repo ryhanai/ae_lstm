@@ -10,7 +10,7 @@ import forceGL3D
 class VirtualCamera:
     def __init__(self, fov=50, near=0.1, far=2.0):
         self.cameraConfig = {}
-        self.setProjectionMatrix(320, 240, fov, near, far)        
+        self.setProjectionMatrix(320, 240, fov, near, far, aspect=1)
         self.setViewMatrix([0.0, -1.0, 2.0], [0.0, -0.9, 0.8], [0, 1, -1])
 
     def setViewMatrixParam(self, eyePosition, targetPosition, upVector):
@@ -44,9 +44,8 @@ class Camera(VirtualCamera):
         self.setViewMatrixParam(eyePosition, targetPosition, upVector)
         self.view_matrix = p.computeViewMatrix(eyePosition, targetPosition, upVector)
 
-    def setProjectionMatrix(self, width, height, fov, near, far):
+    def setProjectionMatrix(self, width, height, fov, near, far, aspect):
         self.setProjectionMatrixParam(width, height, fov, near, far)
-        aspect = width / height
         self.projection_matrix = p.computeProjectionMatrixFOV(fov, aspect, near, far)
 
     def getCameraConfig(self):
@@ -69,7 +68,10 @@ def kde_sklearn(x, x_grid, bandwidth=0.2, **kwargs):
 class ForceCamera(VirtualCamera):
     def __init__(self, fov=50, near=0.1, far=2.0):
         super().__init__(fov, near, far)
-        self.grid = np.mgrid[-0.115:0.115:40j, -0.115:0.115:40j, 0.93:1.16:40j]
+        # sony box
+        # self.grid = np.mgrid[-0.115:0.115:40j, -0.115:0.115:40j, 0.93:1.16:40j]
+        # ipad box
+        self.grid = np.mgrid[-0.13:0.13:40j, -0.095:0.095:40j, 0.79:1.05:40j]
         X,Y,Z = self.grid
         self.positions = np.vstack([X.ravel(), Y.ravel(), Z.ravel()])
         self.positions = self.positions.T
@@ -123,10 +125,10 @@ class ForceCamera(VirtualCamera):
         self.setViewMatrixParam(eyePosition, targetPosition, upVector)
         self.frc.computeViewMatrix(eyePosition, targetPosition, upVector)
  
-    def setProjectionMatrix(self, width, height, fov, near, far):
+    def setProjectionMatrix(self, width, height, fov, near, far, aspect):
         self.setProjectionMatrixParam(width, height, fov, near, far)
         self.frc = forceGL3D.forceGL(width, height)        
-        self.frc.computeProjectionMatrixFOV(fov, width / height, near, far)
+        self.frc.computeProjectionMatrixFOV(fov, aspect, near, far)
 
 
 class RECORDER:
@@ -233,13 +235,14 @@ class SIM(Environment):
             view_params = cam_desc['view_params']
             fov = cam_desc['fov']
             capture_size = cam_desc['capture_size']
+            aspect_ratio = cam_desc['aspect_ratio']
             print(cam_desc)
             if cam_desc['type'] == 'rgb':
                 cam = Camera(fov=fov, shadow=self.shadow)
             if cam_desc['type'] == 'force':
                 cam = ForceCamera(fov=fov)
             cam.setViewMatrix(*view_params)
-            cam.setProjectionMatrix(width=capture_size[1], height=capture_size[0], fov=50, near=0.1, far=2.0)
+            cam.setProjectionMatrix(width=capture_size[1], height=capture_size[0], fov=fov, near=0.1, far=2.0, aspect=aspect_ratio)
             self.cameras[name] = cam
 
         for robot_desc in scene_desc['robot']:
