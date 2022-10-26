@@ -28,17 +28,36 @@ class Camera(VirtualCamera):
     def __init__(self, fov=50, near=0.1, far=2.0, shadow=True):
         super().__init__(fov, near, far)
         self.cameraConfig['shadow'] = shadow
+        self.segMap = None
  
-    def getImg(self):
+    def computeRealDepth(self, cameraOutput):
+        near = self.cameraConfig['near']
+        far = self.cameraConfig['far']
+        depth = far * near / (far - (far - near) * cameraOutput)
+        return depth
+
+    def setSegmentationIdMap(self, segMap):
+        self.segMap = segMap
+
+    def getImg(self, getRealDepth=True):
         width,height = self.cameraConfig['imageSize']
         shadow = self.cameraConfig['shadow']
-        return p.getCameraImage(width,
-                                height,
-                                self.view_matrix,
-                                self.projection_matrix, 
-                                lightDirection=[2,0,0], 
-                                shadow=shadow,
-                                renderer=p.ER_BULLET_HARDWARE_OPENGL if shadow == True else p.ER_TINY_RENDERER)
+        res = p.getCameraImage(width,
+                               height,
+                               self.view_matrix,
+                               self.projection_matrix, 
+                               lightDirection=[2,0,0], 
+                               shadow=shadow,
+                               renderer=p.ER_BULLET_HARDWARE_OPENGL if shadow == True else p.ER_TINY_RENDERER)
+        if getRealDepth:
+            depth = self.computeRealDepth(res[3])
+        else:
+            depth = res[3]
+        if self.segMap:
+            seg = np.vectorize(lambda x: self.segMap[x])(res[4])
+        else:
+            seg = res[4]
+        return res[0],res[1],res[2],depth,seg
 
     def setViewMatrix(self, eyePosition, targetPosition, upVector):
         self.setViewMatrixParam(eyePosition, targetPosition, upVector)
@@ -58,7 +77,7 @@ def kde_scipy(x, x_grid, bandwidth=0.2, **kwargs):
     kde = stats.gaussian_kde(x, bw_method=bandwidth, **kwargs)
     return kde.evaluate(x_grid)
 
-def kde_sklearn(x, x_grid, bandwidth=0.2, **kwargs):
+def kde_sklearn(x, x_grid, bandwidth=1.0, **kwargs):
     kde_skl = KernelDensity(kernel='gaussian', bandwidth=bandwidth, **kwargs)
     kde_skl.fit(x)
     # score_samples() returns the log-likelihood of the samples
@@ -71,8 +90,9 @@ class ForceCamera(VirtualCamera):
         # sony box
         # self.grid = np.mgrid[-0.115:0.115:40j, -0.115:0.115:40j, 0.93:1.16:40j]
         # ipad box
-        self.grid = np.mgrid[-0.13:0.13:40j, -0.095:0.095:40j, 0.79:1.05:40j]
+        self.grid = np.mgrid[-0.095:0.095:40j, -0.13:0.13:40j, 0.73:0.92:40j]
         X,Y,Z = self.grid
+        self.dV = 0.19 * 0.26 * 0.20 / (40**3)
         self.positions = np.vstack([X.ravel(), Y.ravel(), Z.ravel()])
         self.positions = self.positions.T
         self.V = np.zeros(self.positions.shape[0])
@@ -111,6 +131,9 @@ class ForceCamera(VirtualCamera):
             #V = stats.gaussian_kde(sample_coords, bw_method=0.3)
             V = kde_sklearn(sample_coords, self.positions, bandwidth=0.012)
             #V = kernel(self.positions)
+
+            W = np.sum(sample_weights)
+            V = W * V * self.dV
             self.V = self.alpha*self.V + (1-self.alpha)*V
             if moving_average:
                 V = self.V

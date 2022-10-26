@@ -9,20 +9,22 @@ cameras:
 #    name: camera1 # realsense D415
 #    type: rgb
 #    view_params: [[0,0,1.4], [0,0,0.6], [0,1,0]]    
-#    fov: 69.4
+#    fov: 42.5
 #    aspect_ratio: 1.63294
 #    capture_size: [720, 1280]
   -
     name: camera1 # center of realsense D415
     type: rgb
-    view_params: [[0,0,1.4], [0,0,0.6], [0,1,0]]    
-    fov: 34.7
+    view_params: [[0,0,1.358], [0,0,0.6], [-1,0,0]]    
+    fov: 21.25
+#    fov: 42.5 # write the vertical FOV
     aspect_ratio: 1.63294
     capture_size: [360, 640]
+    capture_size: [720, 1280]
   -
     name: force_camera1
     type: force
-    view_params: [[0,0,1.4], [0,0,0.6], [0,1,0]]    
+    view_params: [[0,0,1.358], [0,0,0.6], [-1,0,0]]    
     fov: 34.7
     aspect_ratio: 1.63294
     capture_size: [180, 320]
@@ -42,15 +44,15 @@ environment:
     name: table
     object: "specification/urdf/objects/large_table.urdf"
     xyz: [0,0,0]
-    rpy: [0,0,0]
-  
+    rpy: [0, 0, 0]  
 objects:
   -
     name: target
-    object: "specification/urdf/objects/ipad_box.urdf"
+    object: "specification/urdf/objects/seria_basket.urdf"
+    #object: "specification/urdf/objects/ipad_box.urdf"
     #object: "specification/urdf/objects/sony_box.urdf"
-    xyz: [0, 0, 0.79]
-    #xyz: [0, 0, 0.79]
-    rpy: [0, 0, 0]
+    xyz: [0, 0, 0.73]
+    #xyz: [0, 0, 0.73]
+    rpy: [0,0,1.57080]
     static: True
   
