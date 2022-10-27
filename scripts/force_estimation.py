@@ -9,7 +9,7 @@ import tensorflow_addons as tfa
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import os, time
+import cv2, os, time
 from datetime import datetime
 from model import *
 from core.utils import *
@@ -19,70 +19,77 @@ dataset = 'basket-filling'
 def load1(seqNo, frameNo):
     dataset_path = os.path.join(os.environ['HOME'], 'Dataset/dataset2', dataset)
     rgb_path = os.path.join(dataset_path, str(seqNo), 'rgb{:05d}.jpg'.format(frameNo))
-    force_path = os.path.join(dataset_path, str(seqNo), 'force{:05d}.pkl'.format(frameNo))
+    depth_path = os.path.join(dataset_path, str(seqNo), 'depth_zip{:05d}.pkl'.format(frameNo))
+    seg_path = os.path.join(dataset_path, str(seqNo), 'seg{:05d}.png'.format(frameNo))            
+    force_path = os.path.join(dataset_path, str(seqNo), 'force_zip{:05d}.pkl'.format(frameNo))
     bin_state_path = os.path.join(dataset_path, str(seqNo), 'bin_state{:05d}.pkl'.format(frameNo))
-    rgb = plt.imread(rgb_path)
-    force = pd.read_pickle(force_path)
+    rgb = cv2.cvtColor(cv2.imread(rgb_path), cv2.COLOR_BGR2RGB)
+    depth = pd.read_pickle(depth_path, compression='zip')
+    seg = plt.imread(seg_path, cv2.IMREAD_GRAYSCALE)
+    force = pd.read_pickle(force_path, compression='zip')
     bin_state = pd.read_pickle(bin_state_path)
-    return rgb, force, bin_state
+    crop = 120
+    rgb = rgb[:,crop:-crop] # crop the right & left side
+    depth = depth[:,crop:-crop]
+    seg = seg[:,crop:-crop]
+    force = force[:,:,:20]
+    return rgb, depth, seg, force, bin_state
 
 def load_data():
-    n_seqs = 500
-    n_frames = 4
+    n_seqs = 100
+    n_frames = 6
     x, y = np.mgrid[1:1+n_seqs, 0:n_frames]
     data_ids = list(zip(x.ravel(), y.ravel()))
     # data_ids = np.random.permutation(data_ids)
     # train
-    X_train = np.empty((1500,480,480,3))
-    Y_train = np.empty((1500,40,40,40))
+    X_train = np.empty((n_seqs*n_frames, 360, 512, 3))
+    Y_train = np.empty((n_seqs*n_frames, 20, 40, 40))
     train_states = []
-    for i in range(0,1500):
-        print(i)
-        seqNo, frameNo = data_ids[i]
-        rgb, force, bs = load1(seqNo, frameNo)
-        rgb = rgb[:,80:560] # crop the right & left side
-        X_train[i] = rgb
-        Y_train[i] = force
-        train_states.append(bs)
-    # valid
-    X_valid = np.empty((250,480,480,3))
-    Y_valid = np.empty((250,40,40,40))
-    valid_states = []
-    for i in range(0,250):
-        print(i)
-        seqNo, frameNo = data_ids[1500+i]
-        rgb, force, bs = load1(seqNo, frameNo)
-        rgb = rgb[:,80:560] # crop the right & left side
-        X_valid[i] = rgb
-        Y_valid[i] = force
-        valid_states.append(bs)
-    # test
-    X_test = np.empty((250,480,480,3))
-    Y_test = np.empty((250,40,40,40))
-    test_states = []
-    for i in range(0,250):
-        print(i)
-        seqNo, frameNo = data_ids[1750+i]
-        rgb, force, bs = load1(seqNo, frameNo)
-        rgb = rgb[:,80:560] # crop the right & left side
-        X_test[i] = rgb
-        Y_test[i] = force
-        test_states.append(bs)
-    X_train /= 255.
-    X_valid /= 255.
-    X_test /= 255.
-    #Y_train = np.log(Y_train+1)
-    #Y_valid = np.log(Y_valid+1)
-    #Y_test = np.log(Y_test+1)
-    fmax = np.max(Y_train)
-    Y_train /= fmax
-    Y_valid /= fmax
-    Y_test /= fmax
-    Y_train = np.transpose(np.flip(Y_train, 2), (0,2,1,3))
-    Y_valid = np.transpose(np.flip(Y_valid, 2), (0,2,1,3))
-    Y_test = np.transpose(np.flip(Y_test, 2), (0,2,1,3))
+    
+    # for i in range(0,100):
+    #     print(i)
+    #     seqNo, frameNo = data_ids[i]
+    #     rgb, depth, seg, force, bs = load1(seqNo, frameNo)
+    #     X_train[i] = rgb
+    #     Y_train[i] = force
+    #     train_states.append(bs)
+    # # valid
+    # X_valid = np.empty((250,480,480,3))
+    # Y_valid = np.empty((250,40,40,40))
+    # valid_states = []
+    # for i in range(0,250):
+    #     print(i)
+    #     seqNo, frameNo = data_ids[1500+i]
+    #     rgb, force, bs = load1(seqNo, frameNo)
+    #     X_valid[i] = rgb
+    #     Y_valid[i] = force
+    #     valid_states.append(bs)
+    # # test
+    # X_test = np.empty((250,480,480,3))
+    # Y_test = np.empty((250,40,40,40))
+    # test_states = []
+    # for i in range(0,250):
+    #     print(i)
+    #     seqNo, frameNo = data_ids[1750+i]
+    #     rgb, force, bs = load1(seqNo, frameNo)
+    #     X_test[i] = rgb
+    #     Y_test[i] = force
+    #     test_states.append(bs)
+    # X_train /= 255.
+    # X_valid /= 255.
+    # X_test /= 255.
+    # #Y_train = np.log(Y_train+1)
+    # #Y_valid = np.log(Y_valid+1)
+    # #Y_test = np.log(Y_test+1)
+    # fmax = np.max(Y_train)
+    # Y_train /= fmax
+    # Y_valid /= fmax
+    # Y_test /= fmax
+    # Y_train = np.transpose(np.flip(Y_train, 2), (0,2,1,3))
+    # Y_valid = np.transpose(np.flip(Y_valid, 2), (0,2,1,3))
+    # Y_test = np.transpose(np.flip(Y_test, 2), (0,2,1,3))
 
-    return (X_train,Y_train,train_states), (X_valid,Y_valid,valid_states), (X_test,Y_test,test_states)
+    # return (X_train,Y_train,train_states), (X_valid,Y_valid,valid_states), (X_test,Y_test,test_states)
 
 def model_encoder(input_shape, noise_stddev=0.2, name='encoder'):
     image_input = tf.keras.Input(shape=(input_shape))
@@ -217,7 +224,10 @@ def visualize_forcemaps(force_distribution, zaxis_first=False):
     fig = plt.figure(figsize=(10,10))
     fig.subplots_adjust(hspace=0.1)
 
-    channels = f.shape[-1]
+    if zaxis_first:
+        channels = f.shape[0]
+    else:
+        channels = f.shape[-1]
     for p in range(channels):
         ax = fig.add_subplot(channels//10, 10, p+1)
         ax.axis('off')
@@ -245,8 +255,8 @@ class Tester:
         plt.show()
 
 
-train_data, valid_data, test_data = load_data()
-model = model_conv_deconv(valid_data[0][0].shape)
+# train_data, valid_data, test_data = load_data()
+# model = model_conv_deconv(valid_data[0][0].shape)
 
 # for training
 # trainer = Trainer(model, train_data, valid_data)

@@ -57,7 +57,7 @@ objects = {
 
 preferred_poses = {
   # (pose, center of placing area)
-  '004_sugar_box': [([0,0,0],[0.01,0.015]), ([0,-math.pi/2,0],[0.09,0.015])],
+  '004_sugar_box': [([0,0,0],[0.01,0.015]), ([math.pi/2,-math.pi/2,0],[-0.02,0.08]), ([-math.pi/2,-math.pi/2,0],[0.02,-0.008])],
   '005_tomato_soup_can': [([0,0,0],[0.01,-0.09]), ([0,-math.pi/2,0],[0.05,-0.09])],
   '007_tuna_fish_can': [([0,0,0],[0.02,0.02]), ([0,-math.pi/2,0],[0.02,0.02])],
   '008_pudding_box': [([0,0,-0.5],[-0.01,-0.02]), ([-math.pi/2,-0.5,0],[-0.01,-0.02])],
@@ -122,11 +122,11 @@ def sample_place_pose():
 def sample_place_pose2(name):
   smpl_params = preferred_poses.get(name)
   if smpl_params == None:
-    xy = np.array([0.17, 0.10]) * (np.array([-0.5,-0.5]) + np.random.random(2))
+    xy = np.array([0.16, 0.09]) * (np.array([-0.5,-0.5]) + np.random.random(2))
     q = unit_quat()
   else:
     smpl_param = smpl_params[np.random.randint(len(smpl_params))]
-    xy = np.array([0.17, 0.10]) * (np.array([-0.5,-0.5]) + np.random.random(2)) + np.array(smpl_param[1])
+    xy = np.array([0.16, 0.09]) * (np.array([-0.5,-0.5]) + np.random.random(2)) + np.array(smpl_param[1])
     q = S.p.getQuaternionFromEuler(smpl_param[0])
   z = 0.73+0.25
   return (np.append(xy, z), q)
@@ -241,9 +241,9 @@ class SceneWriter:
     depth = imgs[3]
     seg = imgs[4]
     force = fcam.getDensity(moving_average=True, reshape_result=True)[1]
-    plt.imsave(os.path.join(self.group_dir, 'rgb{:05d}.jpg'.format(self.frameNo)), rgb)
-    plt.imsave(os.path.join(self.group_dir, 'depth{:05d}.png'.format(self.frameNo)), depth)
-    plt.imsave(os.path.join(self.group_dir, 'seg{:05d}.png'.format(self.frameNo)), seg)
+    cv2.imwrite(os.path.join(self.group_dir, 'rgb{:05d}.jpg'.format(self.frameNo)), cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
+    pd.to_pickle(depth, os.path.join(self.group_dir, 'depth_zip{:05d}.pkl'.format(self.frameNo)), compression='zip')
+    cv2.imwrite(os.path.join(self.group_dir, 'seg{:05d}.png'.format(self.frameNo)), seg)
     pd.to_pickle(force, os.path.join(self.group_dir, 'force_zip{:05d}.pkl'.format(self.frameNo)), compression='zip')
     pd.to_pickle(get_bin_state(), os.path.join(self.group_dir, 'bin_state{:05d}.pkl'.format(self.frameNo)))
     self.frameNo += 1
