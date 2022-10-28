@@ -12,11 +12,16 @@ import matplotlib.pyplot as plt
 import cv2, os, time
 from datetime import datetime
 from model import *
+import res_unet
 from core.utils import *
+import pprint
 
 dataset = 'basket-filling'
+image_height = 360
+image_width = 512
+input_image_shape = [image_height, image_width]
 
-def load1(seqNo, frameNo):
+def load1(seqNo, frameNo, resize=True):
     dataset_path = os.path.join(os.environ['HOME'], 'Dataset/dataset2', dataset)
     rgb_path = os.path.join(dataset_path, str(seqNo), 'rgb{:05d}.jpg'.format(frameNo))
     depth_path = os.path.join(dataset_path, str(seqNo), 'depth_zip{:05d}.pkl'.format(frameNo))
@@ -25,73 +30,157 @@ def load1(seqNo, frameNo):
     bin_state_path = os.path.join(dataset_path, str(seqNo), 'bin_state{:05d}.pkl'.format(frameNo))
     rgb = cv2.cvtColor(cv2.imread(rgb_path), cv2.COLOR_BGR2RGB)
     depth = pd.read_pickle(depth_path, compression='zip')
-    seg = plt.imread(seg_path, cv2.IMREAD_GRAYSCALE)
+    seg = cv2.imread(seg_path, cv2.IMREAD_GRAYSCALE)
     force = pd.read_pickle(force_path, compression='zip')
     bin_state = pd.read_pickle(bin_state_path)
-    crop = 120
+    crop = 128
     rgb = rgb[:,crop:-crop] # crop the right & left side
     depth = depth[:,crop:-crop]
     seg = seg[:,crop:-crop]
     force = force[:,:,:20]
+
+    # resize images
+    rgb = cv2.resize(rgb, (image_width, image_height))
+    depth = cv2.resize(depth, (image_width, image_height))
+    seg = seg[::2,::2]
     return rgb, depth, seg, force, bin_state
 
+def show1(scene_data):
+    rgb, depth, seg, force, bin_state = scene_data
+    pprint.pprint(bin_state)
+    plt.figure()
+    plt.imshow(rgb)
+    plt.figure()
+    plt.imshow(depth, cmap='gray')
+    plt.figure()
+    plt.imshow(seg)
+    visualize_forcemaps(force)
+    plt.show()
+
+import res_unet
+
+# def model_res_unet():
+#     num_classes = 62
+#     m = res_unet.res_unet(image_shape, [64,128,256], 3, 3, 2)
+#     return m
+
+class ForceEstimationModel(tf.keras.Model):
+
+    def __init__(self, *args, **kargs):
+        super(ForceEstimationModel, self).__init__(*args, **kargs)
+        tracker_names = ['loss']
+        self.train_trackers = {}
+        self.test_trackers = {}
+        for n in tracker_names:
+            self.train_trackers[n] = keras.metrics.Mean(name=n)
+            self.test_trackers[n] = keras.metrics.Mean(name='val_'+n)
+
+    def train_step(self, data):
+        xs, y_labels = data
+
+        with tf.GradientTape() as tape:
+            y_pred_logits = self(xs, training=True) # Forward pass
+            loss = self.compute_loss(y_labels, y_pred_logits)
+
+        trainable_vars = self.trainable_variables
+        gradients = tape.gradient(loss, trainable_vars)
+        self.optimizer.apply_gradients(zip(gradients, trainable_vars))
+
+        self.train_trackers['loss'].update_state(loss)
+        return dict([(trckr[0], trckr[1].result()) for trckr in self.train_trackers.items()])
+
+    def test_step(self, data):
+        xs, y_labels = data
+
+        y_pred_logits = self(xs, training=False) # Forward pass
+        loss = self.compute_loss(y_labels, y_pred_logits)
+
+        self.test_trackers['loss'].update_state(loss)
+        return dict([(trckr[0], trckr[1].result()) for trckr in self.test_trackers.items()])
+
+    def compute_loss(self, y_labels, y_pred_logits):
+        # loss = tf.reduce_mean(tf.square(y_joint - y_pred[1]))
+        labels = tf.cast(y_labels, dtype=tf.int32)
+        loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels, logits=y_pred_logits)
+        loss = tf.reduce_mean(loss)
+        return loss
+
+    @property
+    def metrics(self):
+        return list(self.train_trackers.values()) + list(self.test_trackers.values())
+
+def model_for_force_estimation(input_shape=input_image_shape, 
+                                num_filters=[16,32,64],
+                                kernel_size=3,
+                                num_channels=3,
+                                num_classes=62
+                                ):
+    input = tf.keras.Input(shape=input_shape + [num_channels])
+
+    encoder_output = res_unet.encoder(input, num_filters, kernel_size)
+
+    # bridge layer, number of filters is double that of the last encoder layer
+    bridge = res_unet.res_block(encoder_output[-1], [num_filters[-1]*2], kernel_size, strides=[2,1], name='bridge')
+
+    print(encoder_output[-1].shape)
+    decoder_output = res_unet.decoder(bridge, encoder_output, num_filters, kernel_size)
+
+    output = tf.keras.layers.Conv2D(num_classes,
+                                    kernel_size, 
+                                    strides=1, 
+                                    padding='same', 
+                                    name='output')(decoder_output)
+
+    model = ForceEstimationModel(inputs=[input],
+                                    outputs=[output],
+                                    name='force_estimator')
+
+    model.summary()
+    return model
+
 def load_data():
-    n_seqs = 100
+    def split(X):
+        return np.split(X, [int(len(X)*.75), int(len(X)*.875)])
+    
+    start_seq = 1001
+    n_seqs = 50
     n_frames = 6
-    x, y = np.mgrid[1:1+n_seqs, 0:n_frames]
+    x, y = np.mgrid[start_seq:start_seq+n_seqs, 0:n_frames]
     data_ids = list(zip(x.ravel(), y.ravel()))
     # data_ids = np.random.permutation(data_ids)
-    # train
-    X_train = np.empty((n_seqs*n_frames, 360, 512, 3))
-    Y_train = np.empty((n_seqs*n_frames, 20, 40, 40))
-    train_states = []
-    
-    # for i in range(0,100):
-    #     print(i)
-    #     seqNo, frameNo = data_ids[i]
-    #     rgb, depth, seg, force, bs = load1(seqNo, frameNo)
-    #     X_train[i] = rgb
-    #     Y_train[i] = force
-    #     train_states.append(bs)
-    # # valid
-    # X_valid = np.empty((250,480,480,3))
-    # Y_valid = np.empty((250,40,40,40))
-    # valid_states = []
-    # for i in range(0,250):
-    #     print(i)
-    #     seqNo, frameNo = data_ids[1500+i]
-    #     rgb, force, bs = load1(seqNo, frameNo)
-    #     X_valid[i] = rgb
-    #     Y_valid[i] = force
-    #     valid_states.append(bs)
-    # # test
-    # X_test = np.empty((250,480,480,3))
-    # Y_test = np.empty((250,40,40,40))
-    # test_states = []
-    # for i in range(0,250):
-    #     print(i)
-    #     seqNo, frameNo = data_ids[1750+i]
-    #     rgb, force, bs = load1(seqNo, frameNo)
-    #     X_test[i] = rgb
-    #     Y_test[i] = force
-    #     test_states.append(bs)
-    # X_train /= 255.
-    # X_valid /= 255.
-    # X_test /= 255.
-    # #Y_train = np.log(Y_train+1)
-    # #Y_valid = np.log(Y_valid+1)
-    # #Y_test = np.log(Y_test+1)
-    # fmax = np.max(Y_train)
-    # Y_train /= fmax
-    # Y_valid /= fmax
-    # Y_test /= fmax
-    # Y_train = np.transpose(np.flip(Y_train, 2), (0,2,1,3))
-    # Y_valid = np.transpose(np.flip(Y_valid, 2), (0,2,1,3))
-    # Y_test = np.transpose(np.flip(Y_test, 2), (0,2,1,3))
+    X_rgb = np.empty((n_seqs*n_frames, image_height, image_width, 3))
+    Y_depth = np.empty((n_seqs*n_frames, image_height, image_width))
+    Y_seg = np.empty((n_seqs*n_frames, image_height, image_width))
+    Y_force = np.empty((n_seqs*n_frames, 40, 40, 20))
 
-    # return (X_train,Y_train,train_states), (X_valid,Y_valid,valid_states), (X_test,Y_test,test_states)
+    # train_states = []
 
-def model_encoder(input_shape, noise_stddev=0.2, name='encoder'):
+    total_frames = n_seqs*n_frames
+    for i in range(0, total_frames):
+        print('\rloading ... {}({:3.1f}%)'.format(i, i/total_frames*100.), end='')
+        seqNo, frameNo = data_ids[i]
+        rgb, depth, seg, force, bs = load1(seqNo, frameNo)
+        X_rgb[i] = rgb
+        Y_depth[i] = depth
+        Y_seg[i] = seg
+        Y_force[i] = force
+        # train_states.append(bs)
+
+    X_rgb /= 255.
+    X_rgb_train, X_rgb_valid, X_rgb_test = split(X_rgb)
+    dmax = np.max(Y_depth)
+    dmin = np.min(Y_depth)
+    Y_depth = (Y_depth - dmin) / (dmax - dmin)
+    Y_depth_train, Y_depth_valid, Y_depth_test = split(Y_depth)
+    Y_seg_train, Y_seg_valid, Y_seg_test = split(Y_seg)
+    # Y = np.log(Y+1)
+    fmax = np.max(Y_force)
+    Y_force /= fmax
+    Y_force_train, Y_force_valid, Y_force_test = split(Y_force)
+
+    return (X_rgb_train, (Y_depth_train, Y_seg_train, Y_force_train)), (X_rgb_valid, (Y_depth_valid, Y_seg_valid, Y_force_valid)), (X_rgb_test, (Y_depth_test, Y_seg_test, Y_force_test))
+
+def model_simple_encoder(input_shape, noise_stddev=0.2, name='encoder'):
     image_input = tf.keras.Input(shape=(input_shape))
 
     x = tf.keras.layers.GaussianNoise(noise_stddev)(image_input) # Denoising Autoencoder
@@ -106,7 +195,7 @@ def model_encoder(input_shape, noise_stddev=0.2, name='encoder'):
     encoder.summary()
     return encoder
 
-def model_decoder(input_shape, name='decoder'):
+def model_simple_decoder(input_shape, name='decoder'):
     feature_input = tf.keras.Input(shape=(input_shape))
 
     x = feature_input
@@ -132,8 +221,8 @@ def model_conv_deconv(input_image_shape, use_color_augmentation=False, use_geome
     #if use_geometrical_augmentation:
     #    x = GeometricalAugmentation()(x, input_noise)
 
-    encoded_img = model_encoder(input_image_shape)(x)
-    decoded_img = model_decoder((15,15,128))(encoded_img)
+    encoded_img = model_simple_encoder(input_image_shape)(x)
+    decoded_img = model_simple_decoder((15,15,128))(encoded_img)
 
     #if use_geometrical_augmentation:
     #    model = AutoEncoderModel(inputs=[image_input, input_noise], outputs=[decoded_img], name='autoencoder')
@@ -144,6 +233,8 @@ def model_conv_deconv(input_image_shape, use_color_augmentation=False, use_geome
     model.summary()
 
     return model
+
+
 
 class Trainer:
     def __init__(self, model,
@@ -254,13 +345,29 @@ class Tester:
         visualize_forcemaps(ys[0])
         plt.show()
 
+    def predict_segmentation_mask(self, n):
+        xs = self.test_data[0][n:n+1]
+        ys = self.test_data[1][n:n+1]
+        y_pred_logits = self.model.predict(xs)
+        plt.figure()
+        plt.imshow(xs[0])
+        y_pred = tf.cast(tf.argmax(y_pred_logits, axis=-1), dtype=tf.uint8)
+        plt.figure()
+        plt.imshow(y_pred[0])
+        plt.figure()
+        plt.imshow(ys[0])
+        plt.show()
+        return xs[0],ys[0],y_pred[0]
 
-# train_data, valid_data, test_data = load_data()
+
+train_data, valid_data, test_data = load_data()
 # model = model_conv_deconv(valid_data[0][0].shape)
+model = model_for_force_estimation()
 
 # for training
 # trainer = Trainer(model, train_data, valid_data)
 
 # for test
 # tester = Tester(model, test_data, 'ae_cp.basket-filling.autoencoder.20221018175305')
+tester = Tester(model, test_data, 'ae_cp.basket-filling.force_estimator.20221028172410')
 # tester.predict()

@@ -67,7 +67,7 @@ preferred_poses = {
 
 valid_object_ids = []
 object_cache = {}
-object_id_table = {0:0, 1:1, 2:2} # 0:???, 1:table, 2:bin
+object_id_table = {-1:0, 0:0, 1:1, 2:2} # -1:???, 0:???, 1:table, 2:bin
 
 class ObjectProxy:
   def __init__(self, name, mass, default_pose):
