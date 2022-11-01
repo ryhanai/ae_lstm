@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+#from typing import Concatenate
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
@@ -15,6 +16,7 @@ from model import *
 import res_unet
 from core.utils import *
 import pprint
+from tensorflow.keras.applications.resnet50 import ResNet50
 
 dataset = 'basket-filling'
 image_height = 360
@@ -29,22 +31,23 @@ def load1(seqNo, frameNo, resize=True):
     force_path = os.path.join(dataset_path, str(seqNo), 'force_zip{:05d}.pkl'.format(frameNo))
     bin_state_path = os.path.join(dataset_path, str(seqNo), 'bin_state{:05d}.pkl'.format(frameNo))
     rgb = cv2.cvtColor(cv2.imread(rgb_path), cv2.COLOR_BGR2RGB)
-    depth = pd.read_pickle(depth_path, compression='zip')
-    seg = cv2.imread(seg_path, cv2.IMREAD_GRAYSCALE)
+    #depth = pd.read_pickle(depth_path, compression='zip')
+    #seg = cv2.imread(seg_path, cv2.IMREAD_GRAYSCALE)
     force = pd.read_pickle(force_path, compression='zip')
     bin_state = pd.read_pickle(bin_state_path)
     crop = 128
     rgb = rgb[:,crop:-crop] # crop the right & left side
-    depth = depth[:,crop:-crop]
-    seg = seg[:,crop:-crop]
+    #depth = depth[:,crop:-crop]
+    #seg = seg[:,crop:-crop]
     force = force[:,:,:20]
 
     # resize images
     rgb = cv2.resize(rgb, (image_width, image_height))
-    depth = cv2.resize(depth, (image_width, image_height))
-    depth = np.expand_dims(depth, axis=-1)
-    seg = seg[::2,::2]
-    return rgb, depth, seg, force, bin_state
+    #depth = cv2.resize(depth, (image_width, image_height))
+    #depth = np.expand_dims(depth, axis=-1)
+    #seg = seg[::2,::2]
+    #return rgb, depth, seg, force, bin_state
+    return rgb, [], [], force, bin_state
 
 def show1(scene_data):
     rgb, depth, seg, force, bin_state = scene_data
@@ -169,17 +172,12 @@ def load_data():
         return np.split(X, [int(len(X)*.75), int(len(X)*.875)])
     
     start_seq = 1001
-    n_seqs = 200
+    n_seqs = 450
     n_frames = 6
     x, y = np.mgrid[start_seq:start_seq+n_seqs, 0:n_frames]
     data_ids = list(zip(x.ravel(), y.ravel()))
-    # data_ids = np.random.permutation(data_ids)
     X_rgb = np.empty((n_seqs*n_frames, image_height, image_width, 3))
-    Y_depth = np.empty((n_seqs*n_frames, image_height, image_width, 1))
-    Y_seg = np.empty((n_seqs*n_frames, image_height, image_width))
     Y_force = np.empty((n_seqs*n_frames, 40, 40, 20))
-
-    # train_states = []
 
     total_frames = n_seqs*n_frames
     for i in range(0, total_frames):
@@ -187,48 +185,65 @@ def load_data():
         seqNo, frameNo = data_ids[i]
         rgb, depth, seg, force, bs = load1(seqNo, frameNo)
         X_rgb[i] = rgb
-        Y_depth[i] = depth
-        Y_seg[i] = seg
         Y_force[i] = force
-        # train_states.append(bs)
 
     X_rgb /= 255.
     X_rgb_train, X_rgb_valid, X_rgb_test = split(X_rgb)
-    dmax = np.max(Y_depth)
-    dmin = np.min(Y_depth)
-    Y_depth = (Y_depth - dmin) / (dmax - dmin)
-    Y_depth_train, Y_depth_valid, Y_depth_test = split(Y_depth)
-    Y_seg_train, Y_seg_valid, Y_seg_test = split(Y_seg)
-    # Y = np.log(Y+1)
     fmax = np.max(Y_force)
     Y_force /= fmax
     Y_force_train, Y_force_valid, Y_force_test = split(Y_force)
 
-    return (X_rgb_train, (Y_depth_train, Y_seg_train, Y_force_train)), (X_rgb_valid, (Y_depth_valid, Y_seg_valid, Y_force_valid)), (X_rgb_test, (Y_depth_test, Y_seg_test, Y_force_test))
+    return (X_rgb_train, ([], [], Y_force_train)), (X_rgb_valid, ([], [], Y_force_valid)), (X_rgb_test, ([], [], Y_force_test))
 
-def model_simple_encoder(input_shape, noise_stddev=0.2, name='encoder'):
-    image_input = tf.keras.Input(shape=(input_shape))
+# def load_data():
+#     def split(X):
+#         return np.split(X, [int(len(X)*.75), int(len(X)*.875)])
+    
+#     start_seq = 1001
+#     n_seqs = 450
+#     n_frames = 6
+#     x, y = np.mgrid[start_seq:start_seq+n_seqs, 0:n_frames]
+#     data_ids = list(zip(x.ravel(), y.ravel()))
+#     X_rgb = np.empty((n_seqs*n_frames, image_height, image_width, 3))
+#     Y_depth = np.empty((n_seqs*n_frames, image_height, image_width, 1))
+#     Y_seg = np.empty((n_seqs*n_frames, image_height, image_width))
+#     Y_force = np.empty((n_seqs*n_frames, 40, 40, 20))
 
-    x = tf.keras.layers.GaussianNoise(noise_stddev)(image_input) # Denoising Autoencoder
-    x = conv_block(x, 8) # 240
-    x = conv_block(x, 16) # 120
-    x = conv_block(x, 32) # 60
-    x = conv_block(x, 64) # 30
-    x = conv_block(x, 128) # 15
+#     total_frames = n_seqs*n_frames
+#     for i in range(0, total_frames):
+#         print('\rloading ... {}({:3.1f}%)'.format(i, i/total_frames*100.), end='')
+#         seqNo, frameNo = data_ids[i]
+#         rgb, depth, seg, force, bs = load1(seqNo, frameNo)
+#         X_rgb[i] = rgb
+#         Y_depth[i] = depth
+#         Y_seg[i] = seg
+#         Y_force[i] = force
 
-    encoder_output = x
-    encoder = keras.Model([image_input], encoder_output, name=name)
-    encoder.summary()
-    return encoder
+#     X_rgb /= 255.
+#     X_rgb_train, X_rgb_valid, X_rgb_test = split(X_rgb)
+#     dmax = np.max(Y_depth)
+#     dmin = np.min(Y_depth)
+#     Y_depth = (Y_depth - dmin) / (dmax - dmin)
+#     Y_depth_train, Y_depth_valid, Y_depth_test = split(Y_depth)
+#     Y_seg_train, Y_seg_valid, Y_seg_test = split(Y_seg)
+#     # Y = np.log(Y+1)
+#     fmax = np.max(Y_force)
+#     Y_force /= fmax
+#     Y_force_train, Y_force_valid, Y_force_test = split(Y_force)
+
+#     return (X_rgb_train, (Y_depth_train, Y_seg_train, Y_force_train)), (X_rgb_valid, (Y_depth_valid, Y_seg_valid, Y_force_valid)), (X_rgb_test, (Y_depth_test, Y_seg_test, Y_force_test))
 
 def model_simple_decoder(input_shape, name='decoder'):
     feature_input = tf.keras.Input(shape=(input_shape))
 
     x = feature_input
-    x = deconv_block(x, 64, with_upsampling=False) # 15
-    x = deconv_block(x, 64) # 30
-    x = deconv_block(x, 40) # 60
-    x = tf.keras.layers.Conv2DTranspose(40, kernel_size=3, strides=1, padding='same', activation='sigmoid')(x)
+    x = deconv_block(x, 1024, with_upsampling=False) # 12x16
+    x = deconv_block(x, 512) # 24x32
+    x = deconv_block(x, 256, with_upsampling=False) # 24x32
+    x = deconv_block(x, 128, with_upsampling=False) # 24x32
+    x = deconv_block(x, 64) # 48x64
+    x = deconv_block(x, 32, with_upsampling=False) # 48x64
+    x = tf.keras.layers.Conv2DTranspose(20, kernel_size=3, strides=1, padding='same', activation='sigmoid')(x)
     x = tf.keras.layers.Resizing(40, 40)(x)
     
     decoder_output = x
@@ -236,30 +251,35 @@ def model_simple_decoder(input_shape, name='decoder'):
     decoder.summary()
     return decoder
 
-def model_conv_deconv(input_image_shape, use_color_augmentation=False, use_geometrical_augmentation=False):
-    image_input = tf.keras.Input(shape=(input_image_shape))
-    # input_noise = tf.keras.Input(shape=(2,))
+def model_resnet_decoder(input_shape, name='resnet_decoder'):
+    feature_input = tf.keras.Input(shape=(input_shape))
+    x = feature_input
+    x = res_unet.res_block(x, [1024,512], 3, strides=[1,1], name='resb1')
+    x = res_unet.res_block(x, [256,128], 3, strides=[1,1], name='resb2')
+    x = res_unet.upsample(x, (24,32))
+    x = res_unet.res_block(x, [64,64], 3, strides=[1,1], name='resb3')
+    x = res_unet.res_block(x, [32,32], 3, strides=[1,1], name='resb4')
 
-    x = image_input
+    x = tf.keras.layers.Conv2DTranspose(20, kernel_size=3, strides=1, padding='same', activation='sigmoid')(x)
+    x = tf.keras.layers.Resizing(40, 40)(x)
+    decoder_output = x
+    decoder = keras.Model(feature_input, decoder_output, name=name)
+    decoder.summary()
+    return decoder
 
-    #if use_color_augmentation:
-    #    x = ColorAugmentation()(x)
-    #if use_geometrical_augmentation:
-    #    x = GeometricalAugmentation()(x, input_noise)
+def model_conv_deconv(input_shape=input_image_shape, use_color_augmentation=False, use_geometrical_augmentation=False):
+    input_shape = input_shape + [3]
+    image_input = tf.keras.Input(shape=input_shape)
 
-    encoded_img = model_simple_encoder(input_image_shape)(x)
-    decoded_img = model_simple_decoder((15,15,128))(encoded_img)
+    resnet50 = ResNet50(include_top=False, input_shape=input_shape)
+    encoded_img = resnet50(image_input)
+    # decoded_img = model_simple_decoder((12,16,2048))(encoded_img)
+    decoded_img = model_resnet_decoder((12,16,2048))(encoded_img)
 
-    #if use_geometrical_augmentation:
-    #    model = AutoEncoderModel(inputs=[image_input, input_noise], outputs=[decoded_img], name='autoencoder')
-    #else:
-    #    model = Model(inputs=[image_input], outputs=[decoded_img], name='autoencoder')
-
-    model = Model(inputs=[image_input], outputs=[decoded_img], name='autoencoder')
+    model = Model(inputs=[image_input], outputs=[decoded_img], name='model_resnet')
     model.summary()
 
     return model
-
 
 
 class Trainer:
@@ -299,7 +319,7 @@ class Trainer:
                                                              save_weights_only=True,
                                                              verbose=1,
                                                              mode='min',
-                                                             save_best_only=False)
+                                                             save_best_only=True)
 
         # early stopping if not changing for 50 epochs
         early_stop = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
@@ -319,9 +339,9 @@ class Trainer:
 
     def train(self, epochs=300, early_stop_patience=100, reduce_lr_patience=50):
         xs = self.train_ds[0]
-        ys = self.train_ds[1]
+        ys = self.train_ds[1][2]
         val_xs = self.val_ds[0]
-        val_ys = self.val_ds[1]
+        val_ys = self.val_ds[1][2]
 
         start = time.time()
         callbacks = self.prepare_callbacks(early_stop_patience, reduce_lr_patience)
@@ -336,10 +356,11 @@ class Trainer:
         end = time.time()
         print('\ntotal time spent for training: {}[min]'.format((end-start)/60))
 
-def visualize_forcemaps(force_distribution, zaxis_first=False):
+def visualize_forcemaps(force_distribution, title='', zaxis_first=False):
     f = force_distribution / np.max(force_distribution)
-    fig = plt.figure(figsize=(8,4))
+    fig = plt.figure(figsize=(16,4))
     fig.subplots_adjust(hspace=0.1)
+    fig.suptitle(title, fontsize=28)
 
     if zaxis_first:
         channels = f.shape[0]
@@ -352,6 +373,26 @@ def visualize_forcemaps(force_distribution, zaxis_first=False):
             ax.imshow(f[p], cmap='gray', vmin=0, vmax=1.0)
         else:
             ax.imshow(f[:,:,p], cmap='gray', vmin=0, vmax=1.0)
+
+def visualize_result(f_prediction, f_label, rgb, filename=None):
+    visualize_forcemaps(f_prediction, title='prediction')
+    plt.savefig('prediction.png')
+    visualize_forcemaps(f_label, title='ground truth')
+    plt.savefig('ground_truth.png')
+    p = plt.imread('prediction.png')[:,:,:3]
+    g = plt.imread('ground_truth.png')[:,:,:3]
+    pg = np.concatenate([p,g], axis=0)
+    rgb2 = np.ones((800,512,3))
+    #rgb = cv2.resize(rgb, (256,180))
+    rgb2[220:580] = rgb
+    res = np.concatenate([rgb2,pg], axis=1)
+    fig = plt.figure(figsize=(10,4))
+    ax = fig.add_subplot(111)
+    ax.axis('off')
+    plt.imshow(res)
+    if filename != None:
+        plt.savefig(filename)
+    plt.show()
 
 class Tester:
     def __init__(self, model, test_data, checkpoint_file, runs_directory=None):
@@ -388,24 +429,20 @@ class Tester:
     def predict_force(self, n, show_the_others=False):
         xs = self.test_data[0][n:n+1]
         y_preds = self.model.predict(xs)
-        plt.figure()
-        plt.imshow(xs[0])
-        y_pred_depths,y_pred_logits,y_pred_forces = y_preds
+        y_pred_forces = y_preds
         force_label = self.test_data[1][2][n]
-        visualize_forcemaps(force_label)
-        visualize_forcemaps(y_pred_forces[0])
-        plt.show()
 
-        # y_pred_logits = tf.cast(tf.argmax(y_pred_logits, axis=-1), dtype=tf.uint8)
-        # plt.figure()
-        # plt.imshow(y_pred_logits[0])
-        # plt.show()
-        # return xs[0],ys[0],y_pred[0]
+        visualize_result(y_pred_forces[0], force_label, xs[0], 'result{:05d}.png'.format(n))
+        #plt.figure()
+        #plt.imshow(xs[0])
+        #visualize_forcemaps(force_label)
+        #visualize_forcemaps(y_pred_forces[0])
+        #plt.show()
 
 
 train_data, valid_data, test_data = load_data()
-# model = model_conv_deconv(valid_data[0][0].shape)
-model = model_for_force_estimation()
+model = model_conv_deconv()
+#model = model_for_force_estimation()
 
 # for training
 #trainer = Trainer(model, train_data, valid_data)
@@ -413,5 +450,5 @@ model = model_for_force_estimation()
 # for test
 # tester = Tester(model, test_data, 'ae_cp.basket-filling.force_estimator.best')
 # tester = Tester(model, test_data, 'ae_cp.basket-filling.force_estimator.20221028172410')
-tester = Tester(model, test_data, 'ae_cp.basket-filling.force_estimator.20221101182947')
+tester = Tester(model, test_data, 'ae_cp.basket-filling.model_resnet.20221101213121')
 # tester.predict()
