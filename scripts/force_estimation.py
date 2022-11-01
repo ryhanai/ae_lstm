@@ -42,6 +42,7 @@ def load1(seqNo, frameNo, resize=True):
     # resize images
     rgb = cv2.resize(rgb, (image_width, image_height))
     depth = cv2.resize(depth, (image_width, image_height))
+    depth = np.expand_dims(depth, axis=-1)
     seg = seg[::2,::2]
     return rgb, depth, seg, force, bin_state
 
@@ -68,7 +69,7 @@ class ForceEstimationModel(tf.keras.Model):
 
     def __init__(self, *args, **kargs):
         super(ForceEstimationModel, self).__init__(*args, **kargs)
-        tracker_names = ['loss']
+        tracker_names = ['loss', 'dloss', 'sloss', 'floss']
         self.train_trackers = {}
         self.test_trackers = {}
         for n in tracker_names:
@@ -79,31 +80,41 @@ class ForceEstimationModel(tf.keras.Model):
         xs, y_labels = data
 
         with tf.GradientTape() as tape:
-            y_pred_logits = self(xs, training=True) # Forward pass
-            loss = self.compute_loss(y_labels, y_pred_logits)
+            y_pred = self(xs, training=True) # Forward pass
+            loss = self.compute_loss(y_labels, y_pred)
 
         trainable_vars = self.trainable_variables
         gradients = tape.gradient(loss, trainable_vars)
         self.optimizer.apply_gradients(zip(gradients, trainable_vars))
 
-        self.train_trackers['loss'].update_state(loss)
+        self.train_trackers['loss'].update_state(loss[0])
+        self.train_trackers['dloss'].update_state(loss[1])
+        self.train_trackers['sloss'].update_state(loss[2])
+        self.train_trackers['floss'].update_state(loss[3])
         return dict([(trckr[0], trckr[1].result()) for trckr in self.train_trackers.items()])
 
     def test_step(self, data):
         xs, y_labels = data
 
-        y_pred_logits = self(xs, training=False) # Forward pass
-        loss = self.compute_loss(y_labels, y_pred_logits)
+        y_pred = self(xs, training=False) # Forward pass
+        loss = self.compute_loss(y_labels, y_pred)
 
-        self.test_trackers['loss'].update_state(loss)
+        self.test_trackers['loss'].update_state(loss[0])
+        self.test_trackers['dloss'].update_state(loss[1])
+        self.test_trackers['sloss'].update_state(loss[2])
+        self.test_trackers['floss'].update_state(loss[3])
         return dict([(trckr[0], trckr[1].result()) for trckr in self.test_trackers.items()])
 
-    def compute_loss(self, y_labels, y_pred_logits):
-        # loss = tf.reduce_mean(tf.square(y_joint - y_pred[1]))
-        labels = tf.cast(y_labels, dtype=tf.int32)
-        loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels, logits=y_pred_logits)
-        loss = tf.reduce_mean(loss)
-        return loss
+    def compute_loss(self, y_labels, y_pred):
+        y_pred_depth, y_pred_logits, y_pred_force = y_pred
+        depth_labels, seg_labels, force_labels = y_labels
+        dloss = tf.reduce_mean(tf.square(depth_labels - y_pred_depth))
+        seg_labels = tf.cast(seg_labels, dtype=tf.int32)
+        sloss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=seg_labels, logits=y_pred_logits)
+        sloss = tf.reduce_mean(sloss)
+        floss = tf.reduce_mean(tf.square(force_labels - y_pred_force))
+        loss = dloss + sloss + floss
+        return loss,dloss,sloss,floss
 
     @property
     def metrics(self):
@@ -123,16 +134,30 @@ def model_for_force_estimation(input_shape=input_image_shape,
     bridge = res_unet.res_block(encoder_output[-1], [num_filters[-1]*2], kernel_size, strides=[2,1], name='bridge')
 
     print(encoder_output[-1].shape)
-    decoder_output = res_unet.decoder(bridge, encoder_output, num_filters, kernel_size)
+    #decoder_output = res_unet.decoder(bridge, encoder_output, num_filters, kernel_size)
+    out1,out2,out3 = res_unet.multi_head_decoder(bridge, encoder_output, num_filters, kernel_size, num_heads=3)
 
-    output = tf.keras.layers.Conv2D(num_classes,
-                                    kernel_size, 
-                                    strides=1, 
-                                    padding='same', 
-                                    name='output')(decoder_output)
+    output_depth = tf.keras.layers.Conv2D(1, 
+                                        kernel_size, 
+                                        strides=1, 
+                                        padding='same', 
+                                        name='depth_output')(out1)
+
+    output_seg = tf.keras.layers.Conv2D(num_classes,
+                                        kernel_size, 
+                                        strides=1, 
+                                        padding='same', 
+                                        name='seg_output')(out2)
+
+    output_force = tf.keras.layers.Conv2D(20,
+                                        kernel_size, 
+                                        strides=1, 
+                                        padding='same', 
+                                        name='force_output')(out3)
+    output_force = tf.keras.layers.Resizing(40, 40)(output_force)
 
     model = ForceEstimationModel(inputs=[input],
-                                    outputs=[output],
+                                    outputs=[output_depth,output_seg,output_force],
                                     name='force_estimator')
 
     model.summary()
@@ -149,7 +174,7 @@ def load_data():
     data_ids = list(zip(x.ravel(), y.ravel()))
     # data_ids = np.random.permutation(data_ids)
     X_rgb = np.empty((n_seqs*n_frames, image_height, image_width, 3))
-    Y_depth = np.empty((n_seqs*n_frames, image_height, image_width))
+    Y_depth = np.empty((n_seqs*n_frames, image_height, image_width, 1))
     Y_seg = np.empty((n_seqs*n_frames, image_height, image_width))
     Y_force = np.empty((n_seqs*n_frames, 40, 40, 20))
 
@@ -365,9 +390,9 @@ train_data, valid_data, test_data = load_data()
 model = model_for_force_estimation()
 
 # for training
-# trainer = Trainer(model, train_data, valid_data)
+trainer = Trainer(model, train_data, valid_data)
 
 # for test
 # tester = Tester(model, test_data, 'ae_cp.basket-filling.autoencoder.20221018175305')
-tester = Tester(model, test_data, 'ae_cp.basket-filling.force_estimator.20221028172410')
+# tester = Tester(model, test_data, 'ae_cp.basket-filling.force_estimator.20221028172410')
 # tester.predict()

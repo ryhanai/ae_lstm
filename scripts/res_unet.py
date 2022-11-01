@@ -155,6 +155,37 @@ def decoder(x, encoder_output, num_filters, kernel_size):
 
     return x
 
+def multi_head_decoder(x, encoder_output, num_filters, kernel_size, num_heads):
+    """Unet decoder
+
+    Args:
+        x: tensor, output from previous layer
+        encoder_output: list, output from all previous encoder layers
+        num_filters: list, number of filters for each decoder layer
+        kernel_size: int, size of the convolutional kernel
+    Returns:
+        x: tensor, output from last layer of decoder
+    """
+
+    for i in range(1, len(num_filters)):
+        layer = 'decoder_layer' + str(i)
+        target_size = encoder_output[-i].shape[1:3]
+        x = upsample(x, target_size)
+        print(x.shape, encoder_output[-i].shape)
+        x = tf.keras.layers.Concatenate(axis=-1)([x, encoder_output[-i]])
+        x = res_block(x, [num_filters[-i]], kernel_size, strides=[1,1], name=layer)
+
+    target_size = encoder_output[0].shape[1:3]
+    x = upsample(x, target_size)
+    shared_x = tf.keras.layers.Concatenate(axis=-1)([x, encoder_output[0]])
+
+    outputs = []
+    for j in range(num_heads):
+        layer = 'decoder_layer_' + str(j)
+        output = res_block(shared_x, [num_filters[0]], kernel_size, strides=[1,1], name=layer)
+        outputs.append(output)
+    
+    return outputs
 
 def res_unet(input_shape, num_filters, kernel_size, num_channels, num_classes):
     """Residual Unet
