@@ -22,32 +22,57 @@ dataset = 'basket-filling'
 image_height = 360
 image_width = 512
 input_image_shape = [image_height, image_width]
+num_classes = 62
 
-def load1(seqNo, frameNo, resize=True):
+def load1(seqNo, frameNo, data_type, resize=True):
     dataset_path = os.path.join(os.environ['HOME'], 'Dataset/dataset2', dataset)
-    rgb_path = os.path.join(dataset_path, str(seqNo), 'rgb{:05d}.jpg'.format(frameNo))
-    depth_path = os.path.join(dataset_path, str(seqNo), 'depth_zip{:05d}.pkl'.format(frameNo))
-    seg_path = os.path.join(dataset_path, str(seqNo), 'seg{:05d}.png'.format(frameNo))            
-    force_path = os.path.join(dataset_path, str(seqNo), 'force_zip{:05d}.pkl'.format(frameNo))
-    bin_state_path = os.path.join(dataset_path, str(seqNo), 'bin_state{:05d}.pkl'.format(frameNo))
-    rgb = cv2.cvtColor(cv2.imread(rgb_path), cv2.COLOR_BGR2RGB)
-    #depth = pd.read_pickle(depth_path, compression='zip')
-    #seg = cv2.imread(seg_path, cv2.IMREAD_GRAYSCALE)
-    force = pd.read_pickle(force_path, compression='zip')
-    bin_state = pd.read_pickle(bin_state_path)
     crop = 128
-    rgb = rgb[:,crop:-crop] # crop the right & left side
-    #depth = depth[:,crop:-crop]
-    #seg = seg[:,crop:-crop]
-    force = force[:,:,:20]
 
-    # resize images
-    rgb = cv2.resize(rgb, (image_width, image_height))
-    #depth = cv2.resize(depth, (image_width, image_height))
-    #depth = np.expand_dims(depth, axis=-1)
-    #seg = seg[::2,::2]
-    #return rgb, depth, seg, force, bin_state
-    return rgb, [], [], force, bin_state
+    def load_rgb():
+        rgb_path = os.path.join(dataset_path, str(seqNo), 'rgb{:05d}.jpg'.format(frameNo))
+        rgb = cv2.cvtColor(cv2.imread(rgb_path), cv2.COLOR_BGR2RGB)
+        rgb = rgb[:,crop:-crop] # crop the right & left side
+        rgb = cv2.resize(rgb, (image_width, image_height))
+        return rgb
+    
+    def load_depth():
+        depth_path = os.path.join(dataset_path, str(seqNo), 'depth_zip{:05d}.pkl'.format(frameNo))
+        depth = pd.read_pickle(depth_path, compression='zip')
+        depth = depth[:,crop:-crop]
+        depth = cv2.resize(depth, (image_width, image_height))
+        depth = np.expand_dims(depth, axis=-1)
+        return depth
+
+    def load_segmentation_mask():
+        seg_path = os.path.join(dataset_path, str(seqNo), 'seg{:05d}.png'.format(frameNo))            
+        seg = cv2.imread(seg_path, cv2.IMREAD_GRAYSCALE)    
+        seg = seg[:,crop:-crop]
+        seg = seg[::2,::2] # resize
+        return seg
+
+    def load_force():
+        force_path = os.path.join(dataset_path, str(seqNo), 'force_zip{:05d}.pkl'.format(frameNo))
+        force = pd.read_pickle(force_path, compression='zip')
+        force = force[:,:,:20]
+        return force
+
+    def load_bin_state():
+        bin_state_path = os.path.join(dataset_path, str(seqNo), 'bin_state{:05d}.pkl'.format(frameNo))
+        bin_state = pd.read_pickle(bin_state_path)
+        return bin_state
+    
+    if data_type == 'rgb':
+        return load_rgb()
+    elif data_type == 'depth':
+        return load_depth()
+    elif data_type == 'segmentation-mask':
+        return load_segmentation_mask()
+    elif data_type == 'force':
+        return load_force()
+    elif data_type == 'bin-state':
+        return load_bin_state()
+    else:
+        raise 'Unknow data type requested'
 
 def show1(scene_data):
     rgb, depth, seg, force, bin_state = scene_data
@@ -62,11 +87,6 @@ def show1(scene_data):
     plt.show()
 
 import res_unet
-
-# def model_res_unet():
-#     num_classes = 62
-#     m = res_unet.res_unet(image_shape, [64,128,256], 3, 3, 2)
-#     return m
 
 class ForceEstimationModel(tf.keras.Model):
 
@@ -167,71 +187,63 @@ def model_for_force_estimation(input_shape=input_image_shape,
     model.summary()
     return model
 
-def load_data():
-    def split(X):
-        return np.split(X, [int(len(X)*.75), int(len(X)*.875)])
-    
+
+def split(X):
+    return np.split(X, [int(len(X)*.75), int(len(X)*.875)])
+
+def load_data(rgb=True, depth=True, segmentation_mask=True, force=True, bin_state=False):
     start_seq = 1001
     n_seqs = 450
+    #n_seqs = 200
     n_frames = 6
     x, y = np.mgrid[start_seq:start_seq+n_seqs, 0:n_frames]
     data_ids = list(zip(x.ravel(), y.ravel()))
-    X_rgb = np.empty((n_seqs*n_frames, image_height, image_width, 3))
-    Y_force = np.empty((n_seqs*n_frames, 40, 40, 20))
-
     total_frames = n_seqs*n_frames
-    for i in range(0, total_frames):
-        print('\rloading ... {}({:3.1f}%)'.format(i, i/total_frames*100.), end='')
-        seqNo, frameNo = data_ids[i]
-        rgb, depth, seg, force, bs = load1(seqNo, frameNo)
-        X_rgb[i] = rgb
-        Y_force[i] = force
 
-    X_rgb /= 255.
-    X_rgb_train, X_rgb_valid, X_rgb_test = split(X_rgb)
-    fmax = np.max(Y_force)
-    Y_force /= fmax
-    Y_force_train, Y_force_valid, Y_force_test = split(Y_force)
+    if rgb:
+        X_rgb = np.empty((n_seqs*n_frames, image_height, image_width, 3))
+        for i in range(0, total_frames):
+            print('\rloading RGB ... {}({:3.1f}%)'.format(i, i/total_frames*100.), end='')
+            seqNo, frameNo = data_ids[i]
+            X_rgb[i] = load1(seqNo, frameNo, data_type='rgb')
+        X_rgb /= 255.
+    else:
+        X_rgb = []
 
-    return (X_rgb_train, ([], [], Y_force_train)), (X_rgb_valid, ([], [], Y_force_valid)), (X_rgb_test, ([], [], Y_force_test))
+    if depth:
+        Y_depth = np.empty((n_seqs*n_frames, image_height, image_width, 1))
+        for i in range(0, total_frames):
+            print('\rloading depth ... {}({:3.1f}%)'.format(i, i/total_frames*100.), end='')
+            seqNo, frameNo = data_ids[i]
+            Y_depth[i] = load1(seqNo, frameNo, data_type='depth')
+        dmax = np.max(Y_depth)
+        dmin = np.min(Y_depth)
+        Y_depth = (Y_depth - dmin) / (dmax - dmin)
+    else:
+        Y_depth = []
 
-# def load_data():
-#     def split(X):
-#         return np.split(X, [int(len(X)*.75), int(len(X)*.875)])
-    
-#     start_seq = 1001
-#     n_seqs = 450
-#     n_frames = 6
-#     x, y = np.mgrid[start_seq:start_seq+n_seqs, 0:n_frames]
-#     data_ids = list(zip(x.ravel(), y.ravel()))
-#     X_rgb = np.empty((n_seqs*n_frames, image_height, image_width, 3))
-#     Y_depth = np.empty((n_seqs*n_frames, image_height, image_width, 1))
-#     Y_seg = np.empty((n_seqs*n_frames, image_height, image_width))
-#     Y_force = np.empty((n_seqs*n_frames, 40, 40, 20))
+    if segmentation_mask:
+        Y_seg = np.empty((n_seqs*n_frames, image_height, image_width))
+        for i in range(0, total_frames):
+            print('\rloading segmentation mask ... {}({:3.1f}%)'.format(i, i/total_frames*100.), end='')
+            seqNo, frameNo = data_ids[i]
+            Y_seg[i] = load1(seqNo, frameNo, data_type='segmentation-mask')
+    else:
+        Y_seg = []
 
-#     total_frames = n_seqs*n_frames
-#     for i in range(0, total_frames):
-#         print('\rloading ... {}({:3.1f}%)'.format(i, i/total_frames*100.), end='')
-#         seqNo, frameNo = data_ids[i]
-#         rgb, depth, seg, force, bs = load1(seqNo, frameNo)
-#         X_rgb[i] = rgb
-#         Y_depth[i] = depth
-#         Y_seg[i] = seg
-#         Y_force[i] = force
+    if force:
+        Y_force = np.empty((n_seqs*n_frames, 40, 40, 20))
+        for i in range(0, total_frames):
+            print('\rloading force ... {}({:3.1f}%)'.format(i, i/total_frames*100.), end='')
+            seqNo, frameNo = data_ids[i]
+            Y_force[i] = load1(seqNo, frameNo, data_type='force')
+        fmax = np.max(Y_force)
+        Y_force /= fmax
+    else:
+        Y_force = []
 
-#     X_rgb /= 255.
-#     X_rgb_train, X_rgb_valid, X_rgb_test = split(X_rgb)
-#     dmax = np.max(Y_depth)
-#     dmin = np.min(Y_depth)
-#     Y_depth = (Y_depth - dmin) / (dmax - dmin)
-#     Y_depth_train, Y_depth_valid, Y_depth_test = split(Y_depth)
-#     Y_seg_train, Y_seg_valid, Y_seg_test = split(Y_seg)
-#     # Y = np.log(Y+1)
-#     fmax = np.max(Y_force)
-#     Y_force /= fmax
-#     Y_force_train, Y_force_valid, Y_force_test = split(Y_force)
+    return X_rgb, Y_depth, Y_seg, Y_force, []
 
-#     return (X_rgb_train, (Y_depth_train, Y_seg_train, Y_force_train)), (X_rgb_valid, (Y_depth_valid, Y_seg_valid, Y_force_valid)), (X_rgb_test, (Y_depth_test, Y_seg_test, Y_force_test))
 
 def model_simple_decoder(input_shape, name='decoder'):
     feature_input = tf.keras.Input(shape=(input_shape))
@@ -267,16 +279,45 @@ def model_resnet_decoder(input_shape, name='resnet_decoder'):
     decoder.summary()
     return decoder
 
+def model_resnet_decoder2(input_shape, name='resnet_decoder2'):
+    feature_input = tf.keras.Input(shape=(input_shape))
+    x = feature_input
+    x = res_unet.res_block(x, [256,128], 3, strides=[1,1], name='resb1')
+    x = res_unet.res_block(x, [64,64], 3, strides=[1,1], name='resb2')
+    x = res_unet.upsample(x, (24,32)) # (46,64)
+    x = res_unet.res_block(x, [32,32], 3, strides=[1,1], name='resb4')
+
+    x = tf.keras.layers.Conv2DTranspose(20, kernel_size=3, strides=1, padding='same', activation='sigmoid')(x)
+    x = tf.keras.layers.Resizing(40, 40)(x)
+    decoder_output = x
+    decoder = keras.Model(feature_input, decoder_output, name=name)
+    decoder.summary()
+    return decoder
+
 def model_conv_deconv(input_shape=input_image_shape, use_color_augmentation=False, use_geometrical_augmentation=False):
     input_shape = input_shape + [3]
     image_input = tf.keras.Input(shape=input_shape)
 
     resnet50 = ResNet50(include_top=False, input_shape=input_shape)
     encoded_img = resnet50(image_input)
-    # decoded_img = model_simple_decoder((12,16,2048))(encoded_img)
     decoded_img = model_resnet_decoder((12,16,2048))(encoded_img)
 
     model = Model(inputs=[image_input], outputs=[decoded_img], name='model_resnet')
+    model.summary()
+
+    return model
+
+def model_depth_to_fmap(input_shape=input_image_shape, kernel_size=3, num_classes=num_classes):
+    input_depth = tf.keras.Input(shape=input_shape + [1])
+    input_seg = tf.keras.Input(shape=input_shape)
+
+    x = tf.keras.layers.Lambda(lambda x: tf.one_hot(tf.cast(x, tf.int32), depth=num_classes))(input_seg)
+    x = tf.keras.layers.Concatenate(axis=-1)([input_depth, x])
+
+    encoder_output = res_unet.encoder(x, num_filters=(32,64,64,128,256), kernel_size=kernel_size)
+    decoded_img = model_resnet_decoder2((23,32,256))(encoder_output[-1])
+
+    model = Model(inputs=[input_depth,input_seg], outputs=[decoded_img], name='model_depth_to_fmap')
     model.summary()
 
     return model
@@ -339,9 +380,9 @@ class Trainer:
 
     def train(self, epochs=300, early_stop_patience=100, reduce_lr_patience=50):
         xs = self.train_ds[0]
-        ys = self.train_ds[1][2]
+        ys = self.train_ds[1]
         val_xs = self.val_ds[0]
-        val_ys = self.val_ds[1][2]
+        val_ys = self.val_ds[1]
 
         start = time.time()
         callbacks = self.prepare_callbacks(early_stop_patience, reduce_lr_patience)
@@ -426,7 +467,7 @@ class Tester:
         plt.show()
         return xs[0],ys[0],y_pred[0]
 
-    def predict_force(self, n, show_the_others=False):
+    def predict_force_from_rgb(self, n, show_the_others=False):
         xs = self.test_data[0][n:n+1]
         y_preds = self.model.predict(xs)
         y_pred_forces = y_preds
@@ -439,16 +480,39 @@ class Tester:
         #visualize_forcemaps(y_pred_forces[0])
         #plt.show()
 
+    def predict_force_from_depth_seg(self, n, rgb):
+        xs_depth = self.test_data[0][0][n:n+1]
+        xs_seg = self.test_data[0][1][n:n+1]
+        xs = xs_depth,xs_seg
+        y_preds = self.model.predict(xs)
+        y_pred_forces = y_preds
+        force_label = self.test_data[1][n]
 
-train_data, valid_data, test_data = load_data()
-model = model_conv_deconv()
-#model = model_for_force_estimation()
+        visualize_result(y_pred_forces[0], force_label, rgb[n], 'result{:05d}.png'.format(n))
+        return y_pred_forces[0], force_label, rgb[n]
+
+rgb, depth, seg, force, bin_state = load_data(rgb=True, depth=True, segmentation_mask=True, force=True)
+train_depth, valid_depth, test_depth = split(depth)
+del depth
+train_seg, valid_seg, test_seg = split(seg)
+del seg
+train_force, valid_force, test_force = split(force)
+del force
+
+train_data = (train_depth, train_seg), train_force
+valid_data = (valid_depth, valid_seg), valid_force
+test_data = (test_depth, test_seg), test_force
+
+# model = model_conv_deconv()
+# model = model_for_force_estimation()
+model = model_depth_to_fmap()
 
 # for training
-#trainer = Trainer(model, train_data, valid_data)
+# trainer = Trainer(model, train_data, valid_data)
 
 # for test
 # tester = Tester(model, test_data, 'ae_cp.basket-filling.force_estimator.best')
 # tester = Tester(model, test_data, 'ae_cp.basket-filling.force_estimator.20221028172410')
-tester = Tester(model, test_data, 'ae_cp.basket-filling.model_resnet.20221101213121')
+# tester = Tester(model, test_data, 'ae_cp.basket-filling.model_resnet.20221101213121')
+tester = Tester(model, test_data, 'ae_cp.basket-filling.model_depth_to_fmap.20221104234049')
 # tester.predict()
