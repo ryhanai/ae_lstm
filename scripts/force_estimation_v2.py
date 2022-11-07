@@ -3,6 +3,7 @@
 #from typing import Concatenate
 import tensorflow as tf
 from tensorflow import keras
+from publish_force_distribution import publish_bin_state
 from tensorflow.keras import layers
 from tensorflow.keras.models import Model
 import tensorflow.keras.backend as K
@@ -129,6 +130,9 @@ class ForceEstimationModel(tf.keras.Model):
         return dict([(trckr[0], trckr[1].result()) for trckr in self.test_trackers.items()])
 
     def compute_loss(self, y_labels, y_pred):
+        '''
+            compute_loss for rgb to fmap
+        '''
         y_pred_depth, y_pred_logits, y_pred_force = y_pred
         depth_labels, seg_labels, force_labels = y_labels
         dloss = tf.reduce_mean(tf.square(depth_labels - y_pred_depth))
@@ -144,7 +148,7 @@ class ForceEstimationModel(tf.keras.Model):
     def metrics(self):
         return list(self.train_trackers.values()) + list(self.test_trackers.values())
 
-def model_for_force_estimation(input_shape=input_image_shape, 
+def model_rgb_to_fmap(input_shape=input_image_shape, 
                                 num_filters=[16,32,64],
                                 kernel_size=3,
                                 num_channels=3,
@@ -192,11 +196,12 @@ def split(X):
     return np.split(X, [int(len(X)*.75), int(len(X)*.875)])
 
 def load_data(rgb=True, depth=True, segmentation_mask=True, force=True, bin_state=False):
-    start_seq = 1001
-    n_seqs = 450
-    #n_seqs = 200
-    n_frames = 6
-    x, y = np.mgrid[start_seq:start_seq+n_seqs, 0:n_frames]
+    start_seq = 1
+    #n_seqs = 450
+    n_seqs = 1500
+    start_frame = 3
+    n_frames = 3
+    x, y = np.mgrid[start_seq:start_seq+n_seqs, start_frame:start_frame+n_frames]
     data_ids = list(zip(x.ravel(), y.ravel()))
     total_frames = n_seqs*n_frames
 
@@ -242,7 +247,14 @@ def load_data(rgb=True, depth=True, segmentation_mask=True, force=True, bin_stat
     else:
         Y_force = []
 
-    return X_rgb, Y_depth, Y_seg, Y_force, []
+    bin_states = []
+    if bin_state:
+        for i in range(0, total_frames):
+            print('\rloading bin_state ... {}({:3.1f}%)'.format(i, i/total_frames*100.), end='')
+            seqNo, frameNo = data_ids[i]
+            bin_states.append(load1(seqNo, frameNo, data_type='bin-state'))
+    
+    return X_rgb, Y_depth, Y_seg, Y_force, bin_states
 
 
 def model_simple_decoder(input_shape, name='decoder'):
@@ -294,7 +306,7 @@ def model_resnet_decoder2(input_shape, name='resnet_decoder2'):
     decoder.summary()
     return decoder
 
-def model_conv_deconv(input_shape=input_image_shape, use_color_augmentation=False, use_geometrical_augmentation=False):
+def model_rgb_to_fmap_res50(input_shape=input_image_shape, use_color_augmentation=False, use_geometrical_augmentation=False):
     input_shape = input_shape + [3]
     image_input = tf.keras.Input(shape=input_shape)
 
@@ -471,7 +483,7 @@ class Tester:
         xs = self.test_data[0][n:n+1]
         y_preds = self.model.predict(xs)
         y_pred_forces = y_preds
-        force_label = self.test_data[1][2][n]
+        force_label = self.test_data[1][n]
 
         visualize_result(y_pred_forces[0], force_label, xs[0], 'result{:05d}.png'.format(n))
         #plt.figure()
@@ -479,6 +491,7 @@ class Tester:
         #visualize_forcemaps(force_label)
         #visualize_forcemaps(y_pred_forces[0])
         #plt.show()
+        return y_pred_forces[0], force_label, xs[0]
 
     def predict_force_from_depth_seg(self, n, rgb):
         xs_depth = self.test_data[0][0][n:n+1]
@@ -491,21 +504,39 @@ class Tester:
         visualize_result(y_pred_forces[0], force_label, rgb[n], 'result{:05d}.png'.format(n))
         return y_pred_forces[0], force_label, rgb[n]
 
-rgb, depth, seg, force, bin_state = load_data(rgb=True, depth=True, segmentation_mask=True, force=True)
-train_depth, valid_depth, test_depth = split(depth)
-del depth
-train_seg, valid_seg, test_seg = split(seg)
-del seg
+# for rgb to fmap
+rgb, depth, seg, force, bin_state = load_data(rgb=True, depth=False, segmentation_mask=False, force=True, bin_state=True)
+train_rgb, valid_rgb, test_rgb = split(rgb)
+del rgb
 train_force, valid_force, test_force = split(force)
 del force
+train_bin_state, valid_bin_state, test_bin_state = split(bin_state)
+del bin_state
+train_data = train_rgb, train_force
+valid_data = valid_rgb, valid_force
+test_data = test_rgb, test_force
 
-train_data = (train_depth, train_seg), train_force
-valid_data = (valid_depth, valid_seg), valid_force
-test_data = (test_depth, test_seg), test_force
+def show_bin_state(fcam, bin_state, fmap):
+    fv = np.zeros((40,40,40))
+    fv[:,:,:20] = fmap
+    publish_bin_state(bin_state, (fcam.positions, fv.flatten()))
+
+
+# for depth&seg to fmap
+# rgb, depth, seg, force, bin_state = load_data(rgb=True, depth=True, segmentation_mask=True, force=True)
+# train_depth, valid_depth, test_depth = split(depth)
+# del depth
+# train_seg, valid_seg, test_seg = split(seg)
+# del seg
+# train_force, valid_force, test_force = split(force)
+# del force
+# train_data = (train_depth, train_seg), train_force
+# valid_data = (valid_depth, valid_seg), valid_force
+# test_data = (test_depth, test_seg), test_force
 
 # model = model_conv_deconv()
-# model = model_for_force_estimation()
-model = model_depth_to_fmap()
+model = model_rgb_to_fmap_res50()
+# model = model_depth_to_fmap()
 
 # for training
 # trainer = Trainer(model, train_data, valid_data)
@@ -514,5 +545,8 @@ model = model_depth_to_fmap()
 # tester = Tester(model, test_data, 'ae_cp.basket-filling.force_estimator.best')
 # tester = Tester(model, test_data, 'ae_cp.basket-filling.force_estimator.20221028172410')
 # tester = Tester(model, test_data, 'ae_cp.basket-filling.model_resnet.20221101213121')
-tester = Tester(model, test_data, 'ae_cp.basket-filling.model_depth_to_fmap.20221104234049')
-# tester.predict()
+# tester = Tester(model, test_data, 'ae_cp.basket-filling.model_depth_to_fmap.20221104234049')
+
+# best
+# tester = Tester(model, test_data, 'ae_cp.basket-filling.model_depth_to_fmap.20221107110203')
+tester = Tester(model, test_data, 'ae_cp.basket-filling.model_resnet.20221107144923')
