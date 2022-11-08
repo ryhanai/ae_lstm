@@ -152,11 +152,15 @@ def model_rgb_to_fmap(input_shape=input_image_shape,
                                 num_filters=[16,32,64],
                                 kernel_size=3,
                                 num_channels=3,
-                                num_classes=62
+                                num_classes=62,
+                                noise_stddev=0.3,
                                 ):
     input = tf.keras.Input(shape=input_shape + [num_channels])
 
-    encoder_output = res_unet.encoder(input, num_filters, kernel_size)
+    # Data Augmentation
+    x = tf.keras.layers.GaussianNoise(noise_stddev)(input)
+
+    encoder_output = res_unet.encoder(x, num_filters, kernel_size)
 
     # bridge layer, number of filters is double that of the last encoder layer
     bridge = res_unet.res_block(encoder_output[-1], [num_filters[-1]*2], kernel_size, strides=[2,1], name='bridge')
@@ -306,12 +310,20 @@ def model_resnet_decoder2(input_shape, name='resnet_decoder2'):
     decoder.summary()
     return decoder
 
-def model_rgb_to_fmap_res50(input_shape=input_image_shape, use_color_augmentation=False, use_geometrical_augmentation=False):
+def model_rgb_to_fmap_res50(input_shape=input_image_shape, input_noise_stddev=0.3):
     input_shape = input_shape + [3]
     image_input = tf.keras.Input(shape=input_shape)
+    #augmentation_input = tf.keras.Input(shape=(2,))
+
+    x = image_input
+
+    # data augmentation layers
+    x = ColorAugmentation()(x)
+    #x = GeometricalAugmentation()(x, augmentation_input)
+    x = tf.keras.layers.GaussianNoise(input_noise_stddev)(x)
 
     resnet50 = ResNet50(include_top=False, input_shape=input_shape)
-    encoded_img = resnet50(image_input)
+    encoded_img = resnet50(x)
     decoded_img = model_resnet_decoder((12,16,2048))(encoded_img)
 
     model = Model(inputs=[image_input], outputs=[decoded_img], name='model_resnet')
@@ -479,7 +491,7 @@ class Tester:
         plt.show()
         return xs[0],ys[0],y_pred[0]
 
-    def predict_force_from_rgb(self, n, show_the_others=False):
+    def predict_force_from_rgb(self, n):
         xs = self.test_data[0][n:n+1]
         y_preds = self.model.predict(xs)
         y_pred_forces = y_preds
@@ -493,6 +505,14 @@ class Tester:
         #plt.show()
         return y_pred_forces[0], force_label, xs[0]
 
+    def predict_force_from_rgb_with_img(self, rgb):
+        xs = np.expand_dims(rgb, axis=0)
+        y_preds = self.model.predict(xs)
+        y_pred_forces = y_preds
+        visualize_forcemaps(y_pred_forces[0])
+        plt.show()
+        return y_pred_forces
+
     def predict_force_from_depth_seg(self, n, rgb):
         xs_depth = self.test_data[0][0][n:n+1]
         xs_seg = self.test_data[0][1][n:n+1]
@@ -504,17 +524,19 @@ class Tester:
         visualize_result(y_pred_forces[0], force_label, rgb[n], 'result{:05d}.png'.format(n))
         return y_pred_forces[0], force_label, rgb[n]
 
-# for rgb to fmap
-rgb, depth, seg, force, bin_state = load_data(rgb=True, depth=False, segmentation_mask=False, force=True, bin_state=True)
-train_rgb, valid_rgb, test_rgb = split(rgb)
-del rgb
-train_force, valid_force, test_force = split(force)
-del force
-train_bin_state, valid_bin_state, test_bin_state = split(bin_state)
-del bin_state
-train_data = train_rgb, train_force
-valid_data = valid_rgb, valid_force
-test_data = test_rgb, test_force
+
+def load_data_for_rgb2fmap():
+    rgb, depth, seg, force, bin_state = load_data(rgb=True, depth=False, segmentation_mask=False, force=True, bin_state=True)
+    train_rgb, valid_rgb, test_rgb = split(rgb)
+    del rgb
+    train_force, valid_force, test_force = split(force)
+    del force
+    train_bin_state, valid_bin_state, test_bin_state = split(bin_state)
+    del bin_state
+    train_data = train_rgb, train_force
+    valid_data = valid_rgb, valid_force
+    test_data = test_rgb, test_force
+    return train_data,valid_data,test_data
 
 def show_bin_state(fcam, bin_state, fmap):
     fv = np.zeros((40,40,40))
@@ -522,21 +544,35 @@ def show_bin_state(fcam, bin_state, fmap):
     publish_bin_state(bin_state, (fcam.positions, fv.flatten()))
 
 
-# for depth&seg to fmap
-# rgb, depth, seg, force, bin_state = load_data(rgb=True, depth=True, segmentation_mask=True, force=True)
-# train_depth, valid_depth, test_depth = split(depth)
-# del depth
-# train_seg, valid_seg, test_seg = split(seg)
-# del seg
-# train_force, valid_force, test_force = split(force)
-# del force
-# train_data = (train_depth, train_seg), train_force
-# valid_data = (valid_depth, valid_seg), valid_force
-# test_data = (test_depth, test_seg), test_force
+def load_data_for_dseg2fmap():
+    rgb, depth, seg, force, bin_state = load_data(rgb=True, depth=True, segmentation_mask=True, force=True)
+    train_depth, valid_depth, test_depth = split(depth)
+    del depth
+    train_seg, valid_seg, test_seg = split(seg)
+    del seg
+    train_force, valid_force, test_force = split(force)
+    del force
+    train_data = (train_depth, train_seg), train_force
+    valid_data = (valid_depth, valid_seg), valid_force
+    test_data = (test_depth, test_seg), test_force
+    return train_data,valid_data,test_data
 
 # model = model_conv_deconv()
 model = model_rgb_to_fmap_res50()
 # model = model_depth_to_fmap()
+
+# train_data,valid_data,test_data = load_data_for_rgb2fmap()
+
+# for real-world test
+test_data = None
+
+def load_real(n):
+    file_path = os.path.join(os.getenv('HOME'), 'Dataset/dataset2/basket-filling-real', 'frame{:05d}.png'.format(n))
+    img = plt.imread(file_path)
+    c = (-40,25)
+    crop = 64
+    img2 = img[180+c[0]:540+c[0], 320+c[1]+crop:960+c[1]-crop]
+    return img2
 
 # for training
 # trainer = Trainer(model, train_data, valid_data)
@@ -549,4 +585,7 @@ model = model_rgb_to_fmap_res50()
 
 # best
 # tester = Tester(model, test_data, 'ae_cp.basket-filling.model_depth_to_fmap.20221107110203')
-tester = Tester(model, test_data, 'ae_cp.basket-filling.model_resnet.20221107144923')
+# tester = Tester(model, test_data, 'ae_cp.basket-filling.model_resnet.20221107144923')
+
+# gaussian / color augmentation
+tester = Tester(model, test_data, 'ae_cp.basket-filling.model_resnet.20221108181626')
