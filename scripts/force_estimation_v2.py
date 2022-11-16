@@ -89,11 +89,45 @@ def show1(scene_data):
 
 import res_unet
 
+def augment(xs, ys):
+    img = xs
+    fmap = ys
+
+    # color transformation on xs
+    # brightness_max_delta=0.2
+    # contrast_lower=0.8
+    # contrast_upper=1.2
+    hue_max_delta=0.05
+    # img = tf.image.random_brightness(img, max_delta=brightness_max_delta)
+    # img = tf.image.random_contrast(img, lower=contrast_lower, upper=contrast_upper)
+    img = tf.image.random_hue(img, max_delta=hue_max_delta)
+
+    # apply save transform to xs and ys
+    batch_sz = tf.shape(xs)[0]
+    height = tf.shape(xs)[1]
+    width = tf.shape(xs)[2]
+    shift_fmap = 2.0
+    shift_height = tf.cast(height * 4 / 40, tf.float32)
+    shift_width = tf.cast(height * 4 / 40, tf.float32)
+    angle_factor = 0.2
+    rnds = tf.random.uniform(shape=(batch_sz, 2))
+    img = tfa.image.translate(img, translations=tf.stack([shift_height, shift_width], axis=0)*rnds)
+    fmap = tfa.image.translate(fmap, translations=tf.stack([shift_fmap, shift_fmap], axis=0)*rnds)
+    rnds = tf.random.uniform(shape=(batch_sz,))
+    rnds = rnds - 0.5
+    img = tfa.image.rotate(img, angles=angle_factor*rnds)
+    fmap = tfa.image.rotate(fmap, angles=angle_factor*rnds)
+
+    # add gaussian noise to xs
+
+    return img,fmap
+
 class ForceEstimationModel(tf.keras.Model):
 
     def __init__(self, *args, **kargs):
         super(ForceEstimationModel, self).__init__(*args, **kargs)
-        tracker_names = ['loss', 'dloss', 'sloss', 'floss']
+        # tracker_names = ['loss', 'dloss', 'sloss', 'floss']
+        tracker_names = ['loss']
         self.train_trackers = {}
         self.test_trackers = {}
         for n in tracker_names:
@@ -102,6 +136,7 @@ class ForceEstimationModel(tf.keras.Model):
 
     def train_step(self, data):
         xs, y_labels = data
+        xs, y_labels = augment(xs, y_labels)
 
         with tf.GradientTape() as tape:
             y_pred = self(xs, training=True) # Forward pass
@@ -111,10 +146,10 @@ class ForceEstimationModel(tf.keras.Model):
         gradients = tape.gradient(loss, trainable_vars)
         self.optimizer.apply_gradients(zip(gradients, trainable_vars))
 
-        self.train_trackers['loss'].update_state(loss[0])
-        self.train_trackers['dloss'].update_state(loss[1])
-        self.train_trackers['sloss'].update_state(loss[2])
-        self.train_trackers['floss'].update_state(loss[3])
+        self.train_trackers['loss'].update_state(loss)
+        # self.train_trackers['dloss'].update_state(loss[1])
+        # self.train_trackers['sloss'].update_state(loss[2])
+        # self.train_trackers['floss'].update_state(loss[3])
         return dict([(trckr[0], trckr[1].result()) for trckr in self.train_trackers.items()])
 
     def test_step(self, data):
@@ -123,26 +158,32 @@ class ForceEstimationModel(tf.keras.Model):
         y_pred = self(xs, training=False) # Forward pass
         loss = self.compute_loss(y_labels, y_pred)
 
-        self.test_trackers['loss'].update_state(loss[0])
-        self.test_trackers['dloss'].update_state(loss[1])
-        self.test_trackers['sloss'].update_state(loss[2])
-        self.test_trackers['floss'].update_state(loss[3])
+        self.test_trackers['loss'].update_state(loss)
+        # self.test_trackers['dloss'].update_state(loss[1])
+        # self.test_trackers['sloss'].update_state(loss[2])
+        # self.test_trackers['floss'].update_state(loss[3])
         return dict([(trckr[0], trckr[1].result()) for trckr in self.test_trackers.items()])
+
+    # def compute_loss(self, y_labels, y_pred):
+    #     '''
+    #         compute_loss for rgb to fmap
+    #     '''
+    #     y_pred_depth, y_pred_logits, y_pred_force = y_pred
+    #     depth_labels, seg_labels, force_labels = y_labels
+    #     dloss = tf.reduce_mean(tf.square(depth_labels - y_pred_depth))
+    #     seg_labels = tf.cast(seg_labels, dtype=tf.int32)
+    #     sloss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=seg_labels, logits=y_pred_logits)
+    #     sloss = tf.reduce_mean(sloss)
+    #     floss = tf.reduce_mean(tf.square(force_labels - y_pred_force))
+    #     loss = dloss + sloss + floss
+    #     return loss,dloss,sloss,floss
 
     def compute_loss(self, y_labels, y_pred):
         '''
             compute_loss for rgb to fmap
         '''
-        y_pred_depth, y_pred_logits, y_pred_force = y_pred
-        depth_labels, seg_labels, force_labels = y_labels
-        dloss = tf.reduce_mean(tf.square(depth_labels - y_pred_depth))
-        seg_labels = tf.cast(seg_labels, dtype=tf.int32)
-        sloss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=seg_labels, logits=y_pred_logits)
-        sloss = tf.reduce_mean(sloss)
-        floss = tf.reduce_mean(tf.square(force_labels - y_pred_force))
-        # loss = dloss + sloss + floss
-        loss = floss
-        return loss,dloss,sloss,floss
+        loss = tf.reduce_mean(tf.square(y_labels - y_pred))
+        return loss
 
     @property
     def metrics(self):
@@ -201,6 +242,7 @@ def split(X):
 
 def load_data(rgb=True, depth=True, segmentation_mask=True, force=True, bin_state=False):
     start_seq = 1
+    #n_seqs = 20
     #n_seqs = 450
     n_seqs = 1500
     start_frame = 3
@@ -313,20 +355,21 @@ def model_resnet_decoder2(input_shape, name='resnet_decoder2'):
 def model_rgb_to_fmap_res50(input_shape=input_image_shape, input_noise_stddev=0.3):
     input_shape = input_shape + [3]
     image_input = tf.keras.Input(shape=input_shape)
-    #augmentation_input = tf.keras.Input(shape=(2,))
 
     x = image_input
 
-    # data augmentation layers
-    x = ColorAugmentation()(x)
-    #x = GeometricalAugmentation()(x, augmentation_input)
+    # augmentation layers
+    x = tf.keras.layers.RandomZoom(0.05)(x)
+    x = tf.keras.layers.RandomBrightness(factor=0.2, value_range=(0,1.0))(x)
+    x = tf.keras.layers.RandomContrast(factor=0.3)(x)
     x = tf.keras.layers.GaussianNoise(input_noise_stddev)(x)
 
     resnet50 = ResNet50(include_top=False, input_shape=input_shape)
     encoded_img = resnet50(x)
     decoded_img = model_resnet_decoder((12,16,2048))(encoded_img)
 
-    model = Model(inputs=[image_input], outputs=[decoded_img], name='model_resnet')
+    # model = Model(inputs=[image_input], outputs=[decoded_img], name='model_resnet')
+    model = ForceEstimationModel(inputs=[image_input], outputs=[decoded_img], name='model_resnet')
     model.summary()
 
     return model
@@ -586,6 +629,9 @@ def load_real(n):
 # best
 # tester = Tester(model, test_data, 'ae_cp.basket-filling.model_depth_to_fmap.20221107110203')
 # tester = Tester(model, test_data, 'ae_cp.basket-filling.model_resnet.20221107144923')
+# tester = Tester(model, test_data, 'ae_cp.basket-filling.model_resnet.20221115154455')
+# tester = Tester(model, test_data, 'ae_cp.basket-filling.model_resnet.20221115182656')
+tester = Tester(model, test_data, 'ae_cp.basket-filling.model_resnet.20221115193122')
 
 # gaussian / color augmentation
-tester = Tester(model, test_data, 'ae_cp.basket-filling.model_resnet.20221108181626')
+# tester = Tester(model, test_data, 'ae_cp.basket-filling.model_resnet.20221108181626')
