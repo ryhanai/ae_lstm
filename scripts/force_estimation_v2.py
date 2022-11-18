@@ -3,7 +3,7 @@
 #from typing import Concatenate
 import tensorflow as tf
 from tensorflow import keras
-from publish_force_distribution import publish_bin_state
+import force_distribution_viewer
 from tensorflow.keras import layers
 from tensorflow.keras.models import Model
 import tensorflow.keras.backend as K
@@ -569,26 +569,28 @@ class Tester:
 
 
 def load_data_for_rgb2fmap():
-    rgb, depth, seg, force, bin_state = load_data(rgb=True, depth=False, segmentation_mask=False, force=True, bin_state=True)
+    rgb, depth, seg, force, _  = load_data(rgb=True, depth=False, segmentation_mask=False, force=True)
     train_rgb, valid_rgb, test_rgb = split(rgb)
     del rgb
     train_force, valid_force, test_force = split(force)
     del force
-    train_bin_state, valid_bin_state, test_bin_state = split(bin_state)
-    del bin_state
+    #train_bin_state, valid_bin_state, test_bin_state = split(bin_state)
+    #del bin_state
     train_data = train_rgb, train_force
     valid_data = valid_rgb, valid_force
     test_data = test_rgb, test_force
     return train_data,valid_data,test_data
 
-def show_bin_state(fcam, bin_state, fmap):
+viewer = force_distribution_viewer.ForceDistributionViewer.get_instance()
+
+def show_bin_state(fcam, bin_state, fmap, draw_fmap=True, draw_force_gradient=False):
     fv = np.zeros((40,40,40))
     fv[:,:,:20] = fmap
-    publish_bin_state(bin_state, (fcam.positions, fv.flatten()))
-
+    positions = fcam.positions
+    viewer.publish_bin_state(bin_state, positions, fv, draw_fmap=draw_fmap, draw_force_gradient=draw_force_gradient)
 
 def load_data_for_dseg2fmap():
-    rgb, depth, seg, force, bin_state = load_data(rgb=True, depth=True, segmentation_mask=True, force=True)
+    rgb, depth, seg, force = load_data(rgb=True, depth=True, segmentation_mask=True, force=True)
     train_depth, valid_depth, test_depth = split(depth)
     del depth
     train_seg, valid_seg, test_seg = split(seg)
@@ -600,14 +602,49 @@ def load_data_for_dseg2fmap():
     test_data = (test_depth, test_seg), test_force
     return train_data,valid_data,test_data
 
+def load_bin_states():
+    _,_,_,_,bin_states = load_data(rgb=False, depth=False, segmentation_mask=False, force=False, bin_state=True)
+    return split(bin_states)
+
+import scipy.linalg
+
+def pick_direction_plan(fcam, fmap, bin_state, gp=[0.02, -0.04, 0.79], radius=0.05, scale=[0.005,0.01,0.004]):
+    gp = np.array(gp)
+    fv = np.zeros((40,40,40))
+    fv[:,:,:20] = fmap
+    gxyz = np.gradient(-fv)
+    g_vecs = np.column_stack([g.flatten() for g in gxyz])
+
+    ps = fcam.positions
+    idx = np.where(np.sum((ps - gp)*g_vecs, axis=1) < 0)[0]
+    fps = ps[idx]
+    fg_vecs = g_vecs[idx]
+    pos_val_pairs = [(p,g) for (p,g) in zip(fps, fg_vecs) if scipy.linalg.norm(g) > 0.008]
+    pz,vz = zip(*pos_val_pairs)
+    pz = np.array(pz)
+    vz = np.array(vz)
+    viewer.publish_bin_state(bin_state, ps, fv, draw_fmap=False, draw_force_gradient=False)
+    viewer.draw_vector_field(pz, vz, scale=0.3)
+    viewer.rviz_client.draw_sphere(gp,[1,0,0,1],[0.01,0.01,0.01])
+    viewer.rviz_client.show()
+    idx = np.where(scipy.linalg.norm(pz - gp, axis=1) < radius)[0]
+    pick_direction = np.sum(vz[idx], axis=0)
+    pick_direction /= np.linalg.norm(pick_direction)
+    viewer.rviz_client.draw_arrow(gp, gp + pick_direction * 0.1, [0,1,0,1], scale)
+    viewer.rviz_client.show()
+    return pz,vz,pick_direction
+
+
 # model = model_conv_deconv()
 model = model_rgb_to_fmap_res50()
 # model = model_depth_to_fmap()
 
-# train_data,valid_data,test_data = load_data_for_rgb2fmap()
+train_data,valid_data,test_data = load_data_for_rgb2fmap()
+train_bs,valid_bs,test_bs = load_bin_states()
+
 
 # for real-world test
-test_data = None
+# test_data = None
 
 def load_real(n):
     file_path = os.path.join(os.getenv('HOME'), 'Dataset/dataset2/basket-filling-real', 'frame{:05d}.png'.format(n))

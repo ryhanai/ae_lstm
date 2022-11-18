@@ -204,7 +204,8 @@ def clear_scene():
       v.deactivate()
       v.reset_pose()
       
-from publish_force_distribution import *
+import force_distribution_viewer
+viewer = force_distribution_viewer.ForceDistributionViewer.get_instance()
 
 def get_bin_state():
   bin_state = []
@@ -217,8 +218,8 @@ def get_bin_state():
 def observe(n_frames=10, moving_average=True):
   for i in range(n_frames):
     cam.getImg()
-    publish_bin_state(get_bin_state(), fcam.getDensity(moving_average))
-    rate.sleep
+    f = fcam.getDensity(moving_average)
+    viewer.publish_bin_state(get_bin_state(), f)
 
 class SceneWriter:
   def __init__(self):
