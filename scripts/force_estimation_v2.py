@@ -9,15 +9,15 @@ from tensorflow.keras.models import Model
 import tensorflow.keras.backend as K
 import tensorflow_addons as tfa
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
-import cv2, os, time
+import os, time
 from datetime import datetime
 from model import *
 import res_unet
 from core.utils import *
-import pprint
 from tensorflow.keras.applications.resnet50 import ResNet50
+from force_estimation_data_loader import ForceEstimationDataLoader
+import res_unet
 
 dataset = 'basket-filling'
 image_height = 360
@@ -25,69 +25,13 @@ image_width = 512
 input_image_shape = [image_height, image_width]
 num_classes = 62
 
-def load1(seqNo, frameNo, data_type, resize=True):
-    dataset_path = os.path.join(os.environ['HOME'], 'Dataset/dataset2', dataset)
-    crop = 128
-
-    def load_rgb():
-        rgb_path = os.path.join(dataset_path, str(seqNo), 'rgb{:05d}.jpg'.format(frameNo))
-        rgb = cv2.cvtColor(cv2.imread(rgb_path), cv2.COLOR_BGR2RGB)
-        rgb = rgb[:,crop:-crop] # crop the right & left side
-        rgb = cv2.resize(rgb, (image_width, image_height))
-        return rgb
-    
-    def load_depth():
-        depth_path = os.path.join(dataset_path, str(seqNo), 'depth_zip{:05d}.pkl'.format(frameNo))
-        depth = pd.read_pickle(depth_path, compression='zip')
-        depth = depth[:,crop:-crop]
-        depth = cv2.resize(depth, (image_width, image_height))
-        depth = np.expand_dims(depth, axis=-1)
-        return depth
-
-    def load_segmentation_mask():
-        seg_path = os.path.join(dataset_path, str(seqNo), 'seg{:05d}.png'.format(frameNo))            
-        seg = cv2.imread(seg_path, cv2.IMREAD_GRAYSCALE)    
-        seg = seg[:,crop:-crop]
-        seg = seg[::2,::2] # resize
-        return seg
-
-    def load_force():
-        force_path = os.path.join(dataset_path, str(seqNo), 'force_zip{:05d}.pkl'.format(frameNo))
-        force = pd.read_pickle(force_path, compression='zip')
-        force = force[:,:,:20]
-        return force
-
-    def load_bin_state():
-        bin_state_path = os.path.join(dataset_path, str(seqNo), 'bin_state{:05d}.pkl'.format(frameNo))
-        bin_state = pd.read_pickle(bin_state_path)
-        return bin_state
-    
-    if data_type == 'rgb':
-        return load_rgb()
-    elif data_type == 'depth':
-        return load_depth()
-    elif data_type == 'segmentation-mask':
-        return load_segmentation_mask()
-    elif data_type == 'force':
-        return load_force()
-    elif data_type == 'bin-state':
-        return load_bin_state()
-    else:
-        raise 'Unknow data type requested'
-
-def show1(scene_data):
-    rgb, depth, seg, force, bin_state = scene_data
-    pprint.pprint(bin_state)
-    plt.figure()
-    plt.imshow(rgb)
-    plt.figure()
-    plt.imshow(depth, cmap='gray')
-    plt.figure()
-    plt.imshow(seg)
-    visualize_forcemaps(force)
-    plt.show()
-
-import res_unet
+dl = ForceEstimationDataLoader(
+                            os.path.join(os.environ['HOME'], 'Dataset/dataset2', dataset),
+                            os.path.join(os.environ['HOME'], 'Dataset/dataset2', dataset+'-real'),
+                            image_height=image_height,
+                            image_width=image_width,
+                            start_seq=1, n_seqs=1500,
+                            start_frame=3, n_frames=3)
 
 def augment(xs, ys):
     img = xs
@@ -235,73 +179,6 @@ def model_rgb_to_fmap(input_shape=input_image_shape,
 
     model.summary()
     return model
-
-
-def split(X):
-    return np.split(X, [int(len(X)*.75), int(len(X)*.875)])
-
-def load_data(rgb=True, depth=True, segmentation_mask=True, force=True, bin_state=False):
-    start_seq = 1
-    #n_seqs = 20
-    #n_seqs = 450
-    n_seqs = 1500
-    start_frame = 3
-    n_frames = 3
-    x, y = np.mgrid[start_seq:start_seq+n_seqs, start_frame:start_frame+n_frames]
-    data_ids = list(zip(x.ravel(), y.ravel()))
-    total_frames = n_seqs*n_frames
-
-    if rgb:
-        X_rgb = np.empty((n_seqs*n_frames, image_height, image_width, 3))
-        for i in range(0, total_frames):
-            print('\rloading RGB ... {}({:3.1f}%)'.format(i, i/total_frames*100.), end='')
-            seqNo, frameNo = data_ids[i]
-            X_rgb[i] = load1(seqNo, frameNo, data_type='rgb')
-        X_rgb /= 255.
-    else:
-        X_rgb = []
-
-    if depth:
-        Y_depth = np.empty((n_seqs*n_frames, image_height, image_width, 1))
-        for i in range(0, total_frames):
-            print('\rloading depth ... {}({:3.1f}%)'.format(i, i/total_frames*100.), end='')
-            seqNo, frameNo = data_ids[i]
-            Y_depth[i] = load1(seqNo, frameNo, data_type='depth')
-        dmax = np.max(Y_depth)
-        dmin = np.min(Y_depth)
-        Y_depth = (Y_depth - dmin) / (dmax - dmin)
-    else:
-        Y_depth = []
-
-    if segmentation_mask:
-        Y_seg = np.empty((n_seqs*n_frames, image_height, image_width))
-        for i in range(0, total_frames):
-            print('\rloading segmentation mask ... {}({:3.1f}%)'.format(i, i/total_frames*100.), end='')
-            seqNo, frameNo = data_ids[i]
-            Y_seg[i] = load1(seqNo, frameNo, data_type='segmentation-mask')
-    else:
-        Y_seg = []
-
-    if force:
-        Y_force = np.empty((n_seqs*n_frames, 40, 40, 20))
-        for i in range(0, total_frames):
-            print('\rloading force ... {}({:3.1f}%)'.format(i, i/total_frames*100.), end='')
-            seqNo, frameNo = data_ids[i]
-            Y_force[i] = load1(seqNo, frameNo, data_type='force')
-        fmax = np.max(Y_force)
-        Y_force /= fmax
-    else:
-        Y_force = []
-
-    bin_states = []
-    if bin_state:
-        for i in range(0, total_frames):
-            print('\rloading bin_state ... {}({:3.1f}%)'.format(i, i/total_frames*100.), end='')
-            seqNo, frameNo = data_ids[i]
-            bin_states.append(load1(seqNo, frameNo, data_type='bin-state'))
-    
-    return X_rgb, Y_depth, Y_seg, Y_force, bin_states
-
 
 def model_simple_decoder(input_shape, name='decoder'):
     feature_input = tf.keras.Input(shape=(input_shape))
@@ -491,7 +368,6 @@ def visualize_result(f_prediction, f_label, rgb, filename=None):
     g = plt.imread('ground_truth.png')[:,:,:3]
     pg = np.concatenate([p,g], axis=0)
     rgb2 = np.ones((800,512,3))
-    #rgb = cv2.resize(rgb, (256,180))
     rgb2[220:580] = rgb
     res = np.concatenate([rgb2,pg], axis=1)
     fig = plt.figure(figsize=(10,4))
@@ -534,18 +410,18 @@ class Tester:
         plt.show()
         return xs[0],ys[0],y_pred[0]
 
-    def predict_force_from_rgb(self, n):
+    def predict_force_from_rgb(self, n, visualize_result=True):
         xs = self.test_data[0][n:n+1]
         y_preds = self.model.predict(xs)
         y_pred_forces = y_preds
         force_label = self.test_data[1][n]
-
-        visualize_result(y_pred_forces[0], force_label, xs[0], 'result{:05d}.png'.format(n))
-        #plt.figure()
-        #plt.imshow(xs[0])
-        #visualize_forcemaps(force_label)
-        #visualize_forcemaps(y_pred_forces[0])
-        #plt.show()
+        if visualize_result:
+            visualize_result(y_pred_forces[0], force_label, xs[0], 'result{:05d}.png'.format(n))
+            #plt.figure()
+            #plt.imshow(xs[0])
+            #visualize_forcemaps(force_label)
+            #visualize_forcemaps(y_pred_forces[0])
+            #plt.show()
         return y_pred_forces[0], force_label, xs[0]
 
     def predict_force_from_rgb_with_img(self, rgb):
@@ -567,20 +443,6 @@ class Tester:
         visualize_result(y_pred_forces[0], force_label, rgb[n], 'result{:05d}.png'.format(n))
         return y_pred_forces[0], force_label, rgb[n]
 
-
-def load_data_for_rgb2fmap():
-    rgb, depth, seg, force, _  = load_data(rgb=True, depth=False, segmentation_mask=False, force=True)
-    train_rgb, valid_rgb, test_rgb = split(rgb)
-    del rgb
-    train_force, valid_force, test_force = split(force)
-    del force
-    #train_bin_state, valid_bin_state, test_bin_state = split(bin_state)
-    #del bin_state
-    train_data = train_rgb, train_force
-    valid_data = valid_rgb, valid_force
-    test_data = test_rgb, test_force
-    return train_data,valid_data,test_data
-
 viewer = force_distribution_viewer.ForceDistributionViewer.get_instance()
 
 def show_bin_state(fcam, bin_state, fmap, draw_fmap=True, draw_force_gradient=False):
@@ -589,26 +451,12 @@ def show_bin_state(fcam, bin_state, fmap, draw_fmap=True, draw_force_gradient=Fa
     positions = fcam.positions
     viewer.publish_bin_state(bin_state, positions, fv, draw_fmap=draw_fmap, draw_force_gradient=draw_force_gradient)
 
-def load_data_for_dseg2fmap():
-    rgb, depth, seg, force = load_data(rgb=True, depth=True, segmentation_mask=True, force=True)
-    train_depth, valid_depth, test_depth = split(depth)
-    del depth
-    train_seg, valid_seg, test_seg = split(seg)
-    del seg
-    train_force, valid_force, test_force = split(force)
-    del force
-    train_data = (train_depth, train_seg), train_force
-    valid_data = (valid_depth, valid_seg), valid_force
-    test_data = (test_depth, test_seg), test_force
-    return train_data,valid_data,test_data
-
-def load_bin_states():
-    _,_,_,_,bin_states = load_data(rgb=False, depth=False, segmentation_mask=False, force=False, bin_state=True)
-    return split(bin_states)
-
 import scipy.linalg
 
-def pick_direction_plan(fcam, fmap, bin_state, gp=[0.02, -0.04, 0.79], radius=0.05, scale=[0.005,0.01,0.004]):
+def pick_direction_plan(fcam, n=25, gp=[0.02, -0.04, 0.79], radius=0.05, scale=[0.005,0.01,0.004]):
+    fmap, force_label, rgb = tester.predict_force_from_rgb(n, visualize_result=False)
+    bin_state = tester.test_data[2][n]
+
     gp = np.array(gp)
     fv = np.zeros((40,40,40))
     fv[:,:,:20] = fmap
@@ -639,25 +487,22 @@ def pick_direction_plan(fcam, fmap, bin_state, gp=[0.02, -0.04, 0.79], radius=0.
 model = model_rgb_to_fmap_res50()
 # model = model_depth_to_fmap()
 
-train_data,valid_data,test_data = load_data_for_rgb2fmap()
-train_bs,valid_bs,test_bs = load_bin_states()
+task = 'pick'
+model_file = 'ae_cp.basket-filling.model_resnet.20221115193122'
 
+if task == 'train':
+    train_data,valid_data = dl.load_data_for_rgb2fmap(train_mode=True)
+    trainer = Trainer(model, train_data, valid_data)
+elif task == 'test':
+    test_data = dl.load_data_for_rgb2fmap(test_mode=True)
+    tester = Tester(model, test_data, model_file)
+elif task == 'test-real':
+    test_data = dl.load_real_data_for_rgb2fmap(test_mode=True)
+    tester = Tester(model, test_data, model_file)
+elif task == 'pick':
+    test_data = dl.load_data_for_rgb2fmap(test_mode=True, load_bin_state=True)
+    tester = Tester(model, test_data, model_file)
 
-# for real-world test
-# test_data = None
-
-def load_real(n):
-    file_path = os.path.join(os.getenv('HOME'), 'Dataset/dataset2/basket-filling-real', 'frame{:05d}.png'.format(n))
-    img = plt.imread(file_path)
-    c = (-40,25)
-    crop = 64
-    img2 = img[180+c[0]:540+c[0], 320+c[1]+crop:960+c[1]-crop]
-    return img2
-
-# for training
-# trainer = Trainer(model, train_data, valid_data)
-
-# for test
 # tester = Tester(model, test_data, 'ae_cp.basket-filling.force_estimator.best')
 # tester = Tester(model, test_data, 'ae_cp.basket-filling.force_estimator.20221028172410')
 # tester = Tester(model, test_data, 'ae_cp.basket-filling.model_resnet.20221101213121')
@@ -668,7 +513,6 @@ def load_real(n):
 # tester = Tester(model, test_data, 'ae_cp.basket-filling.model_resnet.20221107144923')
 # tester = Tester(model, test_data, 'ae_cp.basket-filling.model_resnet.20221115154455')
 # tester = Tester(model, test_data, 'ae_cp.basket-filling.model_resnet.20221115182656')
-tester = Tester(model, test_data, 'ae_cp.basket-filling.model_resnet.20221115193122')
 
 # gaussian / color augmentation
 # tester = Tester(model, test_data, 'ae_cp.basket-filling.model_resnet.20221108181626')
