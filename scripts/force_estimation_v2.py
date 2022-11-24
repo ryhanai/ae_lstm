@@ -30,7 +30,8 @@ dl = ForceEstimationDataLoader(
                             os.path.join(os.environ['HOME'], 'Dataset/dataset2', dataset+'-real'),
                             image_height=image_height,
                             image_width=image_width,
-                            start_seq=1, n_seqs=1500,
+                            start_seq=1, 
+                            n_seqs=100, # n_seqs=1500,
                             start_frame=3, n_frames=3)
 
 def augment(xs, ys):
@@ -132,6 +133,74 @@ class ForceEstimationModel(tf.keras.Model):
     @property
     def metrics(self):
         return list(self.train_trackers.values()) + list(self.test_trackers.values())
+
+class DRCNForceEstimationModel(tf.keras.Model):
+
+    def __init__(self, *args, **kargs):
+        super(DRCNForceEstimationModel, self).__init__(*args, **kargs)
+        # tracker_names = ['loss', 'dloss', 'sloss', 'floss']
+        tracker_names = ['loss']
+        self.train_trackers = {}
+        self.test_trackers = {}
+        for n in tracker_names:
+            self.train_trackers[n] = keras.metrics.Mean(name=n)
+            self.test_trackers[n] = keras.metrics.Mean(name='val_'+n)
+
+    def train_step(self, data):
+        xs, y_labels, target_xs = data
+        xs, y_labels = augment(xs, y_labels)
+
+        with tf.GradientTape() as tape:
+            y_pred = self(xs, training=True) # Forward pass
+            loss = self.compute_loss(y_labels, y_pred)
+
+        trainable_vars = self.trainable_variables
+        gradients = tape.gradient(loss, trainable_vars)
+        self.optimizer.apply_gradients(zip(gradients, trainable_vars))
+
+        self.train_trackers['loss'].update_state(loss)
+        # self.train_trackers['dloss'].update_state(loss[1])
+        # self.train_trackers['sloss'].update_state(loss[2])
+        # self.train_trackers['floss'].update_state(loss[3])
+        return dict([(trckr[0], trckr[1].result()) for trckr in self.train_trackers.items()])
+
+    def test_step(self, data):
+        xs, y_labels, target_xs = data
+
+        y_pred = self(xs, training=False) # Forward pass
+        loss = self.compute_loss(y_labels, y_pred)
+
+        self.test_trackers['loss'].update_state(loss)
+        # self.test_trackers['dloss'].update_state(loss[1])
+        # self.test_trackers['sloss'].update_state(loss[2])
+        # self.test_trackers['floss'].update_state(loss[3])
+        return dict([(trckr[0], trckr[1].result()) for trckr in self.test_trackers.items()])
+
+    # def compute_loss(self, y_labels, y_pred):
+    #     '''
+    #         compute_loss for rgb to fmap
+    #     '''
+    #     y_pred_depth, y_pred_logits, y_pred_force = y_pred
+    #     depth_labels, seg_labels, force_labels = y_labels
+    #     dloss = tf.reduce_mean(tf.square(depth_labels - y_pred_depth))
+    #     seg_labels = tf.cast(seg_labels, dtype=tf.int32)
+    #     sloss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=seg_labels, logits=y_pred_logits)
+    #     sloss = tf.reduce_mean(sloss)
+    #     floss = tf.reduce_mean(tf.square(force_labels - y_pred_force))
+    #     loss = dloss + sloss + floss
+    #     return loss,dloss,sloss,floss
+
+    def compute_loss(self, y_labels, y_pred):
+        '''
+            compute_loss for rgb to fmap
+        '''
+        loss = tf.reduce_mean(tf.square(y_labels - y_pred))
+        return loss
+
+    @property
+    def metrics(self):
+        return list(self.train_trackers.values()) + list(self.test_trackers.values())
+
 
 def model_rgb_to_fmap(input_shape=input_image_shape, 
                                 num_filters=[16,32,64],
@@ -245,8 +314,8 @@ def model_rgb_to_fmap_res50(input_shape=input_image_shape, input_noise_stddev=0.
     encoded_img = resnet50(x)
     decoded_img = model_resnet_decoder((12,16,2048))(encoded_img)
 
-    # model = Model(inputs=[image_input], outputs=[decoded_img], name='model_resnet')
-    model = ForceEstimationModel(inputs=[image_input], outputs=[decoded_img], name='model_resnet')
+    #model = ForceEstimationModel(inputs=[image_input], outputs=[decoded_img], name='model_resnet')
+    model = DRCNForceEstimationModel(inputs=[image_input], outputs=[decoded_img], name='model_resnet')
     model.summary()
 
     return model
@@ -323,20 +392,38 @@ class Trainer:
         return cp_callback, early_stop, reduce_lr, profiler
 
     def train(self, epochs=300, early_stop_patience=100, reduce_lr_patience=50):
-        xs = self.train_ds[0]
-        ys = self.train_ds[1]
-        val_xs = self.val_ds[0]
-        val_ys = self.val_ds[1]
+        xs = self.train_ds[0].astype('float32')
+        ys = self.train_ds[1].astype('float32')
+        val_xs = self.val_ds[0].astype('float32')
+        val_ys = self.val_ds[1].astype('float32')
 
         start = time.time()
         callbacks = self.prepare_callbacks(early_stop_patience, reduce_lr_patience)
 
-        history = self.model.fit(xs, ys,
+        BUFFER_SIZE = 10000
+        xs_dataset = tf.data.Dataset.from_tensor_slices(xs).shuffle(BUFFER_SIZE).batch(self.batch_size)
+        ys_dataset = tf.data.Dataset.from_tensor_slices(ys).shuffle(BUFFER_SIZE).batch(self.batch_size)
+        target_xs_dataset = tf.data.Dataset.from_tensor_slices(xs).shuffle(BUFFER_SIZE).batch(self.batch_size)
+        train_dataset = tf.data.Dataset.zip((xs_dataset, ys_dataset, target_xs_dataset))
+
+        # for epoch in range(epochs):
+        #     for batch in train_dataset:
+        #         print(1)
+        #         self.model.train_step(batch)
+
+        history = self.model.fit(train_dataset,
                                      batch_size=self.batch_size,
                                      epochs=epochs,
                                      callbacks=callbacks,
                                      validation_data=(val_xs,val_ys),
                                      shuffle=True)
+
+        # # history = self.model.fit(xs, ys,
+        #                              batch_size=self.batch_size,
+        #                              epochs=epochs,
+        #                              callbacks=callbacks,
+        #                              validation_data=(val_xs,val_ys),
+        #                              shuffle=True)
 
         end = time.time()
         print('\ntotal time spent for training: {}[min]'.format((end-start)/60))
@@ -467,27 +554,57 @@ def pick_direction_plan(fcam, n=25, gp=[0.02, -0.04, 0.79], radius=0.05, scale=[
     idx = np.where(np.sum((ps - gp)*g_vecs, axis=1) < 0)[0]
     fps = ps[idx]
     fg_vecs = g_vecs[idx]
-    pos_val_pairs = [(p,g) for (p,g) in zip(fps, fg_vecs) if scipy.linalg.norm(g) > 0.008]
-    pz,vz = zip(*pos_val_pairs)
+
+    # points for visualization
+    filtered_pos_val_pairs = [(p,g) for (p,g) in zip(fps, fg_vecs) if scipy.linalg.norm(g) > 0.008]
+    pz,vz = zip(*filtered_pos_val_pairs)
     pz = np.array(pz)
     vz = np.array(vz)
     viewer.publish_bin_state(bin_state, ps, fv, draw_fmap=False, draw_force_gradient=False)
     viewer.draw_vector_field(pz, vz, scale=0.3)
     viewer.rviz_client.draw_sphere(gp,[1,0,0,1],[0.01,0.01,0.01])
     viewer.rviz_client.show()
+
+    # points for planning
+    pz = fps
+    vz = fg_vecs
     idx = np.where(scipy.linalg.norm(pz - gp, axis=1) < radius)[0]
-    pick_direction = np.sum(vz[idx], axis=0)
+    pz = pz[idx]
+    vz = vz[idx]
+    pick_direction = np.sum(vz, axis=0)
     pick_direction /= np.linalg.norm(pick_direction)
     viewer.rviz_client.draw_arrow(gp, gp + pick_direction * 0.1, [0,1,0,1], scale)
-    viewer.rviz_client.show()
-    return pz,vz,pick_direction
+    pick_moment = np.sum(np.cross(pz - gp, vz), axis=0)
+    pick_moment /= np.linalg.norm(pick_moment)
+    viewer.rviz_client.draw_arrow(gp, gp + pick_moment * 0.1, [1,1,0,1], scale)
 
+    viewer.rviz_client.show()
+    return pz, vz, pick_direction, pick_moment
+
+
+from pybullet_tools import *
+
+def virtual_pick(bin_state0, pick_vector, pick_moment, object_name='011_banana', alpha=0.01, beta=0.05, repeat=5):
+    def do_virtual_pick():
+        bin_state = bin_state0
+        for i in range(10):
+            p, q = [s for s in bin_state if s[0] == object_name][0][1]
+            dq = quat_from_euler(beta * pick_moment)
+            dp = alpha * pick_vector
+            p2, q2 = multiply_transforms(dp, dq, p, q)
+            p2 = p + dp
+            bin_state = [(object_name, (p2,q2)) if s[0] == object_name else s for s in bin_state]
+            viewer.publish_bin_state(bin_state, [], [], draw_fmap=False, draw_force_gradient=False)
+            time.sleep(0.2)
+
+    for i in range(repeat):
+        do_virtual_pick()
 
 # model = model_conv_deconv()
 model = model_rgb_to_fmap_res50()
 # model = model_depth_to_fmap()
 
-task = 'pick'
+task = 'train'
 model_file = 'ae_cp.basket-filling.model_resnet.20221115193122'
 
 if task == 'train':
