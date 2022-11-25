@@ -10,6 +10,7 @@ import SIM_KITTING as S
 import tf
 from pybullet_tools import *
 import pandas as pd
+import domain_randomization
 
 parser = argparse.ArgumentParser(description='')
 parser.add_argument('-s', '--scene', type=str, default='basket_filling_scene.yaml')
@@ -218,8 +219,8 @@ def get_bin_state():
 def observe(n_frames=10, moving_average=True):
   for i in range(n_frames):
     cam.getImg()
-    f = fcam.getDensity(moving_average)
-    viewer.publish_bin_state(get_bin_state(), f)
+    f = fcam.getDensity(moving_average=moving_average, reshape_result=True)[1]
+    viewer.publish_bin_state(get_bin_state(), fcam.positions, f, draw_fmap=True, draw_force_gradient=False)
 
 class SceneWriter:
   def __init__(self):
@@ -255,3 +256,32 @@ def create_dataset(n_sequence=1000, n_objects_in_a_scene=6):
     sw.createNewGroup()
     create_random_scene(n_objects_in_a_scene, scene_writer=sw)
     clear_scene()
+
+def apply_configuration(config, camera):
+    S.p.configureDebugVisualizer(lightPosition=config['light_position'])
+    S.p.configureDebugVisualizer(shadowMapIntensity=config['shadow_map_intensity'])
+    S.p.configureDebugVisualizer(shadowMapResolution=config['shadow_map_resolution'])
+    S.p.configureDebugVisualizer(shadowMapWorldSize=config['shadow_map_world_size'])
+    image_size, fov, aspect_ratio = config['camera_intrinsics']
+    camera.setProjectionMatrix(width=image_size[0], height=image_size[1], fov=fov, near=0.1, far=2.0, aspect=aspect_ratio)
+    camera.setViewMatrix(*config['camera_extrinsics'])
+    
+    for o in config['objects']:
+        name = o['name']
+        body_id = object_cache[name].body
+        S.p.changeVisualShape(body_id, -1, rgbaColor=o['color'])
+        S.p.changeVisualShape(body_id, -1, specularColor=o['specular_color'])
+
+import copy
+
+def randomization_test(n=10):
+  cam = env.getCamera('camera1')
+  camera_conf0 = copy.copy(cam.cameraConfig)
+  for i in range(n):
+    cam.cameraConfig = camera_conf0
+    config = domain_randomization.sample_scene_parameters(object_cache, cam)
+    apply_configuration(config, cam)
+    img = cam.getImg()[2]
+    plt.imshow(img)
+    plt.savefig('{:05d}.png'.format(i))
+  

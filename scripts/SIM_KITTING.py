@@ -18,11 +18,12 @@ class VirtualCamera:
         self.cameraConfig['targetPosition'] = targetPosition
         self.cameraConfig['upVector'] = upVector
 
-    def setProjectionMatrixParam(self, width, height, fov, near, far):
+    def setProjectionMatrixParam(self, width, height, fov, near, far, aspect_ratio):
         self.cameraConfig['imageSize'] = (width,height)
         self.cameraConfig['fov'] = fov
         self.cameraConfig['near'] = near
         self.cameraConfig['far'] = far
+        self.cameraConfig['aspectRatio'] = aspect_ratio
 
 class Camera(VirtualCamera):
     def __init__(self, fov=50, near=0.1, far=2.0, shadow=True):
@@ -64,7 +65,7 @@ class Camera(VirtualCamera):
         self.view_matrix = p.computeViewMatrix(eyePosition, targetPosition, upVector)
 
     def setProjectionMatrix(self, width, height, fov, near, far, aspect):
-        self.setProjectionMatrixParam(width, height, fov, near, far)
+        self.setProjectionMatrixParam(width, height, fov, near, far, aspect)
         self.projection_matrix = p.computeProjectionMatrixFOV(fov, aspect, near, far)
 
     def getCameraConfig(self):
@@ -149,7 +150,7 @@ class ForceCamera(VirtualCamera):
         self.frc.computeViewMatrix(eyePosition, targetPosition, upVector)
  
     def setProjectionMatrix(self, width, height, fov, near, far, aspect):
-        self.setProjectionMatrixParam(width, height, fov, near, far)
+        self.setProjectionMatrixParam(width, height, fov, near, far, aspect)
         self.frc = forceGL3D.forceGL(width, height)        
         self.frc.computeProjectionMatrixFOV(fov, aspect, near, far)
 
