@@ -199,3 +199,28 @@ class ForceEstimationDataLoader:
 
         X_rgb /= 255.
         return X_rgb
+
+    def load_data_for_rgb2fmap_with_real(self, train_mode=False, test_mode=False, load_bin_state=False):
+        """
+        Returns:
+            train_data, valid_data, test_data
+            train_data := (train_rgb, train_force)
+        """
+        assert train_mode ^ test_mode, 'either train_mode or test_mode must be True'
+        
+        if train_mode:
+            train_rgb = self.load_data(self._train_ids, 'rgb')
+            valid_rgb = self.load_data(self._valid_ids, 'rgb')
+            train_force = self.load_data(self._train_ids, 'force')
+            valid_force = self.load_data(self._valid_ids, 'force')
+            return (train_rgb,train_force), (valid_rgb,valid_force)
+
+        if test_mode:
+            test_rgb = self.load_data(self._test_ids, 'rgb')
+            test_force = self.load_data(self._test_ids, 'force')
+            if load_bin_state:
+                test_bin_state = self.load_data(self._test_ids, 'bin-state')
+                return test_rgb,test_force,test_bin_state
+            else:
+                return test_rgb,test_force
+

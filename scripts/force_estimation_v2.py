@@ -31,7 +31,7 @@ dl = ForceEstimationDataLoader(
                             image_height=image_height,
                             image_width=image_width,
                             start_seq=1, 
-                            n_seqs=100, # n_seqs=1500,
+                            n_seqs=1500, # n_seqs=1500,
                             start_frame=3, n_frames=3)
 
 def augment(xs, ys):
@@ -147,7 +147,8 @@ class DRCNForceEstimationModel(tf.keras.Model):
             self.test_trackers[n] = keras.metrics.Mean(name='val_'+n)
 
     def train_step(self, data):
-        xs, y_labels, target_xs = data
+        src_data, tgt_data = data
+        xs, y_labels,  = src_data
         xs, y_labels = augment(xs, y_labels)
 
         with tf.GradientTape() as tape:
@@ -165,7 +166,8 @@ class DRCNForceEstimationModel(tf.keras.Model):
         return dict([(trckr[0], trckr[1].result()) for trckr in self.train_trackers.items()])
 
     def test_step(self, data):
-        xs, y_labels, target_xs = data
+        src_data, tgt_data = data
+        xs, y_labels,  = src_data
 
         y_pred = self(xs, training=False) # Forward pass
         loss = self.compute_loss(y_labels, y_pred)
@@ -314,8 +316,8 @@ def model_rgb_to_fmap_res50(input_shape=input_image_shape, input_noise_stddev=0.
     encoded_img = resnet50(x)
     decoded_img = model_resnet_decoder((12,16,2048))(encoded_img)
 
-    #model = ForceEstimationModel(inputs=[image_input], outputs=[decoded_img], name='model_resnet')
-    model = DRCNForceEstimationModel(inputs=[image_input], outputs=[decoded_img], name='model_resnet')
+    model = ForceEstimationModel(inputs=[image_input], outputs=[decoded_img], name='model_resnet')
+    #model = DRCNForceEstimationModel(inputs=[image_input], outputs=[decoded_img], name='model_resnet')
     model.summary()
 
     return model
@@ -400,30 +402,32 @@ class Trainer:
         start = time.time()
         callbacks = self.prepare_callbacks(early_stop_patience, reduce_lr_patience)
 
-        BUFFER_SIZE = 10000
-        xs_dataset = tf.data.Dataset.from_tensor_slices(xs).shuffle(BUFFER_SIZE).batch(self.batch_size)
-        ys_dataset = tf.data.Dataset.from_tensor_slices(ys).shuffle(BUFFER_SIZE).batch(self.batch_size)
-        target_xs_dataset = tf.data.Dataset.from_tensor_slices(xs).shuffle(BUFFER_SIZE).batch(self.batch_size)
-        train_dataset = tf.data.Dataset.zip((xs_dataset, ys_dataset, target_xs_dataset))
+        BUFFER_SIZE = 2000
+        # xs_dataset = tf.data.Dataset.from_tensor_slices(xs).shuffle(BUFFER_SIZE).batch(self.batch_size)
+        # ys_dataset = tf.data.Dataset.from_tensor_slices(ys).shuffle(BUFFER_SIZE).batch(self.batch_size)
+        # source_dataset = tf.data.Dataset.zip((xs_dataset, ys_dataset))
+        # # target_dataset = tf.data.Dataset.from_tensor_slices(xs).shuffle(BUFFER_SIZE).repeat().batch(self.batch_size)
+        # train_dataset = tf.data.Dataset.zip((source_dataset, target_dataset))
 
-        # for epoch in range(epochs):
-        #     for batch in train_dataset:
-        #         print(1)
-        #         self.model.train_step(batch)
+        # val_xs_dataset = tf.data.Dataset.from_tensor_slices(val_xs).shuffle(BUFFER_SIZE).batch(self.batch_size)
+        # val_ys_dataset = tf.data.Dataset.from_tensor_slices(val_ys).shuffle(BUFFER_SIZE).batch(self.batch_size)
+        # val_source_dataset = tf.data.Dataset.zip((val_xs_dataset, val_ys_dataset))
+        # # val_target_dataset = tf.data.Dataset.from_tensor_slices(val_xs).shuffle(BUFFER_SIZE).repeat().batch(self.batch_size)
+        # val_dataset = tf.data.Dataset.zip((val_source_dataset, val_target_dataset))
 
-        history = self.model.fit(train_dataset,
+        # history = self.model.fit(source_dataset,
+        #                              batch_size=self.batch_size,
+        #                              epochs=epochs,
+        #                              callbacks=callbacks,
+        #                              validation_data=val_source_dataset,
+        #                              shuffle=True)
+
+        history = self.model.fit(xs, ys,
                                      batch_size=self.batch_size,
                                      epochs=epochs,
                                      callbacks=callbacks,
                                      validation_data=(val_xs,val_ys),
                                      shuffle=True)
-
-        # # history = self.model.fit(xs, ys,
-        #                              batch_size=self.batch_size,
-        #                              epochs=epochs,
-        #                              callbacks=callbacks,
-        #                              validation_data=(val_xs,val_ys),
-        #                              shuffle=True)
 
         end = time.time()
         print('\ntotal time spent for training: {}[min]'.format((end-start)/60))
@@ -497,7 +501,7 @@ class Tester:
         plt.show()
         return xs[0],ys[0],y_pred[0]
 
-    def predict_force_from_rgb(self, n, visualize_result=True):
+    def predict_force_from_rgb(self, n, visualize=True):
         xs = self.test_data[0][n:n+1]
         y_preds = self.model.predict(xs)
         y_pred_forces = y_preds
@@ -600,23 +604,29 @@ def virtual_pick(bin_state0, pick_vector, pick_moment, object_name='011_banana',
     for i in range(repeat):
         do_virtual_pick()
 
-# model = model_conv_deconv()
-model = model_rgb_to_fmap_res50()
-# model = model_depth_to_fmap()
 
-task = 'train'
-model_file = 'ae_cp.basket-filling.model_resnet.20221115193122'
+
+task = 'test'
+#model_file = 'ae_cp.basket-filling.model_resnet.20221115193122' # current best
+model_file = 'ae_cp.basket-filling.model_resnet.20221125134301'
 
 if task == 'train':
+    model = model_rgb_to_fmap_res50()
     train_data,valid_data = dl.load_data_for_rgb2fmap(train_mode=True)
     trainer = Trainer(model, train_data, valid_data)
+elif task == 'adaptation':
+    train_data,valid_data = dl.load_data_for_rgb2fmap_with_real(train_mode=True)
+    trainer = Trainer(model, train_data, valid_data)
 elif task == 'test':
+    model = model_rgb_to_fmap_res50()
     test_data = dl.load_data_for_rgb2fmap(test_mode=True)
     tester = Tester(model, test_data, model_file)
 elif task == 'test-real':
+    model = model_rgb_to_fmap_res50()
     test_data = dl.load_real_data_for_rgb2fmap(test_mode=True)
     tester = Tester(model, test_data, model_file)
 elif task == 'pick':
+    model = model_rgb_to_fmap_res50()
     test_data = dl.load_data_for_rgb2fmap(test_mode=True, load_bin_state=True)
     tester = Tester(model, test_data, model_file)
 
