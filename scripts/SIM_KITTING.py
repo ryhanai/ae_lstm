@@ -5,7 +5,7 @@ import pandas as pd
 import yaml, os
 import matplotlib.pyplot as plt
 
-import forceGL3D
+# import forceGL3D
 
 class VirtualCamera:
     def __init__(self, fov=50, near=0.1, far=2.0):
@@ -99,22 +99,22 @@ class ForceCamera(VirtualCamera):
         self.V = np.zeros(self.positions.shape[0])
         self.alpha = 0.8
 
-    def getImg(self):
-        cp = p.getContactPoints()
-        pos = []
-        nor = []
-        f = []
-        for i in cp:
-            pos.append(i[6])
-            nor.append(i[7])
-            f.append(i[9])
-        self.pos = pos
-        self.nor = nor
-        self.f = f
-        self.frc.setForces(nor, pos, [1,1,1])
-        self.frc.draw()
-        self.frc.EventLoopGLUT()
-        return self.frc.getImg()
+    # def getImg(self):
+    #     cp = p.getContactPoints()
+    #     pos = []
+    #     nor = []
+    #     f = []
+    #     for i in cp:
+    #         pos.append(i[6])
+    #         nor.append(i[7])
+    #         f.append(i[9])
+    #     self.pos = pos
+    #     self.nor = nor
+    #     self.f = f
+    #     self.frc.setForces(nor, pos, [1,1,1])
+    #     self.frc.draw()
+    #     self.frc.EventLoopGLUT()
+    #     return self.frc.getImg()
 
     def getDensity(self, moving_average=True, reshape_result=False):
         cps = p.getContactPoints()
@@ -147,12 +147,12 @@ class ForceCamera(VirtualCamera):
     
     def setViewMatrix(self, eyePosition, targetPosition, upVector):
         self.setViewMatrixParam(eyePosition, targetPosition, upVector)
-        self.frc.computeViewMatrix(eyePosition, targetPosition, upVector)
+        # self.frc.computeViewMatrix(eyePosition, targetPosition, upVector)
  
     def setProjectionMatrix(self, width, height, fov, near, far, aspect):
         self.setProjectionMatrixParam(width, height, fov, near, far, aspect)
-        self.frc = forceGL3D.forceGL(width, height)        
-        self.frc.computeProjectionMatrixFOV(fov, aspect, near, far)
+        # self.frc = forceGL3D.forceGL(width, height)        
+        # self.frc.computeProjectionMatrixFOV(fov, aspect, near, far)
 
 
 class RECORDER:

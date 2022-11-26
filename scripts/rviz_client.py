@@ -3,6 +3,7 @@ from visualization_msgs.msg import Marker, MarkerArray
 from std_msgs.msg import ColorRGBA
 from geometry_msgs.msg import Point, Vector3
 
+
 class RVizClient:
     def __init__(self):
         self._message_id = 0
@@ -12,7 +13,7 @@ class RVizClient:
     def start_ros_node(self):
         rospy.init_node(self._node_name)
         self._pub = rospy.Publisher("scene_objects", MarkerArray, queue_size=1)
-        rate = rospy.Rate(30)
+        self.rate = rospy.Rate(30)
         self._base_frame_id = "map"
 
     def show(self):
@@ -30,7 +31,7 @@ class RVizClient:
         marker = self._make_marker(Marker.MESH_RESOURCE)
         marker.mesh_resource = mesh_file
         marker.mesh_use_embedded_materials = True
-        
+
         xyz, quat = pose
         marker.pose.position.x = xyz[0]
         marker.pose.position.y = xyz[1]
@@ -49,7 +50,7 @@ class RVizClient:
 
         self._markerArray.markers.append(marker)
 
-    def draw_points(self, points, rgbas, point_size = 0.0015):
+    def draw_points(self, points, rgbas, point_size=0.0015):
         marker = self._make_marker(Marker.POINTS)
 
         marker.pose.position.x = 0.0
@@ -66,7 +67,7 @@ class RVizClient:
         for position, rgba, in zip(points, rgbas):
             marker.points.append(Point(*position))
             marker.colors.append(ColorRGBA(*rgba))
-        
+
         self._markerArray.markers.append(marker)
 
     def _make_marker(self, marker_type):
@@ -90,7 +91,7 @@ class RVizClient:
 
         self._markerArray.markers.append(marker)
 
-    def draw_arrows(self, tails, tips, rgba=[0.2, 0.5, 1.0, 0.3], scale=[0.0015,0.003,0.002]):
+    def draw_arrows(self, tails, tips, rgba=[0.2, 0.5, 1.0, 0.3], scale=[0.0015, 0.003, 0.002]):
         """
             This methods is very slow because it sends a topic for each arrow.
         """

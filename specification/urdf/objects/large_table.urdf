@@ -4,6 +4,11 @@
       <color rgba="0.0 0.5 0.4 1.0"/>
     </material>
     <link name="table_top">
+        <inertial>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <mass value=".0"/>
+            <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0"/>
+        </inertial>
         <visual>
             <material name="green"/>
             <origin xyz="0.0 0.0 0.725" rpy="0.0 0.0 0.0"/>
@@ -18,5 +23,4 @@
             </geometry>
         </collision>
     </link>
-    
 </robot>

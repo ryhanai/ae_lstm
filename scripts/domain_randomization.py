@@ -66,5 +66,3 @@ def sample_scene_parameters(object_cache, camera):
     config['objects'] = object_configs
 
     return config
-
-        
