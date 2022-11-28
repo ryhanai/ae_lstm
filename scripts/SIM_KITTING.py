@@ -1,11 +1,16 @@
-from ast import BitAnd
+# -*- coding: utf-8 -*-
+
+import os
+import yaml
 import pybullet as p
 import numpy as np
 import pandas as pd
-import yaml, os
 import matplotlib.pyplot as plt
-
+from scipy import stats
+from sklearn.neighbors import KernelDensity
+# from ast import BitAnd
 # import forceGL3D
+
 
 class VirtualCamera:
     def __init__(self, fov=50, near=0.1, far=2.0):
@@ -19,18 +24,19 @@ class VirtualCamera:
         self.cameraConfig['upVector'] = upVector
 
     def setProjectionMatrixParam(self, width, height, fov, near, far, aspect_ratio):
-        self.cameraConfig['imageSize'] = (width,height)
+        self.cameraConfig['imageSize'] = (width, height)
         self.cameraConfig['fov'] = fov
         self.cameraConfig['near'] = near
         self.cameraConfig['far'] = far
         self.cameraConfig['aspectRatio'] = aspect_ratio
+
 
 class Camera(VirtualCamera):
     def __init__(self, fov=50, near=0.1, far=2.0, shadow=True):
         super().__init__(fov, near, far)
         self.cameraConfig['shadow'] = shadow
         self.segMap = None
- 
+
     def computeRealDepth(self, cameraOutput):
         near = self.cameraConfig['near']
         far = self.cameraConfig['far']
@@ -41,15 +47,15 @@ class Camera(VirtualCamera):
         self.segMap = segMap
 
     def getImg(self, getRealDepth=True):
-        width,height = self.cameraConfig['imageSize']
+        width, height = self.cameraConfig['imageSize']
         shadow = self.cameraConfig['shadow']
         res = p.getCameraImage(width,
                                height,
                                self.view_matrix,
-                               self.projection_matrix, 
-                               lightDirection=[2,0,0], 
+                               self.projection_matrix,
+                               lightDirection=[2, 0, 0],
                                shadow=shadow,
-                               renderer=p.ER_BULLET_HARDWARE_OPENGL if shadow == True else p.ER_TINY_RENDERER)
+                               renderer=p.ER_BULLET_HARDWARE_OPENGL if shadow is True else p.ER_TINY_RENDERER)
         if getRealDepth:
             depth = self.computeRealDepth(res[3])
         else:
@@ -58,7 +64,7 @@ class Camera(VirtualCamera):
             seg = np.vectorize(lambda x: self.segMap[x])(res[4])
         else:
             seg = res[4]
-        return res[0],res[1],res[2],depth,seg
+        return res[0], res[1], res[2], depth, seg
 
     def setViewMatrix(self, eyePosition, targetPosition, upVector):
         self.setViewMatrixParam(eyePosition, targetPosition, upVector)
@@ -71,12 +77,11 @@ class Camera(VirtualCamera):
     def getCameraConfig(self):
         return self.cameraConfig
 
-from scipy import stats
-from sklearn.neighbors import KernelDensity
 
 def kde_scipy(x, x_grid, bandwidth=0.2, **kwargs):
     kde = stats.gaussian_kde(x, bw_method=bandwidth, **kwargs)
     return kde.evaluate(x_grid)
+
 
 def kde_sklearn(x, x_grid, bandwidth=1.0, **kwargs):
     kde_skl = KernelDensity(kernel='gaussian', bandwidth=bandwidth, **kwargs)
@@ -85,6 +90,7 @@ def kde_sklearn(x, x_grid, bandwidth=1.0, **kwargs):
     log_pdf = kde_skl.score_samples(x_grid)
     return np.exp(log_pdf)
 
+
 class ForceCamera(VirtualCamera):
     def __init__(self, fov=50, near=0.1, far=2.0):
         super().__init__(fov, near, far)
@@ -92,7 +98,7 @@ class ForceCamera(VirtualCamera):
         # self.grid = np.mgrid[-0.115:0.115:40j, -0.115:0.115:40j, 0.93:1.16:40j]
         # ipad box
         self.grid = np.mgrid[-0.095:0.095:40j, -0.13:0.13:40j, 0.73:0.92:40j]
-        X,Y,Z = self.grid
+        X, Y, Z = self.grid
         self.dV = 0.19 * 0.26 * 0.20 / (40**3)
         self.positions = np.vstack([X.ravel(), Y.ravel(), Z.ravel()])
         self.positions = self.positions.T
@@ -123,15 +129,15 @@ class ForceCamera(VirtualCamera):
         if l > 0:
             sample_coords = np.empty((l, 3))
             sample_weights = np.empty(l)
-            for i,cp in enumerate(cps):
+            for i, cp in enumerate(cps):
                 sample_coords[i][0] = cp[6][0]
                 sample_coords[i][1] = cp[6][1]
                 sample_coords[i][2] = cp[6][2]
                 sample_weights[i] = cp[9]
-            #V = kde_scipy(sample_coords, self.positions, bandwidth=0.3)
-            #V = stats.gaussian_kde(sample_coords, bw_method=0.3)
+            # V = kde_scipy(sample_coords, self.positions, bandwidth=0.3)
+            # V = stats.gaussian_kde(sample_coords, bw_method=0.3)
             V = kde_sklearn(sample_coords, self.positions, bandwidth=0.012)
-            #V = kernel(self.positions)
+            # V = kernel(self.positions)
 
             W = np.sum(sample_weights)
             V = W * V * self.dV
@@ -144,14 +150,14 @@ class ForceCamera(VirtualCamera):
         if reshape_result:
             V = np.reshape(V, self.grid[0].shape)
         return self.positions, V
-    
+
     def setViewMatrix(self, eyePosition, targetPosition, upVector):
         self.setViewMatrixParam(eyePosition, targetPosition, upVector)
         # self.frc.computeViewMatrix(eyePosition, targetPosition, upVector)
- 
+
     def setProjectionMatrix(self, width, height, fov, near, far, aspect):
         self.setProjectionMatrixParam(width, height, fov, near, far, aspect)
-        # self.frc = forceGL3D.forceGL(width, height)        
+        # self.frc = forceGL3D.forceGL(width, height)
         # self.frc.computeProjectionMatrixFOV(fov, aspect, near, far)
 
 
@@ -164,7 +170,7 @@ class RECORDER:
     def reset(self):
         self.previous_js = None
         self.clearFrames()
-        
+
     def clearFrames(self):
         self.frameNo = 0
         self.frames = []
@@ -172,8 +178,8 @@ class RECORDER:
     def saveFrame(self, img, fimg, js, env, save_threshold=5e-2):
         if type(self.previous_js) != np.ndarray or np.linalg.norm(js - self.previous_js, ord=1) > save_threshold:
             print('save:[{}]: {}'.format(self.frameNo, js))
-            d = {'frameNo':self.frameNo, 'jointPosition':js, 'image':img, 'force_image':fimg}
-            for k,id in env.objects.items():
+            d = {'frameNo': self.frameNo, 'jointPosition': js, 'image': img, 'force_image': fimg}
+            for k, id in env.objects.items():
                 d[k] = p.getBasePositionAndOrientation(id)
             self.frames.append(d)
             self.frameNo += 1
@@ -189,7 +195,7 @@ class RECORDER:
         for frame in self.frames:
             joint_positions.append(frame['jointPosition'])
             frameNo = frame['frameNo']
-            w,h,rgb,depth,seg = frame['image']
+            w, h, rgb, depth,seg = frame['image']
             plt.imsave(os.path.join(group_dir, 'image_frame{:05d}.jpg'.format(frameNo)), rgb)
             fimg = frame['force_image']
             plt.imsave(os.path.join(group_dir, 'fimage_frame{:05d}.jpg'.format(frameNo)), fimg)
@@ -206,6 +212,7 @@ class RECORDER:
         self.groupNo += 1
         self.reset()
 
+
 class RECORDER_KITTING(RECORDER):
     def __init__(self, cameraConfig):
         super().__init__(cameraConfig)
@@ -218,19 +225,22 @@ class RECORDER_KITTING(RECORDER):
         tf_pen = p.getBasePositionAndOrientation(env.objects['pen'])
         s = np.array(tf_pen[0])
 
-        if type(self.previous_js) != np.ndarray or np.linalg.norm(js - self.previous_js, ord=1) + np.linalg.norm(s - self.previous_s, ord=2) > save_threshold:
+        if (type(self.previous_js) != np.ndarray
+           or np.linalg.norm(js - self.previous_js, ord=1) + np.linalg.norm(s - self.previous_s, ord=2) > save_threshold):
             print('save:[{}]: {}'.format(self.frameNo, js))
-            d = {'frameNo':self.frameNo, 'jointPosition':js, 'image':img, 'force_image':fimg}
-            for k,id in env.objects.items():
+            d = {'frameNo': self.frameNo, 'jointPosition': js, 'image': img, 'force_image': fimg}
+            for k, id in env.objects.items():
                 d[k] = p.getBasePositionAndOrientation(id)
             self.frames.append(d)
             self.frameNo += 1
             self.previous_js = js
             self.previous_s = s
 
+
 class Environment:
     def __init__(self):
         pass
+
 
 class SIM(Environment):
     def __init__(self, scene_file):
@@ -252,7 +262,7 @@ class SIM(Environment):
         self.scene_desc = scene_desc
         self.task = scene_desc['task']
         self.shadow = scene_desc['rendering']['shadow']
-       
+
         self.cameras = {}
         for cam_desc in scene_desc['cameras']:
             name = cam_desc['name']
@@ -282,12 +292,13 @@ class SIM(Environment):
         self.cabinet = p.loadURDF(d['object'], d['xyz'], p.getQuaternionFromEuler(d['rpy']), useFixedBase=True, useMaximalCoordinates=True)
         self.objects = {}
         for d in scene_desc['objects']:
-            self.objects[d['name']] = p.loadURDF(d['object'], d['xyz'], p.getQuaternionFromEuler(d['rpy']), useFixedBase=d['static'], useMaximalCoordinates=True)
+            self.objects[d['name']] = p.loadURDF(d['object'], d['xyz'],
+                                                 p.getQuaternionFromEuler(d['rpy']), useFixedBase=d['static'], useMaximalCoordinates=True)
         self.target = self.objects.get('target')
-            
+
     def getSceneDescription(self):
         return self.scene_desc
-        
+
     def getCamera(self, name):
         return self.cameras[name]
 
@@ -303,7 +314,7 @@ class SIM(Environment):
         s = p.getLinkState(self.robot, linkID)
         # transform from wrist link to tool center point
         # w2t_tf = ([0.174 -0.015, 0.004, 0], p.getQuaternionFromEuler([0,0,0]))
-        w2t_tf = ([0.174-0.03, 0, 0], p.getQuaternionFromEuler([0,0,0]))
+        w2t_tf = ([0.174-0.03, 0, 0], p.getQuaternionFromEuler([0, 0, 0]))
         goalPos, goalOri = self.multiplyTransforms(s, w2t_tf)
         return np.array(goalPos)
 
@@ -321,7 +332,7 @@ class SIM(Environment):
         return p.getJointStates(self.robot, self.gripperJoints)
 
     def setGripperJointPositions(self, q):
-        self.setJointValues(self.robot, self.gripperJoints, [q,-q,q,q,-q,q])   
+        self.setJointValues(self.robot, self.gripperJoints, [q, -q, q, q, -q, q])
 
     def moveEF(self, dl, da=None):
         s = p.getLinkState(self.robot, 7)
@@ -332,8 +343,8 @@ class SIM(Environment):
         # goalOri = ori
         if (da is None):
             da = unit_quat()
-        
-        # goalPos, goalOri = self.multiplyTransforms(s, (dl, da))        
+
+        # goalPos, goalOri = self.multiplyTransforms(s, (dl, da))
         goalPos, goalOri = self.multiplyTransforms((dl, da), s)
         goalPos = np.array(s[0]) + dl
         q = p.calculateInverseKinematics(self.robot, 7, goalPos, goalOri)[:6]
@@ -341,32 +352,32 @@ class SIM(Environment):
 
     def multiplyTransforms(self, t1, t2):
         return p.multiplyTransforms(t1[0], t1[1], t2[0], t2[1])
-    
+
     def rotateEF(self, euler):
         linkID = 7
         s = p.getLinkState(self.robot, linkID)
         # transform from wrist link to tool center point
-        w2t_tf = ([0.21,0,0], p.getQuaternionFromEuler([0,0,0]))
-        d_tf = ([0,0,0], p.getQuaternionFromEuler(euler))
+        w2t_tf = ([0.21, 0, 0], p.getQuaternionFromEuler([0, 0, 0]))
+        d_tf = ([0, 0, 0], p.getQuaternionFromEuler(euler))
         goalPos, goalOri = self.multiplyTransforms(s, self.multiplyTransforms(self.multiplyTransforms(w2t_tf, d_tf), p.invertTransform(*w2t_tf)))
         # goalPos, goalOri = p.multiplyTransforms(pos, ori, [0,0,0], dq)
         q = p.calculateInverseKinematics(self.robot, linkID, goalPos, goalOri)[:6]
         self.setJointValues(self.robot, self.armJoints, q)     
 
-    def getJointState(self, min_closed = 0.3, encode_gripper_state=True):
+    def getJointState(self, min_closed=0.3, encode_gripper_state=True):
         js = p.getJointStates(self.robot, self.armJoints)
         armjv = list(zip(*js))[0]
         js = p.getJointStates(self.robot, self.gripperJoints)
         js = list(zip(*js))
         grpjv = js[0]
-        grpforce = js[3]
+        # grpforce = js[3]
         if encode_gripper_state:
             # gripperClosed = np.max(grpforce) > 1.0
             gripperClosed = grpjv[0] > min_closed
             return np.append(armjv, gripperClosed)
         else:
             return np.append(armjv, grpjv)
-    
+
     def resetRobot(self):
         self.setArmJointPositions(self.armInitialValues)
         self.setGripperJointPositions(0.7)
@@ -391,7 +402,7 @@ class TASK:
         pass
 
 
-        
+
 # class VRController_ROI(VRController):
 #     def __init__(self, isVR, use3Dmouse):
 #         super().__init__(isVR)
@@ -476,5 +487,3 @@ class TASK:
 #             self.OG = 1
 #         if qBreak in m and m[qBreak]&p.KEY_WAS_TRIGGERED: # break the control loop
 #             self.BLK = 1
-
-

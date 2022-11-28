@@ -27,7 +27,7 @@ message('ui = {}'.format(args.ui))
 
 use_rviz = False
 
-if use_rviz:      
+if use_rviz:
     import force_distribution_viewer
     viewer = force_distribution_viewer.ForceDistributionViewer.get_instance()
 
