@@ -37,9 +37,7 @@ class ForceEstimationDataLoader:
         data_ids = list(zip(x.ravel(), y.ravel()))
         self._train_ids, self._valid_ids, self._test_ids = np.split(data_ids, [int(len(data_ids)*.75), int(len(data_ids)*.875)])
 
-        real_start_frame = 2
-        real_n_frames = 45
-        self._real_data_ids = list(range(real_start_frame, real_start_frame+real_n_frames))
+        self._train_real_ids, self._valid_real_ids, self._test_real_ids = np.split(range(self._real_start_frame, self._real_start_frame+self._real_n_frames), [int(self._real_n_frames*.75), int(self._real_n_frames*.875)])
 
     def load_rgb(self, data_id, resize=True):
         seqNo, frameNo = data_id
@@ -182,45 +180,33 @@ class ForceEstimationDataLoader:
             test_force = self.load_ddta(self._test_ids, 'force')
             return (test_depth, test_seg), test_force
 
-    def load_real_data_for_rgb2fmap(self, train_mode=True, test_mode=False):
-        """
-        Returns:
-            train_data, valid_data, test_data
-        """
-        total_frames = len(self._real_data_ids)
+    def load_real_data(self, ids):
+        total_frames = len(ids)
         c = (-40, 25)
         crop = 64
         X_rgb = np.empty((total_frames, self._image_height, self._image_width, 3))
 
-        for i, id in enumerate(self._real_data_ids):
+        for i, id in enumerate(ids):
             print('\rloading RGB ... {}({:3.1f}%)'.format(i, i/total_frames*100.), end='')
-            filepath = os.path.join(self._real_dataset_path, 'frame{:05d}.png'.format(id))
+            filepath = os.path.join(self._real_dataset_path, '{:05d}.png'.format(id))
             img = plt.imread(filepath)
             X_rgb[i] = img[180+c[0]:540+c[0], 320+c[1]+crop:960+c[1]-crop]
 
         X_rgb /= 255.
         return X_rgb
 
-    def load_data_for_rgb2fmap_with_real(self, train_mode=False, test_mode=False, load_bin_state=False):
+    def load_real_data_for_rgb2fmap(self, train_mode=True, test_mode=False):
         """
         Returns:
             train_data, valid_data, test_data
-            train_data := (train_rgb, train_force)
         """
         assert train_mode ^ test_mode, 'either train_mode or test_mode must be True'
 
         if train_mode:
-            train_rgb = self.load_data(self._train_ids, 'rgb')
-            valid_rgb = self.load_data(self._valid_ids, 'rgb')
-            train_force = self.load_data(self._train_ids, 'force')
-            valid_force = self.load_data(self._valid_ids, 'force')
-            return (train_rgb, train_force), (valid_rgb, valid_force)
+            train_rgb = self.load_real_data(self._train_real_ids)
+            valid_rgb = self.load_real_data(self._valid_real_ids)
+            return train_rgb, valid_rgb
 
         if test_mode:
-            test_rgb = self.load_data(self._test_ids, 'rgb')
-            test_force = self.load_data(self._test_ids, 'force')
-            if load_bin_state:
-                test_bin_state = self.load_data(self._test_ids, 'bin-state')
-                return test_rgb, test_force, test_bin_state
-            else:
-                return test_rgb, test_force
+            test_rgb = self.load_real_data(self._test_real_ids)
+            return test_rgb
