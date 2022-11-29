@@ -39,10 +39,10 @@ def sample_object_color(body_id):
 
 
 def sample_object_specular_color(body_id):
-    return 2.0 * np.random.random(3)  # 0 - 10
+    return 0.5 * np.random.random(3)  # 0 - 10
 
 
-def sample_scene_parameters(object_cache, camera):
+def sample_scene_parameters(object_cache, camera_config):
     """
         camera = env.getCamera('camera1')
     """
@@ -52,7 +52,6 @@ def sample_scene_parameters(object_cache, camera):
     config['shadow_map_resolution'] = sample_shadow_map_resolution()
     config['shadow_map_world_size'] = sample_shadow_map_world_size()
 
-    camera_config = camera.cameraConfig
     config['camera_intrinsics'] = sample_camera_intrinsics(camera_config)
     config['camera_extrinsics'] = sample_camera_extrinsics(camera_config)
 

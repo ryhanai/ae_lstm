@@ -89,7 +89,7 @@ class ObjectProxy:
         self.default_pose = default_pose
         self.load_mesh(name, mass)
         self.reset_pose()
-        S.p.changeDynamics(self.body, -1, lateralFriction=0.3, activationState=S.p.ACTIVATION_STATE_DISABLE_WAKEUP)
+        S.p.changeDynamics(self.body, -1, lateralFriction=0.3, rollingFriction=0.01, activationState=S.p.ACTIVATION_STATE_DISABLE_WAKEUP)
         self.used = False
 
     def load_mesh(self, name, mass):
@@ -209,11 +209,13 @@ def place_object(name):
     place(name, sample_place_pose2(name))
 
 
-def create_random_scene(n_objects=3, scene_writer=None):
+def create_random_scene(n_objects=3, scene_writer=None, randomization=False):
     selected_objects = np.random.choice(list(objects.keys()), n_objects, replace=False)  # sample with no duplication
     print(selected_objects)
     for object in selected_objects:
         place_object(object)
+        if randomization:
+            randomize_scene()
         if scene_writer is not None:
             scene_writer.save_scene()
 
@@ -271,15 +273,15 @@ class SceneWriter:
         self.frameNo += 1
 
 
-def create_dataset(n_sequence=1000, n_objects_in_a_scene=6):
+def create_dataset(n_sequence=1000, n_objects_in_a_scene=6, randomization=True):
     sw = SceneWriter()
     for n in range(n_sequence):
         sw.createNewGroup()
-        create_random_scene(n_objects_in_a_scene, scene_writer=sw)
+        create_random_scene(n_objects_in_a_scene, scene_writer=sw, randomization=randomization)
         clear_scene()
 
 
-def apply_configuration(config, camera):
+def apply_randomization(config, camera):
     S.p.configureDebugVisualizer(lightPosition=config['light_position'])
     S.p.configureDebugVisualizer(shadowMapIntensity=config['shadow_map_intensity'])
     S.p.configureDebugVisualizer(shadowMapResolution=config['shadow_map_resolution'])
@@ -295,13 +297,18 @@ def apply_configuration(config, camera):
         S.p.changeVisualShape(body_id, -1, specularColor=o['specular_color'])
 
 
-def randomization_test(n=10):
+def randomize_scene():
     cam = env.getCamera('camera1')
     camera_conf0 = copy.copy(cam.cameraConfig)
+    config = domain_randomization.sample_scene_parameters(object_cache, cam.cameraConfig)
+    apply_randomization(config, cam)
+    cam.cameraConfig = camera_conf0  # restore camera configuration
+
+
+def randomization_test(n=10):
     for i in range(n):
-        cam.cameraConfig = camera_conf0
-        config = domain_randomization.sample_scene_parameters(object_cache, cam)
-        apply_configuration(config, cam)
+        randomize_scene()
+        cam = env.getCamera('camera1')
         img = cam.getImg()[2]
         plt.imshow(img)
         plt.savefig('{:05d}.png'.format(i))
