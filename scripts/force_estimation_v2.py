@@ -4,7 +4,7 @@
 import os, time
 from datetime import datetime
 from pybullet_tools import *
-import force_distribution_viewer
+# import force_distribution_viewer
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.linalg
@@ -20,7 +20,7 @@ from tensorflow.keras import layers
 from tensorflow.keras.applications.resnet50 import ResNet50
 from tensorflow.keras.models import Model
 
-dataset = 'basket-filling'
+dataset = 'basket-filling2'
 image_height = 360
 image_width = 512
 input_image_shape = [image_height, image_width]
@@ -32,8 +32,10 @@ dl = ForceEstimationDataLoader(
                             image_height=image_height,
                             image_width=image_width,
                             start_seq=1,
-                            n_seqs=1500,  # n_seqs=1500,
-                            start_frame=3, n_frames=3)
+                            n_seqs=1800,  # n_seqs=1500,
+                            start_frame=3, n_frames=3,
+                            real_start_frame=1, real_n_frames=294
+                            )
 
 
 def augment(xs, ys):
@@ -458,14 +460,18 @@ def visualize_forcemaps(force_distribution, title='', zaxis_first=False):
 def visualize_result(f_prediction, f_label, rgb, filename=None):
     visualize_forcemaps(f_prediction, title='prediction')
     plt.savefig('prediction.png')
-    visualize_forcemaps(f_label, title='ground truth')
-    plt.savefig('ground_truth.png')
     p = plt.imread('prediction.png')[:, :, :3]
-    g = plt.imread('ground_truth.png')[:, :, :3]
-    pg = np.concatenate([p, g], axis=0)
-    rgb2 = np.ones((800, 512, 3))
-    rgb2[220:580] = rgb
-    res = np.concatenate([rgb2, pg], axis=1)
+    if f_label is None:
+        p = cv2.resize(p, (1440,360))
+        res = np.concatenate([rgb, p], axis=1)
+    if f_label is not None:
+        visualize_forcemaps(f_label, title='ground truth')
+        plt.savefig('ground_truth.png')
+        g = plt.imread('ground_truth.png')[:, :, :3]
+        pg = np.concatenate([p, g], axis=0)
+        rgb2 = np.ones((800, 512, 3))
+        rgb2[220:580] = rgb
+        res = np.concatenate([rgb2, pg], axis=1)
     fig = plt.figure(figsize=(10, 4))
     ax = fig.add_subplot(111)
     ax.axis('off')
@@ -508,12 +514,15 @@ class Tester:
         return xs[0], ys[0], y_pred[0]
 
     def predict_force_from_rgb(self, n, visualize=True):
-        xs = self.test_data[0][n:n+1]
+        if type(self.test_data) is tuple:
+            xs = self.test_data[0][n:n+1]
+            force_label = self.test_data[1][n]
+        else:
+            xs = self.test_data[n:n+1]
+            force_label = None
         y_preds = self.model.predict(xs)
         y_pred_forces = y_preds
-        force_label = self.test_data[1][n]
-        if visualize_result:
-            visualize_result(y_pred_forces[0], force_label, xs[0], 'result{:05d}.png'.format(n))
+        visualize_result(y_pred_forces[0], force_label, xs[0], 'result{:05d}.png'.format(n))
         return y_pred_forces[0], force_label, xs[0]
 
     def predict_force_from_rgb_with_img(self, rgb):
@@ -605,9 +614,10 @@ def virtual_pick(bin_state0, pick_vector, pick_moment, object_name='011_banana',
         do_virtual_pick()
 
 
-task = 'test'
+task = 'test-real'
 # model_file = 'ae_cp.basket-filling.model_resnet.20221115193122' # current best
-model_file = 'ae_cp.basket-filling.model_resnet.20221125134301'
+# model_file = 'ae_cp.basket-filling.model_resnet.20221125134301'
+model_file = 'ae_cp.basket-filling2.model_resnet.20221202165608'
 
 if task == 'train':
     model = model_rgb_to_fmap_res50()

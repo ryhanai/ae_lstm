@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 
 import os
+
 import cv2
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 
@@ -13,7 +14,9 @@ class ForceEstimationDataLoader:
                  image_height=360, image_width=512,
                  num_classes=62,
                  start_seq=1, n_seqs=1500,
-                 start_frame=3, n_frames=3):
+                 start_frame=3, n_frames=3,
+                 real_start_frame=1, real_n_frames=294,
+                 ):
 
         self._dataset_path = synthetic_data_path
         self._real_dataset_path = real_data_path
@@ -28,16 +31,17 @@ class ForceEstimationDataLoader:
         # self._n_frames = n_frames
 
         # configuration for real data
-        self._real_start_frame = 2
-        self._real_n_frames = 304
+        self._real_start_frame = real_start_frame
+        self._real_n_frames = real_n_frames
 
         self._crop = 128
 
-        x, y = np.mgrid[start_seq:start_seq+n_seqs, start_frame:start_frame+n_frames]
+        x, y = np.mgrid[start_seq:start_seq + n_seqs, start_frame:start_frame + n_frames]
         data_ids = list(zip(x.ravel(), y.ravel()))
         self._train_ids, self._valid_ids, self._test_ids = np.split(data_ids, [int(len(data_ids)*.75), int(len(data_ids)*.875)])
 
-        self._train_real_ids, self._valid_real_ids, self._test_real_ids = np.split(range(self._real_start_frame, self._real_start_frame+self._real_n_frames), [int(self._real_n_frames*.75), int(self._real_n_frames*.875)])
+        np.random.seed(0)
+        self._train_real_ids, self._valid_real_ids, self._test_real_ids = np.split(np.random.permutation(range(self._real_start_frame, self._real_start_frame+self._real_n_frames)), [int(self._real_n_frames*.75), int(self._real_n_frames*.875)])
 
     def load_rgb(self, data_id, resize=True):
         seqNo, frameNo = data_id
@@ -192,10 +196,9 @@ class ForceEstimationDataLoader:
             img = plt.imread(filepath)
             X_rgb[i] = img[180+c[0]:540+c[0], 320+c[1]+crop:960+c[1]-crop]
 
-        X_rgb /= 255.
         return X_rgb
 
-    def load_real_data_for_rgb2fmap(self, train_mode=True, test_mode=False):
+    def load_real_data_for_rgb2fmap(self, train_mode=False, test_mode=False):
         """
         Returns:
             train_data, valid_data, test_data
