@@ -29,7 +29,8 @@ class ForceDistributionViewer:
     def publish_bin_state(self, bin_state, positions, fvals, draw_fmap, draw_force_gradient):
         self.rviz_client.delete_all()
         self.draw_bin()
-        self.draw_objects(bin_state)
+        if bin_state is not None:
+            self.draw_objects(bin_state)
         if draw_fmap:
             self.draw_force_distribution(positions, fvals)
         if draw_force_gradient:
