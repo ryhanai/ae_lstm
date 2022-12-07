@@ -10,6 +10,7 @@ from scipy import stats
 from sklearn.neighbors import KernelDensity
 # from ast import BitAnd
 # import forceGL3D
+from pybullet_tools import *
 
 
 class VirtualCamera:
@@ -32,7 +33,7 @@ class VirtualCamera:
 
 
 class Camera(VirtualCamera):
-    def __init__(self, fov=50, near=0.1, far=2.0, shadow=True):
+    def __init__(self, fov=50, near=0.1, far=2.5, shadow=True):
         super().__init__(fov, near, far)
         self.cameraConfig['shadow'] = shadow
         self.segMap = None
@@ -206,7 +207,7 @@ class RECORDER:
 
         for f in self.frames:
             f.pop('image')
-            f.pop('force_image')
+            # f.pop('force_image')
         pd.to_pickle((self.cameraConfig, self.frames), os.path.join(group_dir, 'sim_states.pkl'))
         print('done')
         self.groupNo += 1
@@ -276,7 +277,7 @@ class SIM(Environment):
             if cam_desc['type'] == 'force':
                 cam = ForceCamera(fov=fov)
             cam.setViewMatrix(*view_params)
-            cam.setProjectionMatrix(width=capture_size[1], height=capture_size[0], fov=fov, near=0.1, far=2.0, aspect=aspect_ratio)
+            cam.setProjectionMatrix(width=capture_size[1], height=capture_size[0], fov=fov, near=0.1, far=2.5, aspect=aspect_ratio)
             self.cameras[name] = cam
 
         for robot_desc in scene_desc['robot']:

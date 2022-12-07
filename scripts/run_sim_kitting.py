@@ -72,10 +72,11 @@ def teach():
         env.moveEF(v, w)
 
 
-def teach_procedurally():
+def teach_procedurally(noise_approach=0.03):
     S.p.setRealTimeSimulation(True)
+    tf_target_approach_noise = (tf_target_approach[0] + noise_approach * (np.random.random(3) - 0.1), tf_target_approach[1])
 
-    follow_trajectory(generate_trajectory(tf_target_approach))
+    follow_trajectory(generate_trajectory(tf_target_approach_noise))
     follow_trajectory(generate_trajectory(tf_target_fitted))
     release_object()
     env.setGripperJointPositions(0.65)
@@ -85,6 +86,12 @@ def teach_procedurally():
         js = env.getJointState(min_closed=0.7)
         rec.saveFrame(img, js, env, save_threshold=0.)
     rec.writeFrames()
+
+
+def create_dataset(n):
+    for i in range(n):
+        reset()
+        teach_procedurally()
 
 
 # Goal State
@@ -135,7 +142,7 @@ def follow_trajectory(traj):
 
 
 def interpolate_cartesian(tf_cur, tf_goal):
-    duration = 3.0
+    duration = 3.5
     dt = 0.1
     key_times = [0., duration]
     slerp = Slerp(key_times, R.from_quat([tf_cur[1], tf_goal[1]]))
@@ -209,6 +216,10 @@ def release_object():
 
 def reset(target_pose=None, relocate_target=True):
     env.resetRobot()
+    sync()
+    dp = np.append(np.array([-0.15, -0.2]) + 0.28 * np.random.random(2), -0.03 + 0.06 * np.random.random())
+    env.moveEF(dp)
+
     if relocate_target:
         if target_pose == None:
             # 'reaching_scene'
@@ -216,8 +227,8 @@ def reset(target_pose=None, relocate_target=True):
             # target_ori = S.p.getQuaternionFromEuler([0,0,0])
 
             # 'reaching_2ways_scene'
-            target_pos = np.append([0.0, -0.72] + [0.05, 0.05] * np.random.random(2), 0.79)
-            target_ori = S.p.getQuaternionFromEuler(np.append([0,0], -1.0 + -0.5*np.random.random(1)))
+            target_pos = np.append([0.0, 0.3] + 0.2 * np.random.random(2), 0.73)
+            target_ori = S.p.getQuaternionFromEuler(np.append([0,0], -0.5 + 1.0*np.random.random(1)))
         else:
             target_pos, target_ori = target_pose
         env.setObjectPosition('target', target_pos, target_ori)

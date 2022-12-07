@@ -222,6 +222,9 @@ def model_weighted_feature_prediction(input_image_shape, time_window_size, image
 
     # attention map
     attention_map = tf.keras.layers.TimeDistributed(tf.keras.layers.Conv2D(1, kernel_size=1, strides=1, padding='same', activation='sigmoid'))(image_feature)
+
+
+    
     weighted_img = attention_map * image_feature
 
     # reduce the dimension of the feaature map
