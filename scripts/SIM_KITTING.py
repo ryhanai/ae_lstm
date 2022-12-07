@@ -197,8 +197,8 @@ class RECORDER:
             frameNo = frame['frameNo']
             w, h, rgb, depth,seg = frame['image']
             plt.imsave(os.path.join(group_dir, 'image_frame{:05d}.jpg'.format(frameNo)), rgb)
-            fimg = frame['force_image']
-            plt.imsave(os.path.join(group_dir, 'fimage_frame{:05d}.jpg'.format(frameNo)), fimg)
+            # fimg = frame['force_image']
+            # plt.imsave(os.path.join(group_dir, 'fimage_frame{:05d}.jpg'.format(frameNo)), fimg)
             # plt.imsave(os.path.join(group_dir, 'image_frame{:05d}_depth.jpg'.format(frameNo)), depth, cmap=plt.cm.gray)
             # plt.imsave(os.path.join(group_dir, 'image_frame{:05d}_seg.jpg'.format(frameNo)), seg)
 
@@ -221,14 +221,14 @@ class RECORDER_KITTING(RECORDER):
         self.previous_s = None
         super().reset()
 
-    def saveFrame(self, img, fimg, js, env, save_threshold=5e-2):
+    def saveFrame(self, img, js, env, save_threshold=5e-2):
         tf_pen = p.getBasePositionAndOrientation(env.objects['pen'])
         s = np.array(tf_pen[0])
 
         if (type(self.previous_js) != np.ndarray
            or np.linalg.norm(js - self.previous_js, ord=1) + np.linalg.norm(s - self.previous_s, ord=2) > save_threshold):
             print('save:[{}]: {}'.format(self.frameNo, js))
-            d = {'frameNo': self.frameNo, 'jointPosition': js, 'image': img, 'force_image': fimg}
+            d = {'frameNo': self.frameNo, 'jointPosition': js, 'image': img}
             for k, id in env.objects.items():
                 d[k] = p.getBasePositionAndOrientation(id)
             self.frames.append(d)
@@ -284,8 +284,8 @@ class SIM(Environment):
             self.robot = p.loadURDF(robot_desc['robot_model'], base_pose['xyz'], p.getQuaternionFromEuler(base_pose['rpy']), useFixedBase=True)
             self.armJoints = robot_desc['arm_joints']
             self.gripperJoints = robot_desc['gripper_joints']
-            self.armInitialValues = scene_desc['robot']['initial_arm_pose']
-            self.gripperInitialValues = scene_desc['robot']['initial_gripper_pose']
+            self.armInitialValues = robot_desc['initial_arm_pose']
+            self.gripperInitialValues = robot_desc['initial_gripper_pose']
             self.resetRobot()
 
         d = scene_desc['environment'][0]

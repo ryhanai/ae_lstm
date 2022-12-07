@@ -1,13 +1,22 @@
 # -*- coding: utf-8 -*-
 
 import math
+import time
+import argparse
+import cv2
 import numpy as np
-import cv2, argparse
 import matplotlib.pyplot as plt
+import pandas as pd
+from pybullet_tools import *
+import scipy.linalg
+from scipy.spatial.transform import Slerp
+from scipy.spatial.transform import Rotation as R
+from scipy.interpolate import interp1d
+
 
 from core.utils import *
 import SIM_KITTING as S
-import tf
+# import tf
 
 parser = argparse.ArgumentParser(description='')
 parser.add_argument('-s', '--scene', type=str, default='kitting_scene.yaml')
@@ -18,36 +27,36 @@ args = parser.parse_args()
 message('scene = {}'.format(args.scene))
 message('ui = {}'.format(args.ui))
 
-#tr = mdl.prepare_for_test()
+# tr = mdl.prepare_for_test()
 
 env = S.SIM(scene_file=args.scene)
-#S.p.changeDynamics(env.robot, 23, collisionMargin=0.0)
+# S.p.changeDynamics(env.robot, 23, collisionMargin=0.0)
 S.p.changeDynamics(env.target, 0, collisionMargin=-0.03)
 S.p.changeDynamics(env.target, 1, collisionMargin=-0.03)
 
-#S.p.setCollisionFilterPair(env.robot, env.cabinet, 23, 0, 0)
+# S.p.setCollisionFilterPair(env.robot, env.cabinet, 23, 0, 0)
 cam = env.getCamera('camera1')
-fcam = env.getCamera('force_camera1')
 rec = S.RECORDER_KITTING(cam.getCameraConfig())
 
 if args.ui == '3dmouse':
     import SpaceNavUI
     ui = SpaceNavUI.SpaceNavUI()
 
+
 def eventLoop():
     while True:
-        e = S.p.getMouseEvents()
+        S.p.getMouseEvents()
+
 
 def teach():
-    #S.p.setTimeStep(1./240)
+    # S.p.setTimeStep(1./240)
     S.p.setRealTimeSimulation(True)
 
     while True:
         img = cam.getImg()
-        fimg = fcam.getImg()
-        #control.update()
+        # control.update()
         js = env.getJointState(min_closed=0.7)
-        rec.saveFrame(img, fimg, js, env)
+        rec.saveFrame(img, js, env)
 
         if ui.getEventSignal() == SpaceNavUI.UI_EV_LEFT_CLICK:
             env.setGripperJointPositions(0.65)
@@ -58,9 +67,10 @@ def teach():
             reset()
             continue
 
-        v,w = ui.getControlSignal()
+        v, w = ui.getControlSignal()
         w = S.p.getQuaternionFromEuler(w)
         env.moveEF(v, w)
+
 
 def teach_procedurally():
     S.p.setRealTimeSimulation(True)
@@ -72,14 +82,10 @@ def teach_procedurally():
     start = time.time()
     while time.time() - start < 1.0:
         img = cam.getImg()
-        fimg = fcam.getImg()
         js = env.getJointState(min_closed=0.7)
-        rec.saveFrame(img, fimg, js, env, save_threshold=0.)
+        rec.saveFrame(img, js, env, save_threshold=0.)
     rec.writeFrames()
 
-from scipy.spatial.transform import Slerp
-from scipy.spatial.transform import Rotation as R
-from scipy.interpolate import interp1d
 
 # Goal State
 # pen (robot, 23)
@@ -89,14 +95,14 @@ tf_approach = ((0.03664122521408607, -0.5315819169452275, 0.963800216862066),
                 -0.5618843155322776,
                 0.6339807881054513))
 
-# target 
+# target
 tf_target = ((0.03975343991738431, -0.6731654428797486, 0.79),
              (0.0, 0.0, -0.6185583387305793, 0.785738876209435))
 
 
 # approach waypoint relative to tf_target
-#tf_target_approach = ([-0.13951663,  0.01909836,  0.17542246],
-#                    [-0.02402769,  0.52414153, -0.01857238,  0.85108954])
+# tf_target_approach = ([-0.13951663,  0.01909836,  0.17542246],
+#                     [-0.02402769,  0.52414153, -0.01857238,  0.85108954])
 tf_target_approach = ([-0.14751663,  0.01109836,  0.19042246],
                     [-0.02402769,  0.52414153, -0.01857238,  0.85108954])
 tf_target_fitted = ([-0.13951663,  0.01109836,  0.17042246],
@@ -104,25 +110,29 @@ tf_target_fitted = ([-0.13951663,  0.01109836,  0.17042246],
 
 # tf_hand_pen: <origin rpy="0 -1.0 0" xyz="0.19 0 0.05"/>
 
+
 def generate_trajectory(tf_target_approach):
     tf_cur = S.p.getLinkState(env.robot, 11)[0:2]
     tf_target = S.p.getBasePositionAndOrientation(env.target)
-    m_approach = np.dot(transform2homogeneousM(tf_target), transform2homogeneousM(tf_target_approach))
-    tf_approach = homogeneousM2transform(m_approach)
+    # m_approach = np.dot(transform2homogeneousM(tf_target), transform2homogeneousM(tf_target_approach))
+    tf_approach = multiply_transforms(tf_target[0], tf_target[1], tf_target_approach[0], tf_target_approach[1])
+    # tf_approach = homogeneousM2transform(m_approach)
     return interpolate_cartesian(tf_cur, tf_approach)
+
 
 def goto_waypoint(tf_wp):
     q = S.p.calculateInverseKinematics(env.robot, 11, tf_wp[0], tf_wp[1])[:6]
     env.setJointValues(env.robot, env.armJoints, q)
 
+    
 def follow_trajectory(traj):
     for tf_wp in traj:
         goto_waypoint(tf_wp)
         sync()
         img = cam.getImg()
-        fimg = fcam.getImg()
         js = env.getJointState()
-        rec.saveFrame(img, fimg, js, env)      
+        rec.saveFrame(img, js, env)      
+
 
 def interpolate_cartesian(tf_cur, tf_goal):
     duration = 3.0
@@ -133,16 +143,19 @@ def interpolate_cartesian(tf_cur, tf_goal):
     interp = interp1d(key_times, np.array([tf_cur[0], tf_goal[0]]).transpose())
     return [(interp(tm), slerp(tm).as_quat()) for tm in times]
 
-def transform2homogeneousM(tfobj):
-    tfeul = tf.transformations.euler_from_quaternion(tfobj[1])
-    tftrans = tfobj[0]
-    tfobjM = tf.transformations.compose_matrix(angles=tfeul, translate=tftrans)
-    return tfobjM
 
-def homogeneousM2transform(tfobjM):
-    scale, shear, angles, trans, persp = tf.transformations.decompose_matrix(tfobjM)
-    quat = tf.transformations.quaternion_from_euler(*angles)
-    return (trans, quat)
+# def transform2homogeneousM(tfobj):
+#     tfeul = tf.transformations.euler_from_quaternion(tfobj[1])
+#     tftrans = tfobj[0]
+#     tfobjM = tf.transformations.compose_matrix(angles=tfeul, translate=tftrans)
+#     return tfobjM
+
+
+# def homogeneousM2transform(tfobjM):
+#     scale, shear, angles, trans, persp = tf.transformations.decompose_matrix(tfobjM)
+#     quat = tf.transformations.quaternion_from_euler(*angles)
+#     return (trans, quat)
+
 
 def toCart(jv, unnormalize=True):
     jv = unnormalize_joint_position(jv)
@@ -150,19 +163,22 @@ def toCart(jv, unnormalize=True):
     sync()
     return getEFPos()
 
+
 def toCartTraj(jvs):
     return [toCart(jv) for jv in jvs]
+
 
 def sync(steps=100):
     for j in range(steps):
         S.p.stepSimulation()
 
 
-#sm = StateManager(mdl.time_window_size)
+# sm = StateManager(mdl.time_window_size)
 roi_hist = []
 predicted_images = []
 
-def grasp_object(name='pen', tf_hand_obj=([0.19, 0, 0.05], tf.transformations.quaternion_from_euler(0, -1, 0))):
+
+def grasp_object(name='pen', tf_hand_obj=([0.19, 0, 0.05], quat_from_euler((0, -1, 0)))):
     # tf_hand = S.p.getLinkState(env.robot, 11)[0:2] # gripper_base_joint
     # m_hand = transform2homogeneousM(tf_hand)
     # m_hand_pen = transform2homogeneousM(tf_hand_obj)
@@ -184,10 +200,12 @@ def grasp_object(name='pen', tf_hand_obj=([0.19, 0, 0.05], tf.transformations.qu
     )
     return cstr
 
+
 def release_object():
     cstr_ids = [S.p.getConstraintUniqueId(n) for n in range(S.p.getNumConstraints())]
     for cstr_id in cstr_ids:
         S.p.removeConstraint(cstr_id)
+
 
 def reset(target_pose=None, relocate_target=True):
     env.resetRobot()
@@ -212,23 +230,27 @@ def reset(target_pose=None, relocate_target=True):
 
     img0 = captureRGB()
     js0 = env.getJointState()
-    #js0 = normalize_joint_position(js0)
-    #sm.initializeHistory(img0, js0)
+    # js0 = normalize_joint_position(js0)
+    # sm.initializeHistory(img0, js0)
     rec.clearFrames()
+
 
 def captureRGB():
     img = cam.getImg()[2][:,:,:3]
-    #img = cv2.resize(img, swap(mdl.input_image_size))
+    # img = cv2.resize(img, swap(mdl.input_image_size))
     return img / 255.
+
 
 def captureSegImg():
     img = cam.getImg()[4]
-    #img = cv2.resize(img, swap(mdl.input_image_size))
+    # img = cv2.resize(img, swap(mdl.input_image_size))
     return img / 255.
+
 
 def getEFPos():
     s = S.p.getLinkState(env.robot, 7)
     return s[0]
+
 
 def generate_eval_goal_acc_samples(n_samples):
     samples = []
@@ -238,7 +260,6 @@ def generate_eval_goal_acc_samples(n_samples):
         samples.append(target_pos)
     return samples
 
-import scipy.linalg
 
 def eval_goal_accuracy(n_samples=20):
     reset()
@@ -252,12 +273,11 @@ def eval_goal_accuracy(n_samples=20):
         p1 = env.getTargetXYZ()
         p2 = env.getTCPXYZ()
         #d = scipy.linalg.norm(p1-p2, ord=2)
-        results.append((p1,p2))
+        results.append((p1, p2))
     return results
 
-import pandas as pd
 
-def calc_train_data_bias(groups=range(1,5)):
+def calc_train_data_bias(groups=range(1, 5)):
     results = []
     for g in groups:
         s = pd.read_pickle('~/Dataset/dataset2/reaching/{}/sim_states.pkl'.format(g))[1][-1]
@@ -269,6 +289,7 @@ def calc_train_data_bias(groups=range(1,5)):
         p_tcp = env.getTCPXYZ()
         results.append((p_target, p_tcp))
     return results
+
 
 def rerender(groups=range(1,2), task='reaching'):
     for g in groups:
@@ -290,12 +311,14 @@ def rerender(groups=range(1,2), task='reaching'):
             env.frameNo += 1
         env.groupNo = g
         env.writeFrames(cam.getCameraConfig())
-        
+
+
 n_runs = 0
-        
+
+
 def run(max_steps=80, anim_gif=False):
     global n_runs
-    
+
     for i in range(max_steps):
         print('i = ', i)
         img = captureRGB()
@@ -335,24 +358,21 @@ def run_test():
         reset((pose['xyz'], S.p.getQuaternionFromEuler(pose['rpy'])))
         run(80, anim_gif=True)
 
+
 def predict_sequence_open(group_num=0):
     trajs = tr.predict_sequence_open(group_num)
     return map(lambda x: np.array(toCartTraj(x)), trajs)
 
+
 def visualize_predicted_vectors(groups=range(10)):
-    fig = plt.figure(figsize=(5,5))
+    fig = plt.figure(figsize=(5, 5))
     ax = fig.add_subplot(111)
-    coordinate(ax, [-0.6,0.6],[-1.0,-0.2])
+    coordinate(ax, [-0.6, 0.6], [-1.0, -0.2])
     for group in groups:
-        cs,ps,ls = predict_sequence_open(group)
+        cs, ps, ls = predict_sequence_open(group)
         draw_predictions_and_labels(ax, cs, ps, ls)
     plt.show()
 
 
-    
-
-
-                
-                
 # env.writeFrames(cam.getCameraConfig())
 # $ convert -delay 20 -loop 0 *.jpg image_frames.gif

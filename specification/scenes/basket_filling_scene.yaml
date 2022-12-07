@@ -1,5 +1,5 @@
-name: kitting_scene
-task: kitting
+name: basket_filling_scene
+task: basket_filling
 
 rendering:
   shadow: true
