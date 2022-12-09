@@ -15,18 +15,23 @@ from model import *
 from tensorflow import keras
 from tensorflow.keras import layers, losses
 from tensorflow.keras.models import Model
+from AttentionLSTMCell import *
 
 os.environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
 
-dataset = 'kitting-destructor'
-train_groups = range(0, 6)
-val_groups = range(0, 6)
-joint_range_data = range(0, 6)
+# dataset = 'kitting-destructor'
+# train_groups = range(0, 6)
+# val_groups = range(0, 6)
+# joint_range_data = range(0, 6)
 
-# dataset = 'kitting'
-# train_groups=range(0,90)
-# val_groups=range(90,111)
-# joint_range_data=range(0,111)
+# dataset = 'kitting2'
+# train_groups=range(0,9)
+# val_groups=range(9,15)
+
+dataset = 'kitting'
+train_groups=range(0,90)
+val_groups=range(90,111)
+joint_range_data=range(0,111)
 input_image_size = (80, 160)
 time_window_size = 20
 latent_dim = 64
@@ -201,6 +206,7 @@ def model_decoder(input_shape, name='decoder'):
     decoder.summary()
     return decoder
 
+
 def model_weighted_feature_prediction(input_image_shape, time_window_size, image_vec_dim, dof, image_noise=0.2, joint_noise=0.02, use_color_augmentation=False):
     image_input = tf.keras.Input(shape=((time_window_size,) + input_image_shape))
     joint_input = tf.keras.Input(shape=(time_window_size, dof))
@@ -217,44 +223,33 @@ def model_weighted_feature_prediction(input_image_shape, time_window_size, image
     # convert to feature map
     image_feature = model_time_distributed_encoder(input_image_shape, time_window_size, name='feature-encoder')(x)
 
-    # attention map
-    attention_map = tf.keras.layers.TimeDistributed(tf.keras.layers.Conv2D(1, kernel_size=1, strides=1, padding='same', activation='sigmoid'))(image_feature)
-    weighted_img = attention_map * image_feature
-
-    # reduce the dimension of the feaature map
-    x = time_distributed_conv_block(weighted_img, 128)
-    x = time_distributed_conv_block(x, 128)
-    
-    # prediction of time development
-    x = tf.keras.layers.TimeDistributed(tf.keras.layers.Flatten())(x)
-    current_ivec = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(image_vec_dim, activation='selu'))(x)
-    
     #joint_input_with_noise = tf.keras.kayers.TimeDistributed(tf.keras.layers.GaussianNoise(joint_noise))(joint_input)
     joint_input_with_noise = tf.keras.layers.GaussianNoise(joint_noise)(joint_input)
-    predicted_ivec, predicted_joint_positions = model_lstm(time_window_size, latent_dim, dof)([current_ivec, joint_input_with_noise])
 
-    # channels = output_shape[2]
-    # nblocks = 4
-    # h = int(output_shape[0]/2**nblocks)
-    # w = int(output_shape[1]/2**nblocks)
+    cell = AttentionLSTMCell(image_vec_dim + dof)
+    layer = tf.keras.layers.RNN(cell)
+    x, attention_map = layer((image_feature, joint_input_with_noise))
 
-    channels = 128
+    # split output vector (293, 7)
+    predicted_ivec = tf.keras.layers.Lambda(lambda x:x[:,:image_vec_dim], output_shape=(image_vec_dim,))(x)
+    predicted_jvec = tf.keras.layers.Lambda(lambda x:x[:,image_vec_dim:], output_shape=(dof,))(x)
+
+    channels = 64
     h = 5
     w = 10
-
-    x = tf.keras.layers.Dense(h*w*channels, activation='selu')(predicted_ivec)
-    x = tf.keras.layers.Reshape(target_shape=(h,w,channels))(x)
+    x = tf.keras.layers.Dense(h*w*channels, activation='relu')(predicted_ivec)
+    x = tf.keras.layers.Reshape(target_shape=(h, w, channels))(x)
     x = tf.keras.layers.BatchNormalization()(x)
 
     x = deconv_block(x, 128)
-    x = deconv_block(x, 128)
+    x = deconv_block(x, channels)
     
     # decode to the next frame
-    predicted_img = model_decoder((h*4,w*4,channels))(x)
+    predicted_img = model_decoder((h*4, w*4, channels))(x)
 
     m = WeightedFeaturePredictorModel(inputs=[image_input, joint_input, noise_input],
-                                          outputs=[predicted_img, predicted_joint_positions, attention_map],
-                                          name='weighted_feature_prediction')
+                                      outputs=[predicted_img, predicted_jvec, attention_map],
+                                      name='weighted_feature_prediction')
 
     m.summary()
     return m

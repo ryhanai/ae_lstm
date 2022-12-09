@@ -2,7 +2,8 @@
 
 import tensorflow as tf
 import tensorflow.keras as keras
-import tensorflow.keras.layers import RNN
+from tensorflow.keras import Sequential
+from tensorflow.keras.layers import RNN
 # from typeguard import typecheckd
 
 from tensorflow_addons.utils.types import (
@@ -15,6 +16,7 @@ from tensorflow_addons.utils.types import (
 )
 
 
+# class AttentionLSTMCell(keras.layers.Layer):
 class AttentionLSTMCell(keras.layers.LSTMCell):
 
     def __init__(
@@ -99,15 +101,29 @@ class AttentionLSTMCell(keras.layers.LSTMCell):
             recurrent_dropout=recurrent_dropout,
             **kwargs,
         )
+        # self.units = units
+        # self.state_size = units
+
         self.norm_gamma_initializer = keras.initializers.get(norm_gamma_initializer)
         self.norm_beta_initializer = keras.initializers.get(norm_beta_initializer)
         self.norm_epsilon = norm_epsilon
-        self.kernel_norm = self._create_norm_layer("kernel_norm")
-        self.recurrent_norm = self._create_norm_layer("recurrent_norm")
-        self.state_norm = self._create_norm_layer("state_norm")
+        
+        dof = 7
+        self.dense_h1 = keras.layers.Dense(20*40, name="dense_h1", activation='sigmoid')
+        self.sp_conv = keras.layers.Conv2D(1, kernel_size=7, strides=[1, 1], padding="same", name="sp_conv")
+        self.attention_conv0 = keras.layers.Conv2D(32, kernel_size=3, strides=[2, 2], padding="same", activation="relu", name="attention_conv0")
+        self.attention_bn0 = keras.layers.BatchNormalization(name="attention_bn0")
+        self.attention_conv1 = keras.layers.Conv2D(64, kernel_size=3, strides=[2, 2], padding="same", activation="relu", name="attention_conv1")
+        self.attention_bn1 = keras.layers.BatchNormalization(name="attention_bn1")
+        self.dense_lv = keras.layers.Dense(units-dof, name="dense_lv", activation='relu')
+        # self.kernel_norm = self._create_norm_layer("kernel_norm")
+        # self.recurrent_norm = self._create_norm_layer("recurrent_norm")
+        # self.state_norm = self._create_norm_layer("state_norm")
 
     def build(self, input_shape):
-        super().build(input_shape)
+        in_img_shape = input_shape[0]
+        in_jv_shape = input_shape[1]
+        super().build([None, self.units])
 
         def maybe_build_sublayer(sublayer, build_shape):
             if not sublayer.built:
@@ -115,40 +131,59 @@ class AttentionLSTMCell(keras.layers.LSTMCell):
                     sublayer.build(build_shape)
                     sublayer.built = True
 
-        maybe_build_sublayer(self.kernel_norm, [input_shape[0], self.units * 4])
-        maybe_build_sublayer(self.recurrent_norm, [input_shape[0], self.units * 4])
-        maybe_build_sublayer(self.state_norm, [input_shape[0], self.units])
+        maybe_build_sublayer(self.dense_h1, [self.units,])
+        maybe_build_sublayer(self.sp_conv, [in_img_shape[1], in_img_shape[2], 3])
+        maybe_build_sublayer(self.attention_conv0, in_img_shape)
+        maybe_build_sublayer(self.attention_bn0, [None, int(in_img_shape[1]/2), int(in_img_shape[2]/2), 32])
+        maybe_build_sublayer(self.attention_conv1, [None, int(in_img_shape[1]/2), int(in_img_shape[2]/2), 32])
+        maybe_build_sublayer(self.attention_bn0, [None, int(in_img_shape[1]/4), int(in_img_shape[2]/4), 64])
+        maybe_build_sublayer(self.dense_lv, [int(in_img_shape[1]/4) * int(in_img_shape[2]/4) * 64,])
+        # maybe_build_sublayer(self.kernel_norm, [input_shape[0], self.units * 4])
+        # maybe_build_sublayer(self.recurrent_norm, [input_shape[0], self.units * 4])
+        # maybe_build_sublayer(self.state_norm, [input_shape[0], self.units])
 
     def call(self, inputs, states, training=None):
-        h_tm1 = states[0]  # previous memory state
-        c_tm1 = states[1]  # previous carry state
+        h_in = states[0]  # previous memory state
+        c_in = states[1]  # previous carry state
 
-        ah = tf.tensordot(h_tm1, attention_weights)
-        hx = reshape(ah)
-        mx = max_pool(inputs)
-        ax = ave_pool(inputs)
-        x = concatenate([mx, ax, hx])
-        x = conv(x)
-        x = activation(x)
-        ainputs = backend.dot(x, inputs)
+        in_img = inputs[0]
+        in_jv = inputs[1]
 
-        #dp_mask = self.get_dropout_mask_for_cell(inputs, training, count=4)
-        #rec_dp_mask = self.get_recurrent_dropout_mask_for_cell(h_tm1, training, count=4)
-        #if 0.0 < self.dropout < 1.0:
-        #    inputs *= dp_mask[0]
-        z = self.kernel_norm(keras.backend.dot(inputs, self.kernel))
+        h1 = self.dense_h1(h_in)
+        h1 = tf.reshape(h1, shape=[-1, in_img.get_shape()[1], in_img.get_shape()[2], 1])
+        avg_pool = tf.reduce_mean(in_img, axis=[3], keepdims=True)
+        assert avg_pool.get_shape()[-1] == 1
+        max_pool = tf.reduce_max(in_img, axis=[3], keepdims=True)
+        assert max_pool.get_shape()[-1] == 1
+        h_input = tf.concat([avg_pool, max_pool, h1], axis=3)
+        assert h_input.get_shape()[-1] == 3
 
-        #if 0.0 < self.recurrent_dropout < 1.0:
-        #    h_tm1 *= rec_dp_mask[0]
-        z += self.recurrent_norm(keras.backend.dot(h_tm1, self.recurrent_kernel))
+        w0 = self.sp_conv(h_input)
+        assert w0.get_shape()[-1] == 1
+        sp_weight = tf.sigmoid(w0, 'sigmoid')
+        sp_attention = in_img * sp_weight
+        x = self.attention_conv0(sp_attention)
+        x = self.attention_bn0(x)
+        x = self.attention_conv1(x)
+        x = self.attention_bn1(x)
+        shape = in_img.get_shape()
+        x = tf.reshape(x, shape=[-1, int(shape[1] * shape[2] / 16 * 64)]) # flatten
+        x = self.dense_lv(x) # image_vector: dim == units
+
+        ### add gaussian noise to in_jv
+        input_vec = tf.concat([x, in_jv], axis=1)
+      
+        z = keras.backend.dot(input_vec, self.kernel)
+        z += keras.backend.dot(h_in, self.recurrent_kernel)
+
         if self.use_bias:
             z = keras.backend.bias_add(z, self.bias)
 
         z = tf.split(z, num_or_size_splits=4, axis=1)
-        c, o = self._compute_carry_and_output_fused(z, c_tm1)
-        c = self.state_norm(c)
+        c, o = self._compute_carry_and_output_fused(z, c_in)
+        # c = self.state_norm(c)
         h = o * self.activation(c)
-        return h, [h, c]
+        return [h, sp_weight], [h, c]
 
     def get_config(self):
         config = {
@@ -171,7 +206,9 @@ class AttentionLSTMCell(keras.layers.LSTMCell):
             name=name,
         )
 
+        
 
-model = Sequential([
-    RNN(AttentionLSTMCell(1, activation=None), input_shape=(None, 1), return_sequences=True)
-])
+
+# model = Sequential([
+#     RNN(AttentionLSTMCell(1, activation=None), input_shape=(None, 1), return_sequences=True)
+# ])
