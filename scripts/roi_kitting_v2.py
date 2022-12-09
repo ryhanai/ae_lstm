@@ -183,16 +183,24 @@ def model_weighted_feature_prediction(input_image_shape, time_window_size, image
     # convert to feature map
     image_feature = model_time_distributed_encoder(input_image_shape, time_window_size, name='feature-encoder')(x)
 
+<<<<<<< HEAD
     # joint_input_with_noise = tf.keras.kayers.TimeDistributed(tf.keras.layers.GaussianNoise(joint_noise))(joint_input)
+=======
+>>>>>>> 5893b1abe180fec7936e1f2e07a456291440bcd6
     joint_input_with_noise = tf.keras.layers.GaussianNoise(joint_noise)(joint_input)
 
     cell = AttentionLSTMCell(image_vec_dim + dof)
     layer = tf.keras.layers.RNN(cell)
     x, attention_map = layer((image_feature, joint_input_with_noise))
 
+<<<<<<< HEAD
     # split output vector (293, 7)
     predicted_ivec = tf.keras.layers.Lambda(lambda x: x[:, :image_vec_dim], output_shape=(image_vec_dim,))(x)
     predicted_jvec = tf.keras.layers.Lambda(lambda x: x[:, image_vec_dim:], output_shape=(dof,))(x)
+=======
+    predicted_ivec = tf.keras.layers.Lambda(lambda x:x[:,:image_vec_dim], output_shape=(image_vec_dim,))(x)
+    predicted_jvec = tf.keras.layers.Lambda(lambda x:x[:,image_vec_dim:], output_shape=(dof,))(x)
+>>>>>>> 5893b1abe180fec7936e1f2e07a456291440bcd6
 
     channels = 64
     h = 5
