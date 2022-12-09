@@ -211,7 +211,7 @@ def model_weighted_feature_prediction(input_image_shape, time_window_size, image
     image_input = tf.keras.Input(shape=((time_window_size,) + input_image_shape))
     joint_input = tf.keras.Input(shape=(time_window_size, dof))
     noise_input = tf.keras.Input(shape=(2,))
-    
+
     x = image_input
 
     # This should be changed to time-series version
@@ -219,18 +219,16 @@ def model_weighted_feature_prediction(input_image_shape, time_window_size, image
         x = TimeDistributedColorAugmentation()(x)
     x = TimeDistributedGeometricalAugmentation()(x, noise_input)
     x = tf.keras.layers.GaussianNoise(image_noise)(x)
-    
+
     # convert to feature map
     image_feature = model_time_distributed_encoder(input_image_shape, time_window_size, name='feature-encoder')(x)
 
-    #joint_input_with_noise = tf.keras.kayers.TimeDistributed(tf.keras.layers.GaussianNoise(joint_noise))(joint_input)
     joint_input_with_noise = tf.keras.layers.GaussianNoise(joint_noise)(joint_input)
 
     cell = AttentionLSTMCell(image_vec_dim + dof)
     layer = tf.keras.layers.RNN(cell)
     x, attention_map = layer((image_feature, joint_input_with_noise))
 
-    # split output vector (293, 7)
     predicted_ivec = tf.keras.layers.Lambda(lambda x:x[:,:image_vec_dim], output_shape=(image_vec_dim,))(x)
     predicted_jvec = tf.keras.layers.Lambda(lambda x:x[:,image_vec_dim:], output_shape=(dof,))(x)
 
@@ -243,7 +241,7 @@ def model_weighted_feature_prediction(input_image_shape, time_window_size, image
 
     x = deconv_block(x, 128)
     x = deconv_block(x, channels)
-    
+
     # decode to the next frame
     predicted_img = model_decoder((h*4, w*4, channels))(x)
 
@@ -253,7 +251,7 @@ def model_weighted_feature_prediction(input_image_shape, time_window_size, image
 
     m.summary()
     return m
-    
+
 
 wf_predictor = model_weighted_feature_prediction(input_image_size+(3,), time_window_size, latent_dim, dof)
 
