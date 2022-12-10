@@ -36,16 +36,16 @@ def roi_rect1(args):
 #     return ss_argmax
 
 
-def detect_rect_region(x, filter_size=(3, 3), n_sigma=1.0):
-    mu = np.average(x, axis=(1,2))
-    sigma = np.std(x, axis=(1,2))
-    mu = np.expand_dims(mu, (1, 2))
-    sigma = np.expand_dims(sigma, (1, 2))
-    x = x - mu - n_sigma * sigma
-    x = np.where(x > 0., x, 0.)
-    W = tf.ones((filter_size[0], filter_size[1], 1, 1))
-    scores = tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
-    return scores
+# def detect_rect_region(x, filter_size=(3, 3), n_sigma=1.0):
+#     mu = np.average(x, axis=(1,2))
+#     sigma = np.std(x, axis=(1,2))
+#     mu = np.expand_dims(mu, (1, 2))
+#     sigma = np.expand_dims(sigma, (1, 2))
+#     x = x - mu - n_sigma * sigma
+#     x = np.where(x > 0., x, 0.)
+#     W = tf.ones((filter_size[0], filter_size[1], 1, 1))
+#     scores = tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
+#     return scores
 
 
 def detect_rect_region(x, filter_size=(3, 3), n_sigma=1.0):
@@ -76,8 +76,10 @@ def apply_filters(images,
         a = tf.nn.softmax(a*beta)
         attention_map = np.reshape(a, attention_map.shape)
 
-    kxs = list(range(3, 13))
-    kys = list(range(3, 13))
+    # kxs = list(range(3, 13))
+    # kys = list(range(3, 13))
+    kxs = list(range(3, 15))
+    kys = list(range(3, 15))
     score = np.empty((len(kys), len(kxs), N, H, W, C))
 
     for i, ky in enumerate(kys):

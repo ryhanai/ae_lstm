@@ -132,7 +132,7 @@ class AttentionLSTMCell(keras.layers.LSTMCell):
         self.mlp_0 = keras.layers.Dense((channel + self._h_dim)/self.ratio, name="mlp_0", activation='relu')
         self.mlp_1 = keras.layers.Dense(channel, name="mlp_1")
 
-        sp_attention_kernel_size = 3  # 7 in CBAM
+        sp_attention_kernel_size = 7  # 7 in CBAM
         self._n_filters = [32, 64]
         self.dense_h1 = keras.layers.Dense(h*w, name="dense_h1", activation='sigmoid')
         self.sp_conv = keras.layers.Conv2D(1, kernel_size=sp_attention_kernel_size, strides=[1, 1], padding="same", name="sp_conv")

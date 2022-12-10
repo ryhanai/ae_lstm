@@ -29,10 +29,16 @@ os.environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
 # train_groups=range(0,9)
 # val_groups=range(9,15)
 
-dataset = 'kitting'
-train_groups=range(0,90)
-val_groups=range(90,111)
-joint_range_data=range(0,111)
+dataset = 'reaching-real'
+train_groups=range(0,136)
+val_groups=range(136,156)
+joint_range_data=range(0,156)
+
+# dataset = 'kitting'
+# train_groups=range(0,90)
+# val_groups=range(90,111)
+# joint_range_data=range(0,111)
+
 input_image_size = (80, 160)
 time_window_size = 20
 latent_dim = 64
@@ -434,7 +440,7 @@ class Tester(trainer.Trainer):
         if return_data:
             return x, y_pred
 
-    def predict_for_group(self, group_num=0, random_shift=True, out_roi_image=False, n_sigma=1.0):
+    def predict_for_group(self, group_num=0, random_shift=True, out_roi_image=False, n_sigma=1.5):
         res = []
         d = self.val_ds.data
         seq_len = len(d[group_num][1])
@@ -463,13 +469,22 @@ class Tester(trainer.Trainer):
 
             predicted_images, predicted_joints, attention_maps = y_pred
             # attention_maps = attention_maps[:, -1]
-            b, rect = attention_map2roi.apply_filters(batch_x_imgs[:, -1], attention_maps, visualize_result=False, return_result=True, n_sigma=n_sigma)
+            input_img = batch_x_imgs[:, -1]
+            b, rect = attention_map2roi.apply_filters(input_img, attention_maps, visualize_result=False, return_result=True, n_sigma=n_sigma)
+
+            # roi_imgs = tf.image.crop_and_resize(input_img, tf.cast(rect, tf.float32), range(batch_size), input_image_size)
+            # res = tf.concat([b[0], roi_imgs[0]], axis=0)
+
+            cm = plt.get_cmap('viridis')
+            a = tf.squeeze(attention_maps[0])
+            a = np.array(list(map(cm, a*5.)))[:, :, :3]
+            resized_attention_map = tf.image.resize(a, b[0].shape[:2])
+
             if out_roi_image:
-                roi_imgs = tf.image.crop_and_resize(batch_x_imgs[:, -1], tf.cast(rect, tf.float32), range(batch_size), input_image_size)
-                res = tf.concat([b[0], roi_imgs[0]], axis=0)
+                roi_imgs = tf.image.crop_and_resize(input_img, tf.cast(rect, tf.float32), range(batch_size), input_image_size)
+                res = tf.concat([b[0], resized_attention_map, roi_imgs[0]], axis=1)
             else:
-                resized_attention_map = tf.image.grayscale_to_rgb(tf.image.resize(attention_maps[0], b[0].shape[:2]))
-                res = tf.concat([b[0], resized_attention_map], axis=0)
+                res = tf.concat([b[0], resized_attention_map], axis=1)
             results.append(res.numpy())
 
         create_anim_gif_from_images(results, out_filename='estimated_roi_g{:05d}.gif'.format(group_num))
