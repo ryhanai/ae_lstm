@@ -36,6 +36,19 @@ def roi_rect1(args):
 #     return ss_argmax
 
 
+image_coords = tf.constant([(sy, sx, y, x) for sy in range(12) for sx in range(12) for y in range(20) for x in range(40)], dtype=tf.float64)
+
+
+def spatial_soft_argmax(features):
+    SY, SX, Y, X = features.shape
+    features = tf.expand_dims(tf.reshape(features, SY*SX*Y*X), 0)
+    softmax = tf.nn.softmax(features)
+    softmax = tf.reshape(softmax, (SY*SX*Y*X, 1))
+    # softmax = tf.cast(softmax, tf.float32)
+    ss_argmax = tf.reduce_sum(softmax * image_coords, axis=0)
+    return softmax, ss_argmax
+
+
 # def detect_rect_region(x, filter_size=(3, 3), n_sigma=1.0):
 #     mu = np.average(x, axis=(1,2))
 #     sigma = np.std(x, axis=(1,2))
@@ -48,52 +61,84 @@ def roi_rect1(args):
 #     return scores
 
 
-def detect_rect_region(x, filter_size=(3, 3), n_sigma=1.0):
+def detect_rect_region(x, W, n_sigma=1.0, epsilon=1e-3):
     mu = tf.reduce_mean(x, (1, 2))
-    sigma = tf.math.reduce_std(x, (1, 2))
     mu = tf.expand_dims(tf.expand_dims(mu, 1), 2)
-    sigma = tf.expand_dims(tf.expand_dims(sigma, 1), 2)
-    x = x - mu - n_sigma * sigma
-    x = tf.where(x > 0., x, 0.)
-    W = tf.ones((filter_size[0], filter_size[1], 1, 1))
-    scores = tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
+    # sigma = tf.math.reduce_std(x, (1, 2))
+    # sigma = tf.expand_dims(tf.expand_dims(sigma, 1), 2)
+    # x = x - mu - n_sigma * sigma
+    # x = tf.where(x > 0., x, 0.)
+
+    x = x - mu
+    x = tf.where(x > -epsilon, x, -epsilon)
+
+    scores = tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')  # zero-padding
     return scores
+
+
+def gaussian_filter(filter_size):
+    ky, kx = filter_size
+    y = np.arange(-(ky-1)/2, (ky-1)/2+1, 1)
+    x = np.arange(-(kx-1)/2, (kx-1)/2+1, 1)
+    yy, xx = np.meshgrid(y, x)
+    W = np.exp(-((2*yy/ky)**2 + (2*xx/kx)**2))
+    W = np.expand_dims(W, (2,3))
+    return W
+
+
+filters = []
+YMAX = 15
+XMAX = 15
+kys = list(range(3, YMAX))
+kxs = list(range(3, XMAX))
+for i, ky in enumerate(kys):
+    for j, kx in enumerate(kxs):
+        # W = tf.ones((ky, kx, 1, 1))
+        W = gaussian_filter((ky, kx))
+        filters.append((i, j, W))
+
+
+def compute_score(attention_map, n_sigma=1.0, epsilon=1e-3):
+    attention_map[:, 0] = 0.0
+
+    N, H, W, C = attention_map.shape
+    score = np.empty((YMAX-3, XMAX-3, N, H, W, C))
+
+    for i, j, filter in filters:
+        score[i, j] = detect_rect_region(attention_map, filter, n_sigma, epsilon)  # (N,H,W,C=1)
+    score = np.transpose(score, [2, 0, 1, 3, 4, 5])  # move batch dimesion to the head
+    return score
 
 
 def apply_filters(images,
                   attention_map,
                   n_sigma=1.0,
+                  epsilon=1e-3,
                   beta=4.0,
                   use_softmax=False,
                   visualize_result=True,
                   return_result=False):
 
     N, H, W, C = attention_map.shape
-    attention_map[:,0] = 0.0 # too bad
 
     if use_softmax:
         a = attention_map.reshape(N, 20*40)
         a = tf.nn.softmax(a*beta)
         attention_map = np.reshape(a, attention_map.shape)
 
-    # kxs = list(range(3, 13))
-    # kys = list(range(3, 13))
-    kxs = list(range(3, 15))
-    kys = list(range(3, 15))
-    score = np.empty((len(kys), len(kxs), N, H, W, C))
-
-    for i, ky in enumerate(kys):
-        for j, kx in enumerate(kxs):
-            kernel_sz = (ky, kx)
-            score[i, j] = detect_rect_region(attention_map, kernel_sz, n_sigma)  # (N,H,W,C=1)
-    score = np.transpose(score, [2, 0, 1, 3, 4, 5])  # move batch dimesion to the head
+    score = compute_score(attention_map, n_sigma, epsilon=epsilon)
 
     cs = []
     ss = []
-
     for sc in score:  # loop over images
         density = sc[:, :, :, :, 0]
+
+        # ssa = spatial_soft_argmax(density)
+        # print('SSA =', ssa)
+        # sy, sx, y, x = ssa
+
         sy, sx, y, x = add_offsets(density)  # pixel coords to (center,scale) representation
+
         c = [y/20., x/40.]
         s = [(3+sy)/20., (3+sx)/40.]
         cs.append(c)
@@ -135,33 +180,3 @@ def test(tr):
     attention_maps = y_pred[2]
     a = attention_maps[:, -1]
     return apply_filters(xs, a, visualize_result=True)
-
-
-# def apply_filters(images, attention_map, alpha=0.0, beta=4.0, use_softmax=True, visualize_result=True, return_result=False):
-#     n_imgs = attention_map.shape[0]
-
-#     if use_softmax:
-#         a = attention_map.reshape(n_imgs, 20*40)
-#         a2 = tf.nn.softmax(a*beta)
-#         a3 = np.reshape(a2, attention_map.shape)
-#         attention_map = a3
-    
-#     score = np.array([detect_rect_region(attention_map, kernel_sz, alpha) for kernel_sz in kernel_sizes])
-#     cs = []
-#     ss = []
-#     for img_idx in range(n_imgs):
-#         idx = np.unravel_index(np.argmax(score[:,img_idx]), score[:,img_idx].shape)
-#         c,s = idx2rect(idx)
-#         cs.append(c)
-#         ss.append(s)
-
-#     b = draw_bounding_boxes(images, roi_rect1((np.array(cs), np.array(ss))))
-
-#     if visualize_result:
-#         visualize_ds(attention_map)
-#         visualize_ds(b)
-#         plt.show()
-
-#     if return_result:
-#         return b
- 
