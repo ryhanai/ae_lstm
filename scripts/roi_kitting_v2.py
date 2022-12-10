@@ -434,7 +434,7 @@ class Tester(trainer.Trainer):
         if return_data:
             return x, y_pred
 
-    def predict_for_group(self, group_num=0, random_shift=True, out_roi_image=False):
+    def predict_for_group(self, group_num=0, random_shift=True, out_roi_image=False, n_sigma=1.0):
         res = []
         d = self.val_ds.data
         seq_len = len(d[group_num][1])
@@ -463,7 +463,7 @@ class Tester(trainer.Trainer):
 
             predicted_images, predicted_joints, attention_maps = y_pred
             # attention_maps = attention_maps[:, -1]
-            b, rect = attention_map2roi.apply_filters(batch_x_imgs[:, -1], attention_maps, visualize_result=False, return_result=True)
+            b, rect = attention_map2roi.apply_filters(batch_x_imgs[:, -1], attention_maps, visualize_result=False, return_result=True, n_sigma=n_sigma)
             if out_roi_image:
                 roi_imgs = tf.image.crop_and_resize(batch_x_imgs[:, -1], tf.cast(rect, tf.float32), range(batch_size), input_image_size)
                 res = tf.concat([b[0], roi_imgs[0]], axis=0)

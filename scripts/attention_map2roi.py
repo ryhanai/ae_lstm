@@ -36,29 +36,40 @@ def roi_rect1(args):
 #     return ss_argmax
 
 
-def detect_rect_region(x, filter_size=(3, 3), alpha=0.0):
-    a = np.average(np.average(x, axis=1), axis=1)
-    a = np.expand_dims(a, (1, 2))
-    a = np.tile(a, (1, 20, 40, 1))
-    x = x - a - alpha
+def detect_rect_region(x, filter_size=(3, 3), n_sigma=1.0):
+    mu = np.average(x, axis=(1,2))
+    sigma = np.std(x, axis=(1,2))
+    mu = np.expand_dims(mu, (1, 2))
+    sigma = np.expand_dims(sigma, (1, 2))
+    x = x - mu - n_sigma * sigma
+    x = np.where(x > 0., x, 0.)
     W = tf.ones((filter_size[0], filter_size[1], 1, 1))
-    # W = tf.ones(1, (filter_size[0], filter_size[1], 1))  # <- This would be correct
     scores = tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
     return scores
 
-# kxs,kys = np.meshgrid(range(3,13),range(3,13))
-# kernel_sizes = list(zip(kxs.ravel(), kys.ravel()))
+
+def detect_rect_region(x, filter_size=(3, 3), n_sigma=1.0):
+    mu = tf.reduce_mean(x, (1, 2))
+    sigma = tf.math.reduce_std(x, (1, 2))
+    mu = tf.expand_dims(tf.expand_dims(mu, 1), 2)
+    sigma = tf.expand_dims(tf.expand_dims(sigma, 1), 2)
+    x = x - mu - n_sigma * sigma
+    x = tf.where(x > 0., x, 0.)
+    W = tf.ones((filter_size[0], filter_size[1], 1, 1))
+    scores = tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
+    return scores
 
 
 def apply_filters(images,
                   attention_map,
-                  alpha=0.0,
+                  n_sigma=1.0,
                   beta=4.0,
-                  use_softmax=True,
+                  use_softmax=False,
                   visualize_result=True,
                   return_result=False):
 
     N, H, W, C = attention_map.shape
+    attention_map[:,0] = 0.0 # too bad
 
     if use_softmax:
         a = attention_map.reshape(N, 20*40)
@@ -72,7 +83,7 @@ def apply_filters(images,
     for i, ky in enumerate(kys):
         for j, kx in enumerate(kxs):
             kernel_sz = (ky, kx)
-            score[i, j] = detect_rect_region(attention_map, kernel_sz, alpha)  # (N,H,W,C=1)
+            score[i, j] = detect_rect_region(attention_map, kernel_sz, n_sigma)  # (N,H,W,C=1)
     score = np.transpose(score, [2, 0, 1, 3, 4, 5])  # move batch dimesion to the head
 
     cs = []
@@ -86,6 +97,7 @@ def apply_filters(images,
         cs.append(c)
         ss.append(s)
 
+    print(cs, ss)    
     rect = roi_rect1((np.array(cs), np.array(ss)))
     b = draw_bounding_boxes(images, rect)
 
