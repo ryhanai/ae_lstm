@@ -29,15 +29,15 @@ os.environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
 # train_groups=range(0,9)
 # val_groups=range(9,15)
 
-dataset = 'reaching-real'
-train_groups=range(0,136)
-val_groups=range(136,156)
-joint_range_data=range(0,156)
+# dataset = 'reaching-real'
+# train_groups=range(0,136)
+# val_groups=range(136,156)
+# joint_range_data=range(0,156)
 
-# dataset = 'kitting'
-# train_groups=range(0,90)
-# val_groups=range(90,111)
-# joint_range_data=range(0,111)
+dataset = 'kitting'
+train_groups=range(0,90)
+val_groups=range(90,111)
+joint_range_data=range(0,111)
 
 input_image_size = (80, 160)
 time_window_size = 20
@@ -440,7 +440,7 @@ class Tester(trainer.Trainer):
         if return_data:
             return x, y_pred
 
-    def predict_for_group(self, group_num=0, random_shift=True, out_roi_image=False, n_sigma=1.5):
+    def predict_for_group(self, group_num=0, random_shift=True, out_roi_image=False, n_sigma=1.5, epsilon=1e-2):
         res = []
         d = self.val_ds.data
         seq_len = len(d[group_num][1])
@@ -470,7 +470,7 @@ class Tester(trainer.Trainer):
             predicted_images, predicted_joints, attention_maps = y_pred
             # attention_maps = attention_maps[:, -1]
             input_img = batch_x_imgs[:, -1]
-            b, rect = attention_map2roi.apply_filters(input_img, attention_maps, visualize_result=False, return_result=True, n_sigma=n_sigma)
+            b, rect = attention_map2roi.apply_filters(input_img, attention_maps, visualize_result=False, return_result=True, n_sigma=n_sigma, epsilon=epsilon)
 
             # roi_imgs = tf.image.crop_and_resize(input_img, tf.cast(rect, tf.float32), range(batch_size), input_image_size)
             # res = tf.concat([b[0], roi_imgs[0]], axis=0)

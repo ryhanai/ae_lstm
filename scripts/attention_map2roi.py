@@ -6,6 +6,7 @@ import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
 from core.utils import *
+import tensorflow_addons as tfa
 
 
 def roi_rect1(args):
@@ -62,6 +63,8 @@ def spatial_soft_argmax(features):
 
 
 def detect_rect_region(x, W, n_sigma=1.0, epsilon=1e-3):
+    x = tfa.image.gaussian_filter2d(x, filter_shape=(3, 3), sigma=1.0)
+
     mu = tf.reduce_mean(x, (1, 2))
     mu = tf.expand_dims(tf.expand_dims(mu, 1), 2)
     # sigma = tf.math.reduce_std(x, (1, 2))
@@ -93,8 +96,8 @@ kys = list(range(3, YMAX))
 kxs = list(range(3, XMAX))
 for i, ky in enumerate(kys):
     for j, kx in enumerate(kxs):
-        # W = tf.ones((ky, kx, 1, 1))
-        W = gaussian_filter((ky, kx))
+        W = tf.ones((ky, kx, 1, 1))
+        # W = gaussian_filter((ky, kx))
         filters.append((i, j, W))
 
 
