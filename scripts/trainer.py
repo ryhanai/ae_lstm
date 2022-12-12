@@ -11,14 +11,15 @@ from tensorflow import keras
 from core.utils import *
 import generator
 
+
 class Trainer:
     def __init__(self, model,
-                     train_dataset,
-                     val_dataset,
-                     #load_weight=False,
-                     batch_size=32,
-                     runs_directory=None,
-                     checkpoint_file=None):
+                 train_dataset,
+                 val_dataset,
+                 # load_weight=False,
+                 batch_size=32,
+                 runs_directory=None,
+                 checkpoint_file=None):
 
         self.input_image_shape = val_dataset.data[0][1][0].shape
         self.batch_size = batch_size
@@ -36,7 +37,7 @@ class Trainer:
 
         d = runs_directory if runs_directory else os.path.join(os.path.dirname(os.getcwd()), 'runs')
         f = checkpoint_file if checkpoint_file else 'ae_cp.{}.{}.{}'.format(val_dataset.name, self.model.name, datetime.now().strftime('%Y%m%d%H%M%S'))
-        self.checkpoint_path = os.path.join(d, f, 'cp.ckpt')
+        self.checkpoint_path = os.path.join(d, f, 'cp-{epoch:04d}-{val_loss:.4e}.ckpt')
 
         if checkpoint_file:
             print('load weights from ', checkpoint_file)
@@ -47,32 +48,33 @@ class Trainer:
             for frame in d[1]:
                 imgs.append(frame)
         self.val_imgs = np.array(imgs)
-            
-    def prepare_callbacks(self, early_stop_patience=100, reduce_lr_patience=50):
+
+    def prepare_callbacks(self, save_best_only=True, early_stop_patience=100, reduce_lr_patience=50):
         # Create a callback that saves the model's weights
         cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=self.checkpoint_path,
-                                                             save_weights_only=True,
-                                                             verbose=1,
-                                                             mode='min',
-                                                             save_best_only=True)
+                                                         save_weights_only=True,
+                                                         save_freq='epoch',
+                                                         verbose=1,
+                                                         mode='min',
+                                                         save_best_only=save_best_only)
 
         # early stopping if not changing for 50 epochs
         early_stop = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
-                                                          patience=early_stop_patience)
+                                                      patience=early_stop_patience)
 
         # reduce learning rate
         reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
-                                                             factor=0.1,
-                                                             patience=reduce_lr_patience,
-                                                             verbose=1,
-                                                             min_lr=0.00001)
+                                                         factor=0.1,
+                                                         patience=reduce_lr_patience,
+                                                         verbose=1,
+                                                         min_lr=0.00001)
 
         profiler = tf.keras.callbacks.TensorBoard(log_dir='logs',
-                                                      histogram_freq = 1,
-                                                      profile_batch = '15,25')
+                                                  histogram_freq=1,
+                                                  profile_batch='15,25')
         return cp_callback, early_stop, reduce_lr, profiler
 
-    def train(self, epochs=100, early_stop_patience=100, reduce_lr_patience=50):
+    def train(self, epochs=100, save_best_only=True, early_stop_patience=100, reduce_lr_patience=50):
         xs = []
         for d in self.train_ds.data:
             for frame in d[1]:
@@ -85,14 +87,14 @@ class Trainer:
         val_xs = np.array(xs)
 
         start = time.time()
-        callbacks = self.prepare_callbacks(early_stop_patience, reduce_lr_patience)
+        callbacks = self.prepare_callbacks(save_best_only, early_stop_patience, reduce_lr_patience)
 
         history = self.model.fit(xs, xs,
-                                     batch_size=self.batch_size,
-                                     epochs=epochs,
-                                     callbacks=callbacks,
-                                     validation_data=(val_xs,val_xs),
-                                     shuffle=True)
+                                 batch_size=self.batch_size,
+                                 epochs=epochs,
+                                 callbacks=callbacks,
+                                 validation_data=(val_xs, val_xs),
+                                 shuffle=True)
 
         end = time.time()
         print('\ntotal time spent for training: {}[min]'.format((end-start)/60))
@@ -119,24 +121,24 @@ class Trainer:
         callbacks = self.prepare_callbacks(early_stop_patience, reduce_lr_patience)
 
         history = self.model.fit(xs, ys,
-                                     batch_size=self.batch_size,
-                                     epochs=epochs,
-                                     callbacks=callbacks,
-                                     validation_data=(val_xs,val_ys),
-                                     shuffle=True)
+                                 batch_size=self.batch_size,
+                                 epochs=epochs,
+                                 callbacks=callbacks,
+                                 validation_data=(val_xs, val_ys),
+                                 shuffle=True)
 
         end = time.time()
         print('\ntotal time spent for training: {}[min]'.format((end-start)/60))
-        
-    def predict_images(self, with_noise=False, roi_param=[0.5,0.5,0.8]):
-        xs = self.val_imgs[np.random.randint(0,1000,20)]
+
+    def predict_images(self, with_noise=False, roi_param=[0.5, 0.5, 0.8]):
+        xs = self.val_imgs[np.random.randint(0, 1000, 20)]
 
         if with_noise:
-            noise = tf.zeros((xs.shape[0],2))
+            noise = tf.zeros((xs.shape[0], 2))
             y_pred = self.model.predict((xs, noise))
         elif roi_param:
-            roi_params = np.tile(roi_param, (xs.shape[0],1))
-            y_pred = self.model.predict((xs,roi_params))
+            roi_params = np.tile(roi_param, (xs.shape[0], 1))
+            y_pred = self.model.predict((xs, roi_params))
         else:
             y_pred = self.model.predict(xs)
         visualize_ds(xs)
@@ -147,45 +149,44 @@ class Trainer:
 class TimeSequenceTrainer(Trainer):
 
     def __init__(self, model,
-                     train_dataset,
-                     val_dataset,
-                     #load_weight=False,
-                     time_window_size=20,
-                     batch_size=32,
-                     runs_directory=None,
-                     checkpoint_file=None):
+                 train_dataset,
+                 val_dataset,
+                 # load_weight=False,
+                 time_window_size=20,
+                 batch_size=32,
+                 runs_directory=None,
+                 checkpoint_file=None):
 
         super(TimeSequenceTrainer, self).__init__(model,
-                                                      train_dataset,
-                                                      val_dataset,
-                                                      #load_weight=load_weight,
-                                                      batch_size=batch_size,
-                                                      runs_directory=runs_directory,
-                                                      checkpoint_file=checkpoint_file)
+                                                  train_dataset,
+                                                  val_dataset,
+                                                  # load_weight=load_weight,
+                                                  batch_size=batch_size,
+                                                  runs_directory=runs_directory,
+                                                  checkpoint_file=checkpoint_file)
 
         self.time_window = time_window_size
 
         if train_dataset:
             self.train_gen = generator.DPLGenerator().flow(train_dataset.get(),
-                                                               None,
-                                                               batch_size=self.batch_size,
-                                                               time_window_size=self.time_window,
-                                                               prediction_window_size=5,
-                                                               add_roi=False)
+                                                           None,
+                                                           batch_size=self.batch_size,
+                                                           time_window_size=self.time_window,
+                                                           prediction_window_size=5,
+                                                           add_roi=False)
 
         if val_dataset:
             self.val_gen = generator.DPLGenerator().flow(val_dataset.get(),
-                                                             None,
-                                                             batch_size=self.batch_size,
-                                                             time_window_size=self.time_window,
-                                                             prediction_window_size=5,
-                                                             add_roi=False)
+                                                         None,
+                                                         batch_size=self.batch_size,
+                                                         time_window_size=self.time_window,
+                                                         prediction_window_size=5,
+                                                         add_roi=False)
             self.val_data_loaded = True
 
-
-    def train(self, epochs=100, early_stop_patience=100, reduce_lr_patience=50):
+    def train(self, epochs=100, save_best_only=True, early_stop_patience=100, reduce_lr_patience=50):
         start = time.time()
-        callbacks = self.prepare_callbacks(early_stop_patience, reduce_lr_patience)
+        callbacks = self.prepare_callbacks(save_best_only, early_stop_patience, reduce_lr_patience)
 
         # train the model
         total_train = self.train_gen.number_of_data()
@@ -201,9 +202,9 @@ class TimeSequenceTrainer(Trainer):
         print('\ntotal time spent for training: {}[min]'.format((end-start)/60))
 
     def train_closed(self, epochs=20):
-        '''
+        """
         under implementation
-        '''
+        """
         self.train(epochs)
 
         samples = self.sample_with_current_policy(self)
@@ -212,7 +213,7 @@ class TimeSequenceTrainer(Trainer):
             self.train(epochs)
 
     def predict_images(self, random_shift=False):
-        x,y = next(self.val_gen)
+        x, y = next(self.val_gen)
         rois = []
 
         if random_shift:
@@ -227,25 +228,25 @@ class TimeSequenceTrainer(Trainer):
             predicted_images, _ = y_pred
 
         if y[0].ndim == 5:
-            visualize_ds(y[0][:,0,:,:,:], rois)
+            visualize_ds(y[0][:, 0, :, :, :], rois)
         else:
             visualize_ds(y[0], rois)
-        visualize_ds(x[0][:,0,:,:,:], rois)
+        visualize_ds(x[0][:, 0, :, :, :], rois)
         visualize_ds(predicted_images)
         plt.show()
 
     def predict_joint_angles(self):
-        x,y = next(self.val_gen)
+        x, y = next(self.val_gen)
         y_pred = self.model.predict(x)
         predicted_joint_positions = y_pred[1]
-        data = np.concatenate((x[1], predicted_joint_positions[:,np.newaxis,:]), axis=1)
+        data = np.concatenate((x[1], predicted_joint_positions[:, np.newaxis, :]), axis=1)
 
         fig = plt.figure()
         fig.subplots_adjust(hspace=0.1)
         dof = predicted_joint_positions.shape[1]
         for joint_id in range(dof):
             ax = fig.add_subplot(8//2, 2, joint_id+1)
-            ax.plot(np.transpose(data[:,:,joint_id]))
+            ax.plot(np.transpose(data[:, :, joint_id]))
         plt.show()
 
     def predict(self, *args, **kargs):
