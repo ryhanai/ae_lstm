@@ -29,15 +29,15 @@ os.environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
 # train_groups=range(0,9)
 # val_groups=range(9,15)
 
-# dataset = 'reaching-real'
-# train_groups=range(0,136)
-# val_groups=range(136,156)
-# joint_range_data=range(0,156)
+dataset = 'reaching-real'
+train_groups=range(0,136)
+val_groups=range(136,156)
+joint_range_data=range(0,156)
 
-dataset = 'kitting'
-train_groups=range(0,90)
-val_groups=range(90,111)
-joint_range_data=range(0,111)
+# dataset = 'kitting'
+# train_groups=range(0,90)
+# val_groups=range(90,111)
+# joint_range_data=range(0,111)
 
 input_image_size = (80, 160)
 time_window_size = 20
@@ -219,7 +219,7 @@ def model_weighted_feature_prediction(input_image_shape, time_window_size, image
     return m
 
 
-wf_predictor = model_weighted_feature_prediction(input_image_size+(3,), time_window_size, latent_dim, dof)
+wf_predictor = model_weighted_feature_prediction(input_image_size+(3,), time_window_size, latent_dim, dof, use_color_augmentation=True)
 
 
 def train():
@@ -230,7 +230,7 @@ def train():
     val_ds.load(groups=val_groups, image_size=input_image_size)
     val_ds.preprocess(time_window_size)
     tr = trainer.TimeSequenceTrainer(wf_predictor, train_ds, val_ds, time_window_size=time_window_size)
-    tr.train(epochs=800, early_stop_patience=800, reduce_lr_patience=100)
+    tr.train(epochs=800, save_best_only=False, early_stop_patience=800, reduce_lr_patience=100)
 
 
 class Predictor(trainer.TimeSequenceTrainer):
