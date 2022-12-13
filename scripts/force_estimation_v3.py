@@ -33,7 +33,7 @@ dl = ForceEstimationDataLoader(
                             image_height=image_height,
                             image_width=image_width,
                             start_seq=1,
-                            n_seqs=20,  # n_seqs=1500,
+                            n_seqs=1500,  # n_seqs=1500,
                             start_frame=3, n_frames=3)
 
 
@@ -137,29 +137,9 @@ def model_rgb_to_fmap(input_shape=input_image_shape, input_noise_stddev=0.3):
     return convnet, convae
 
 
-task = 'train'
 convnet, convae = model_rgb_to_fmap()
-# model_file = 'ae_cp.basket-filling.model_resnet.20221125134301'
-
-if task == 'train':
-    train_data, valid_data = dl.load_data_for_rgb2fmap(train_mode=True)
-#    trainer = Trainer(model, train_data, valid_data)
-# elif task == 'adaptation':
-#     model = model_rgb_to_fmap()
-#     train_data, valid_data = dl.load_data_for_rgb2fmap_with_real(train_mode=True)
-#     trainer = Trainer(model, train_data, valid_data)
-# elif task == 'test':
-#     model = model_rgb_to_fmap()
-#     test_data = dl.load_data_for_rgb2fmap(test_mode=True)
-#     tester = Tester(model, test_data, model_file)
-# elif task == 'test-real':
-#     model = model_rgb_to_fmap()
-#     test_data = dl.load_real_data_for_rgb2fmap(test_mode=True)
-#     tester = Tester(model, test_data, model_file)
-# elif task == 'pick':
-#     model = model_rgb_to_fmap()
-#     test_data = dl.load_data_for_rgb2fmap(test_mode=True, load_bin_state=True)
-#     tester = Tester(model, test_data, model_file)
+convnet_model_file = '../runs/basket-filling.rgb2force_drcn.20221129153036/convnet.ckpt'
+convae_model_file = '../runs/basket-filling.rgb2force_drcn.20221129153036/convae.ckpt'
 
 
 src_optimizer = keras.optimizers.Adamax(learning_rate=0.001)
@@ -221,7 +201,7 @@ def test_step_Xu(Xu_batch):
 def train_drcn(X, Y, Xu, val_X, val_Y, val_Xu, 
                batch_size, epochs=10,
                early_stop_patience=100,
-               reduce_lr_patience=2):
+               reduce_lr_patience=50):
     """
     Args:
         X (np.array) : array of source images
@@ -266,7 +246,7 @@ def train_drcn(X, Y, Xu, val_X, val_Y, val_Xu,
         # Display metrics at the end of each epoch.
         train_tgt_acc = train_tgt_acc_metric.result()
         train_src_acc = train_src_acc_metric.result()
-        print('Training loss: target=%.4f, source=%.4f / ' % (float(train_tgt_acc), float(train_src_acc)), end='')
+        print('Training loss: target=%.4e, source=%.4e / ' % (float(train_tgt_acc), float(train_src_acc)), end='')
 
         # Reset training metrics at the end of each epoch.
         train_tgt_acc_metric.reset_states()
@@ -282,7 +262,7 @@ def train_drcn(X, Y, Xu, val_X, val_Y, val_Xu,
         val_src_acc = val_src_acc_metric.result()
         val_tgt_acc_metric.reset_states()
         val_src_acc_metric.reset_states()
-        print('Validation loss: target=%.4f, source=%.4f' % (float(val_tgt_acc), float(val_src_acc)))
+        print('Validation loss: target=%.4e, source=%.4e' % (float(val_tgt_acc), float(val_src_acc)))
 
         if float(val_src_acc) < best_acc:
             best_acc = float(val_src_acc)
@@ -297,13 +277,61 @@ def train_drcn(X, Y, Xu, val_X, val_Y, val_Xu,
                 src_optimizer.lr = new_lr
                 tgt_optimizer.lr = new_lr
                 reduce_lr_epoch = epoch
-                print('reduce learning rate to %.6f' % new_lr)
+                print('reduce learning rate to %.4e' % new_lr)
 
         if epoch - best_epoch > early_stop_patience:
             print('early stop')
             break
 
-        print('Time taken: %.2fs' % (time.time() - start_time))
+        print('Time taken: %.2f[s]' % (time.time() - start_time))
+
+
+task = 'test'
+
+
+if task == 'train':
+    train_data, valid_data = dl.load_data_for_rgb2fmap(train_mode=True)
+    X, Y = train_data
+    val_X, val_Y = valid_data
+    Xu, val_Xu = dl.load_real_data_for_rgb2fmap(train_mode=True)
+    train_drcn(X, Y, Xu, val_X, val_Y, val_Xu, batch_size, epochs=200)
+#    trainer = Trainer(model, train_data, valid_data)
+# elif task == 'adaptation':
+#     model = model_rgb_to_fmap()
+#     train_data, valid_data = dl.load_data_for_rgb2fmap_with_real(train_mode=True)
+#     trainer = Trainer(model, train_data, valid_data)
+elif task == 'test':
+    test_data = dl.load_data_for_rgb2fmap(test_mode=True)
+    real_test_data = dl.load_real_data_for_rgb2fmap(test_mode=True)
+    convnet.load_weights(convnet_model_file)
+    convae.load_weights(convae_model_file)
+# elif task == 'test-real':
+#     model = model_rgb_to_fmap()
+#     test_data = dl.load_real_data_for_rgb2fmap(test_mode=True)
+#     tester = Tester(model, test_data, model_file)
+# elif task == 'pick':
+#     model = model_rgb_to_fmap()
+#     test_data = dl.load_data_for_rgb2fmap(test_mode=True, load_bin_state=True)
+#     tester = Tester(model, test_data, model_file)
+
+
+def test_synthetic(n):
+    X = test_data[0][n:n+1]
+    # Y = test_data[1][n:n+1]
+    Y_pred = convnet.predict(X)
+    plt.imshow(X[0])
+    visualize_forcemaps(Y_pred[0])
+    plt.show()
+
+
+def test_real(n):
+    X = real_test_data[n:n+1]
+    Y_pred = convnet.predict(X)
+    Y_reconst = convae.predict(X)
+    plt.imshow(X[0])
+    plt.imshow(Y_reconst[0])
+    visualize_forcemaps(Y_pred[0])
+    plt.show()
 
 
 class Trainer:
@@ -483,8 +511,3 @@ class Tester:
         visualize_result(y_pred_forces[0], force_label, rgb[n], 'result{:05d}.png'.format(n))
         return y_pred_forces[0], force_label, rgb[n]
 
-
-X, Y = train_data
-val_X, val_Y = valid_data
-Xu, val_Xu = dl.load_real_data_for_rgb2fmap(train_mode=True)
-train_drcn(X, Y, Xu, val_X, val_Y, val_Xu, batch_size, epochs=20)
