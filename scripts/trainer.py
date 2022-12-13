@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 
-import os, time, copy
+import os
+import time
+import copy
+import glob
+import re
 from datetime import datetime
 
 import numpy as np
@@ -19,7 +23,8 @@ class Trainer:
                  # load_weight=False,
                  batch_size=32,
                  runs_directory=None,
-                 checkpoint_file=None):
+                 checkpoint_file=None,
+                 checkpoint_epoch=100):
 
         self.input_image_shape = val_dataset.data[0][1][0].shape
         self.batch_size = batch_size
@@ -37,11 +42,14 @@ class Trainer:
 
         d = runs_directory if runs_directory else os.path.join(os.path.dirname(os.getcwd()), 'runs')
         f = checkpoint_file if checkpoint_file else 'ae_cp.{}.{}.{}'.format(val_dataset.name, self.model.name, datetime.now().strftime('%Y%m%d%H%M%S'))
-        self.checkpoint_path = os.path.join(d, f, 'cp-{epoch:04d}-{val_loss:.4e}.ckpt')
+        self.checkpoint_save_path = os.path.join(d, f, 'cp-{epoch:04d}-{val_loss:.4e}.ckpt')
+
+        cp_index_file = glob.glob(os.path.join(d, f, 'cp-{:04d}*.ckpt.index'.format(checkpoint_epoch)))[0]
+        self.checkpoint_load_path = re.sub('\.index', '', cp_index_file)
 
         if checkpoint_file:
-            print('load weights from ', checkpoint_file)
-            self.model.load_weights(self.checkpoint_path)
+            print('load weights from ', self.checkpoint_load_path)
+            self.model.load_weights(self.checkpoint_load_path)
 
         imgs = []
         for d in self.val_ds.data:
@@ -51,7 +59,7 @@ class Trainer:
 
     def prepare_callbacks(self, save_best_only=True, early_stop_patience=100, reduce_lr_patience=50):
         # Create a callback that saves the model's weights
-        cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=self.checkpoint_path,
+        cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=self.checkpoint_save_path,
                                                          save_weights_only=True,
                                                          save_freq='epoch',
                                                          verbose=1,

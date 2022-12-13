@@ -32,6 +32,7 @@ os.environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
 dataset = 'reaching-real'
 train_groups=range(0,136)
 val_groups=range(136,156)
+destructor_groups=range(1000,1029)
 joint_range_data=range(0,156)
 
 # dataset = 'kitting'
@@ -398,14 +399,16 @@ class Tester(trainer.Trainer):
                  time_window_size=time_window_size,
                  batch_size=32,
                  runs_directory=None,
-                 checkpoint_file=None):
+                 checkpoint_file=None,
+                 checkpoint_epoch=100):
 
         super(Tester, self).__init__(model,
                                      None,
                                      val_dataset,
                                      batch_size=batch_size,
                                      runs_directory=runs_directory,
-                                     checkpoint_file=checkpoint_file)
+                                     checkpoint_file=checkpoint_file,
+                                     checkpoint_epoch=checkpoint_epoch)
 
         self.time_window = time_window_size
 
@@ -490,18 +493,21 @@ class Tester(trainer.Trainer):
         create_anim_gif_from_images(results, out_filename='estimated_roi_g{:05d}.gif'.format(group_num))
 
 
-def prepare_for_test(cp='ae_cp.kitting.weighted_feature_prediction.20220907161250'):
+def prepare_for_test(cp='ae_cp.kitting.weighted_feature_prediction.20221213011838', cp_epoch=192):
     # ae_cp.reaching-real.weighted_feature_prediction.20220623184031
+    # ae_cp.kitting.weighted_feature_prediction.20220907161250
     val_ds = Dataset(dataset, joint_range_data=joint_range_data)
     val_ds.load(groups=val_groups, image_size=input_image_size)
-    tr = Tester(wf_predictor, val_ds, checkpoint_file=cp)
+    tr = Tester(wf_predictor, val_ds, checkpoint_file=cp, checkpoint_epoch=cp_epoch)
     return tr
 
-def prepare_for_test_destructor(cp='ae_cp.reaching-real.weighted_feature_prediction.20220628160446'):
+
+def prepare_for_test_destructor(cp='ae_cp.reaching-real.weighted_feature_prediction.20221213011838', cp_epoch=192):
     # ae_cp.reaching-real.weighted_feature_prediction.20220623184031
+    # ae_cp.kitting.weighted_feature_prediction.20220907161250
     val_ds = Dataset(dataset, joint_range_data=joint_range_data)
     val_ds.load(groups=destructor_groups, image_size=input_image_size)
-    tr = Tester(wf_predictor, val_ds, checkpoint_file=cp)
+    tr = Tester(wf_predictor, val_ds, checkpoint_file=cp, checkpoint_epoch=cp_epoch)
     return tr
 
 
