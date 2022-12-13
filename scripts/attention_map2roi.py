@@ -67,12 +67,12 @@ def detect_rect_region(x, W, n_sigma=1.0, epsilon=1e-3):
 
     mu = tf.reduce_mean(x, (1, 2))
     mu = tf.expand_dims(tf.expand_dims(mu, 1), 2)
-    # sigma = tf.math.reduce_std(x, (1, 2))
-    # sigma = tf.expand_dims(tf.expand_dims(sigma, 1), 2)
-    # x = x - mu - n_sigma * sigma
+    sigma = tf.math.reduce_std(x, (1, 2))
+    sigma = tf.expand_dims(tf.expand_dims(sigma, 1), 2)
+    x = x - mu - n_sigma * sigma
     # x = tf.where(x > 0., x, 0.)
 
-    x = x - mu
+    # x = x - mu
     x = tf.where(x > -epsilon, x, -epsilon)
 
     scores = tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')  # zero-padding
@@ -103,6 +103,8 @@ for i, ky in enumerate(kys):
 
 def compute_score(attention_map, n_sigma=1.0, epsilon=1e-3):
     attention_map[:, 0] = 0.0
+    attention_map[:, :, -1] = 0.0
+    attention_map[:, :, 1] = 0.0
 
     N, H, W, C = attention_map.shape
     score = np.empty((YMAX-3, XMAX-3, N, H, W, C))
