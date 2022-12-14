@@ -1,0 +1,30 @@
+reaching-real:
+  train_groups: 'range(0, 136)'
+  val_groups: range(136, 156)  
+  destructor_groups: range(1000, 1029)
+  joint_range_data: range(0, 156)
+
+reaching-real-destructor:
+  val_groups: range(1000, 1029)
+  joint_range_data: range(0, 156)
+
+kitting:
+  train_groups: range(0,90)
+  val_groups: range(90,111)
+  joint_range_data: range(0,111)
+
+kitting-destructor:
+  train_groups: range(0, 6)
+  val_groups: range(0, 6)
+  joint_range_data: range(0, 6)
+
+kitting2:
+  train_groups: range(0,9)
+  val_groups: range(9,15)
+  joint_range_data: range(0, 6)
+
+reaching-real:
+  train_groups: range(0,136)
+  val_groups: range(136,156)
+  destructor_groups: range(1000,1029)
+  joint_range_data: range(0,156)
