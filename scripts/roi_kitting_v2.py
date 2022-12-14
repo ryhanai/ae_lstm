@@ -20,26 +20,6 @@ from mpl_toolkits.mplot3d import Axes3D, axes3d
 
 os.environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
 
-# dataset = 'kitting-destructor'
-# train_groups = range(0, 6)
-# val_groups = range(0, 6)
-# joint_range_data = range(0, 6)
-
-# dataset = 'kitting2'
-# train_groups=range(0,9)
-# val_groups=range(9,15)
-
-dataset = 'reaching-real'
-train_groups=range(0,136)
-val_groups=range(136,156)
-destructor_groups=range(1000,1029)
-joint_range_data=range(0,156)
-
-# dataset = 'kitting'
-# train_groups=range(0,90)
-# val_groups=range(90,111)
-# joint_range_data=range(0,111)
-
 input_image_size = (80, 160)
 time_window_size = 20
 latent_dim = 64
@@ -224,11 +204,11 @@ wf_predictor = model_weighted_feature_prediction(input_image_size+(3,), time_win
 
 
 def train():
-    train_ds = Dataset(dataset, joint_range_data=joint_range_data)
-    train_ds.load(groups=train_groups, image_size=input_image_size)
+    train_ds = Dataset(dataset, mode='train')
+    train_ds.load(input_image_size)
     train_ds.preprocess(time_window_size)
-    val_ds = Dataset(dataset, joint_range_data=joint_range_data)
-    val_ds.load(groups=val_groups, image_size=input_image_size)
+    val_ds = Dataset(dataset, mode='test')
+    val_ds.load(input_image_size)
     val_ds.preprocess(time_window_size)
     tr = trainer.TimeSequenceTrainer(wf_predictor, train_ds, val_ds, time_window_size=time_window_size)
     tr.train(epochs=800, save_best_only=False, early_stop_patience=800, reduce_lr_patience=100)
@@ -496,8 +476,8 @@ class Tester(trainer.Trainer):
 def prepare_for_test(cp='ae_cp.kitting.weighted_feature_prediction.20221213011838', cp_epoch=192):
     # ae_cp.reaching-real.weighted_feature_prediction.20220623184031
     # ae_cp.kitting.weighted_feature_prediction.20220907161250
-    val_ds = Dataset(dataset, joint_range_data=joint_range_data)
-    val_ds.load(groups=val_groups, image_size=input_image_size)
+    val_ds = Dataset(dataset)
+    val_ds.load(image_size=input_image_size)
     tr = Tester(wf_predictor, val_ds, checkpoint_file=cp, checkpoint_epoch=cp_epoch)
     return tr
 
@@ -505,7 +485,7 @@ def prepare_for_test(cp='ae_cp.kitting.weighted_feature_prediction.2022121301183
 def prepare_for_test_destructor(cp='ae_cp.reaching-real.weighted_feature_prediction.20221213011838', cp_epoch=192):
     # ae_cp.reaching-real.weighted_feature_prediction.20220623184031
     # ae_cp.kitting.weighted_feature_prediction.20220907161250
-    val_ds = Dataset(dataset, joint_range_data=joint_range_data)
+    val_ds = Dataset(dataset)
     val_ds.load(groups=destructor_groups, image_size=input_image_size)
     tr = Tester(wf_predictor, val_ds, checkpoint_file=cp, checkpoint_epoch=cp_epoch)
     return tr
