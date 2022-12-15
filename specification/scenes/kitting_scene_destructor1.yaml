@@ -1,0 +1,73 @@
+name: kitting_scene
+task: kitting
+
+rendering:
+  shadow: true
+  
+cameras:
+  -
+    name: camera1
+    type: rgb
+    view_params: [[0,-0.95,1.1], [0,-0.45,0.6], [0,0,1]]
+    fov: 50
+    capture_size: [320, 480]
+  -
+    name: force_camera1
+    type: force
+    view_params: [[0,-0.95,1.1], [0,-0.45,0.6], [0,0,1]]
+    fov: 50
+    capture_size: [240, 320]
+
+robot:
+  robot_model: "specification/urdf/arm_and_gripper/xxx.urdf"
+  arm_joints: [1,2,3,4,5,6]
+  gripper_joints: [13,15,17,18,20,22]
+  base_position:
+    xyz: [0,0,0.795]
+    rpy: [0,0,-1.57]
+  initial_arm_pose: [-0.55, -1.26, 1.92, -2.57, -1.51, -1.10]
+  initial_gripper_pose: [0.7, -0.7, 0.7, 0.7, -0.7, 0.7]
+
+environment:
+  -
+    name: table
+    object: "specification/urdf/objects/large_table.urdf"
+    xyz: [0,0,0]
+    rpy: [0,0,0]
+  
+objects:
+  -
+    name: target
+    object: "specification/urdf/objects/pen_cavity.urdf"
+    xyz: [0.0,-0.72,0.79]
+    rpy: [0, 0, -1.0]
+    static: True
+  -
+    name: pen
+    object: "specification/urdf/objects/pen.urdf"
+    xyz: [-0.2,-0.6,0.79]
+    rpy: [0, 0, 0]
+    static: False
+  -
+    name: mouse_cavity
+    object: "specification/urdf/objects/mouse_cavity.urdf"
+    xyz: [-0.13,-0.80,0.79]
+    rpy: [0, 0, 1.2]
+    static: True
+#  -
+#    name: dial_cavity
+#    object: "specification/urdf/objects/dial_cavity.urdf"
+#    xyz: [0.13,-0.55,0.79]
+#   rpy: [0, 0, -0.5]
+#    static: True
+
+test:
+  -
+    xyz: [0.27,-0.55,0.79]
+    rpy: [0,0,0]
+  -
+    xyz: [0.11,-0.55,0.79]
+    rpy: [0,0,0]
+  -
+    xyz: [0.11,-0.72,0.79]
+    rpy: [0,0,0]

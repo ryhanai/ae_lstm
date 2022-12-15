@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<robot name="ipad_box">
+
+  <link name="ipad_box">
+    <visual>
+      <origin xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="../../meshes/objects/ipad_box.obj" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+    <collision concave="yes">
+      <origin xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="../../meshes/objects/ipad_box.obj" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+</robot>
+

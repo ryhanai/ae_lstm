@@ -1,0 +1,58 @@
+name: basket_filling_scene
+task: basket_filling
+
+rendering:
+  shadow: true
+
+cameras:
+#  -
+#    name: camera1 # realsense D415
+#    type: rgb
+#    view_params: [[0,0,1.4], [0,0,0.6], [0,1,0]]    
+#    fov: 42.5
+#    aspect_ratio: 1.63294
+#    capture_size: [720, 1280]
+  -
+    name: camera1 # center of realsense D415
+    type: rgb
+    view_params: [[0,0,1.358], [0,0,0.6], [-1,0,0]]    
+    fov: 21.25
+#    fov: 42.5 # write the vertical FOV
+    aspect_ratio: 1.63294
+    #capture_size: [360, 640]
+    capture_size: [720, 1280]
+  -
+    name: force_camera1
+    type: force
+    view_params: [[0,0,1.358], [0,0,0.6], [-1,0,0]]    
+    fov: 34.7
+    aspect_ratio: 1.63294
+    capture_size: [180, 320]
+
+robot: []
+# robot_model: "specification/urdf/arm_and_gripper/xxx.urdf"
+#  arm_joints: [1,2,3,4,5,6]
+#  gripper_joints: [13,15,17,18,20,22]
+#  base_position:
+#    xyz: [0,0,0.795]
+#    rpy: [0,0,-1.57]
+#  initial_arm_pose: [-0.55, -1.26, 1.92, -2.57, -1.51, -1.10]
+#  initial_gripper_pose: [0.7, -0.7, 0.7, 0.7, -0.7, 0.7]
+
+environment:
+  -
+    name: table
+    object: "specification/urdf/objects/large_table.urdf"
+    xyz: [0,0,0]
+    rpy: [0, 0, 0]  
+objects:
+  -
+    name: target
+    object: "specification/urdf/objects/seria_basket.urdf"
+    #object: "specification/urdf/objects/ipad_box.urdf"
+    #object: "specification/urdf/objects/sony_box.urdf"
+    xyz: [0, 0, 0.73]
+    #xyz: [0, 0, 0.73]
+    rpy: [0,0,1.57080]
+    static: True
+  

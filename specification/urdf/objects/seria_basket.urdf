@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<robot name="seria_basket">
+
+  <link name="seria_basket_body">
+    <visual>
+      <origin xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="../../meshes/objects/seria_basket_body.obj" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+    <collision concave="yes">
+      <origin xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="../../meshes/objects/seria_basket_body_collision.obj" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="seria_basket_handle">
+    <visual>
+      <origin xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="../../meshes/objects/seria_basket_handle.obj" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+    <!-- <collision>
+      <origin xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="../../meshes/objects/seria_basket_handle.obj" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision> -->
+  </link>
+  <joint name="j1"  type="fixed">
+    <parent link="seria_basket_body"/>
+    <child link="seria_basket_handle"/>
+  </joint>
+</robot>
+
