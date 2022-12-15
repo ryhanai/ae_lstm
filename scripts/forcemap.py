@@ -65,6 +65,14 @@ class GridForceMap:
     def set_values(self, values):
         if values.ndim == 3:
             self.V = np.reshape(values, self.V.shape)
+        else:
+            self.V = values
+
+    def get_values(self):
+        return self.V
+
+    def get_positions(self):
+        return self.positions
 
     def set_title(self, title):
         self._title = title

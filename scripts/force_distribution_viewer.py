@@ -2,6 +2,7 @@ import colorsys
 import rviz_client
 import numpy as np
 import scipy.linalg
+import forcemap
 
 
 class ForceDistributionViewer:
@@ -26,9 +27,24 @@ class ForceDistributionViewer:
             cls.rviz_client = rviz_client.RVizClient()
         return cls._unique_instance
 
-    def publish_bin_state(self, bin_state, positions, fvals, draw_fmap, draw_force_gradient):
+    # def publish_bin_state(self, bin_state, positions, fvals, draw_fmap, draw_force_gradient):
+    #     self.rviz_client.delete_all()
+    #     self.draw_bin()
+    #     if bin_state is not None:
+    #         self.draw_objects(bin_state)
+    #     if draw_fmap:
+    #         self.draw_force_distribution(positions, fvals)
+    #     if draw_force_gradient:
+    #         self.draw_force_gradient(positions, fvals)
+    #     self.rviz_client.show()
+
+    def publish_bin_state(self, bin_state, fmap, draw_fmap, draw_force_gradient):
         self.rviz_client.delete_all()
         self.draw_bin()
+
+        positions = fmap.get_positions()
+        fvals = fmap.get_values()
+
         if bin_state is not None:
             self.draw_objects(bin_state)
         if draw_fmap:
