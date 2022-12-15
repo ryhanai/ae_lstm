@@ -14,6 +14,7 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 from core.utils import *
 from force_estimation_data_loader import ForceEstimationDataLoader
+import forcemap
 from model import *
 from tensorflow import keras
 from tensorflow.keras import layers
@@ -26,16 +27,15 @@ image_width = 512
 input_image_shape = [image_height, image_width]
 num_classes = 62
 
-dl = ForceEstimationDataLoader(
-                            os.path.join(os.environ['HOME'], 'Dataset/dataset2', dataset),
-                            os.path.join(os.environ['HOME'], 'Dataset/dataset2', dataset+'-real'),
-                            image_height=image_height,
-                            image_width=image_width,
-                            start_seq=1,
-                            n_seqs=1800,  # n_seqs=1500,
-                            start_frame=3, n_frames=3,
-                            real_start_frame=1, real_n_frames=294
-                            )
+dl = ForceEstimationDataLoader(os.path.join(os.environ['HOME'], 'Dataset/dataset2', dataset),
+                               os.path.join(os.environ['HOME'], 'Dataset/dataset2', dataset+'-real'),
+                               image_height=image_height,
+                               image_width=image_width,
+                               start_seq=1,
+                               n_seqs=1800,  # n_seqs=1500,
+                               start_frame=3, n_frames=3,
+                               real_start_frame=1, real_n_frames=294
+                               )
 
 
 def augment(xs, ys):
@@ -76,7 +76,6 @@ class ForceEstimationModel(tf.keras.Model):
 
     def __init__(self, *args, **kargs):
         super(ForceEstimationModel, self).__init__(*args, **kargs)
-        # tracker_names = ['loss', 'dloss', 'sloss', 'floss']
         tracker_names = ['loss']
         self.train_trackers = {}
         self.test_trackers = {}
@@ -89,7 +88,7 @@ class ForceEstimationModel(tf.keras.Model):
         xs, y_labels = augment(xs, y_labels)
 
         with tf.GradientTape() as tape:
-            y_pred = self(xs, training=True) # Forward pass
+            y_pred = self(xs, training=True)
             loss = self.compute_loss(y_labels, y_pred)
 
         trainable_vars = self.trainable_variables
@@ -97,41 +96,18 @@ class ForceEstimationModel(tf.keras.Model):
         self.optimizer.apply_gradients(zip(gradients, trainable_vars))
 
         self.train_trackers['loss'].update_state(loss)
-        # self.train_trackers['dloss'].update_state(loss[1])
-        # self.train_trackers['sloss'].update_state(loss[2])
-        # self.train_trackers['floss'].update_state(loss[3])
         return dict([(trckr[0], trckr[1].result()) for trckr in self.train_trackers.items()])
 
     def test_step(self, data):
         xs, y_labels = data
 
-        y_pred = self(xs, training=False) # Forward pass
+        y_pred = self(xs, training=False)
         loss = self.compute_loss(y_labels, y_pred)
 
         self.test_trackers['loss'].update_state(loss)
-        # self.test_trackers['dloss'].update_state(loss[1])
-        # self.test_trackers['sloss'].update_state(loss[2])
-        # self.test_trackers['floss'].update_state(loss[3])
         return dict([(trckr[0], trckr[1].result()) for trckr in self.test_trackers.items()])
 
-    # def compute_loss(self, y_labels, y_pred):
-    #     '''
-    #         compute_loss for rgb to fmap
-    #     '''
-    #     y_pred_depth, y_pred_logits, y_pred_force = y_pred
-    #     depth_labels, seg_labels, force_labels = y_labels
-    #     dloss = tf.reduce_mean(tf.square(depth_labels - y_pred_depth))
-    #     seg_labels = tf.cast(seg_labels, dtype=tf.int32)
-    #     sloss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=seg_labels, logits=y_pred_logits)
-    #     sloss = tf.reduce_mean(sloss)
-    #     floss = tf.reduce_mean(tf.square(force_labels - y_pred_force))
-    #     loss = dloss + sloss + floss
-    #     return loss,dloss,sloss,floss
-
     def compute_loss(self, y_labels, y_pred):
-        '''
-            compute_loss for rgb to fmap
-        '''
         loss = tf.reduce_mean(tf.square(y_labels - y_pred))
         return loss
 
@@ -158,7 +134,7 @@ class DRCNForceEstimationModel(tf.keras.Model):
         xs, y_labels = augment(xs, y_labels)
 
         with tf.GradientTape() as tape:
-            y_pred = self(xs, training=True) # Forward pass
+            y_pred = self(xs, training=True)
             loss = self.compute_loss(y_labels, y_pred)
 
         trainable_vars = self.trainable_variables
@@ -166,42 +142,19 @@ class DRCNForceEstimationModel(tf.keras.Model):
         self.optimizer.apply_gradients(zip(gradients, trainable_vars))
 
         self.train_trackers['loss'].update_state(loss)
-        # self.train_trackers['dloss'].update_state(loss[1])
-        # self.train_trackers['sloss'].update_state(loss[2])
-        # self.train_trackers['floss'].update_state(loss[3])
         return dict([(trckr[0], trckr[1].result()) for trckr in self.train_trackers.items()])
 
     def test_step(self, data):
         src_data, tgt_data = data
         xs, y_labels,  = src_data
 
-        y_pred = self(xs, training=False) # Forward pass
+        y_pred = self(xs, training=False)
         loss = self.compute_loss(y_labels, y_pred)
 
         self.test_trackers['loss'].update_state(loss)
-        # self.test_trackers['dloss'].update_state(loss[1])
-        # self.test_trackers['sloss'].update_state(loss[2])
-        # self.test_trackers['floss'].update_state(loss[3])
         return dict([(trckr[0], trckr[1].result()) for trckr in self.test_trackers.items()])
 
-    # def compute_loss(self, y_labels, y_pred):
-    #     '''
-    #         compute_loss for rgb to fmap
-    #     '''
-    #     y_pred_depth, y_pred_logits, y_pred_force = y_pred
-    #     depth_labels, seg_labels, force_labels = y_labels
-    #     dloss = tf.reduce_mean(tf.square(depth_labels - y_pred_depth))
-    #     seg_labels = tf.cast(seg_labels, dtype=tf.int32)
-    #     sloss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=seg_labels, logits=y_pred_logits)
-    #     sloss = tf.reduce_mean(sloss)
-    #     floss = tf.reduce_mean(tf.square(force_labels - y_pred_force))
-    #     loss = dloss + sloss + floss
-    #     return loss,dloss,sloss,floss
-
     def compute_loss(self, y_labels, y_pred):
-        '''
-            compute_loss for rgb to fmap
-        '''
         loss = tf.reduce_mean(tf.square(y_labels - y_pred))
         return loss
 
@@ -210,7 +163,7 @@ class DRCNForceEstimationModel(tf.keras.Model):
         return list(self.train_trackers.values()) + list(self.test_trackers.values())
 
 
-def model_rgb_to_fmap(input_shape=input_image_shape, 
+def model_rgb_to_fmap(input_shape=input_image_shape,
                       num_filters=[16, 32, 64],
                       kernel_size=3,
                       num_channels=3,
@@ -228,7 +181,7 @@ def model_rgb_to_fmap(input_shape=input_image_shape,
 
     print(encoder_output[-1].shape)
     # decoder_output = res_unet.decoder(bridge, encoder_output, num_filters, kernel_size)
-    out1,out2,out3 = res_unet.multi_head_decoder(bridge, encoder_output, num_filters, kernel_size, num_heads=3)
+    out1, out2, out3 = res_unet.multi_head_decoder(bridge, encoder_output, num_filters, kernel_size, num_heads=3)
 
     output_depth = tf.keras.layers.Conv2D(1, 
                                           kernel_size,
@@ -321,8 +274,11 @@ def model_rgb_to_fmap_res50(input_shape=input_image_shape, input_noise_stddev=0.
     x = tf.keras.layers.RandomContrast(factor=0.3)(x)
     x = tf.keras.layers.GaussianNoise(input_noise_stddev)(x)
 
+    # encoder
     resnet50 = ResNet50(include_top=False, input_shape=input_shape)
     encoded_img = resnet50(x)
+    
+    # decoder
     decoded_img = model_resnet_decoder((12, 16, 2048))(encoded_img)
 
     model = ForceEstimationModel(inputs=[image_input], outputs=[decoded_img], name='model_resnet')
@@ -427,45 +383,19 @@ class Trainer:
                                  validation_data=val_source_dataset,
                                  shuffle=True)
 
-        # history = self.model.fit(xs, ys,
-        #                          batch_size=self.batch_size,
-        #                          epochs=epochs,
-        #                          callbacks=callbacks,
-        #                          validation_data=(val_xs, val_ys),
-        #                          shuffle=True)
-
         end = time.time()
         print('\ntotal time spent for training: {}[min]'.format((end-start)/60))
 
 
-def visualize_forcemaps(force_distribution, title='', zaxis_first=False):
-    f = force_distribution / np.max(force_distribution)
-    fig = plt.figure(figsize=(16, 4))
-    fig.subplots_adjust(hspace=0.1)
-    fig.suptitle(title, fontsize=28)
-
-    if zaxis_first:
-        channels = f.shape[0]
-    else:
-        channels = f.shape[-1]
-    for p in range(channels):
-        ax = fig.add_subplot(channels//10, 10, p+1)
-        ax.axis('off')
-        if zaxis_first:
-            ax.imshow(f[p], cmap='gray', vmin=0, vmax=1.0)
-        else:
-            ax.imshow(f[:, :, p], cmap='gray', vmin=0, vmax=1.0)
-
-
 def visualize_result(f_prediction, f_label, rgb, filename=None):
-    visualize_forcemaps(f_prediction, title='prediction')
+
     plt.savefig('prediction.png')
     p = plt.imread('prediction.png')[:, :, :3]
     if f_label is None:
         p = cv2.resize(p, (1440,360))
         res = np.concatenate([rgb, p], axis=1)
     if f_label is not None:
-        visualize_forcemaps(f_label, title='ground truth')
+        forcemap.plot_force_map(f_label, 'ground truth')
         plt.savefig('ground_truth.png')
         g = plt.imread('ground_truth.png')[:, :, :3]
         pg = np.concatenate([p, g], axis=0)
@@ -492,11 +422,10 @@ class Tester:
 
     def predict(self, n):
         xs = self.test_data[0][n:n+1]
-        ys = self.test_data[1][n:n+1]
+        # ys = self.test_data[1][n:n+1]
         y_pred = self.model.predict(xs)
         plt.imshow(xs[0])
-        visualize_forcemaps(y_pred[0])
-        visualize_forcemaps(ys[0])
+        forcemap.plot_force_map(y_pred[0], 'prediction')
         plt.show()
 
     def predict_segmentation_mask(self, n):
@@ -529,7 +458,7 @@ class Tester:
         xs = np.expand_dims(rgb, axis=0)
         y_preds = self.model.predict(xs)
         y_pred_forces = y_preds
-        visualize_forcemaps(y_pred_forces[0])
+        forcemap.plot_force_map(y_pred_forces[0], 'prediction')
         plt.show()
         return y_pred_forces
 
@@ -543,9 +472,6 @@ class Tester:
 
         visualize_result(y_pred_forces[0], force_label, rgb[n], 'result{:05d}.png'.format(n))
         return y_pred_forces[0], force_label, rgb[n]
-
-
-# viewer = force_distribution_viewer.ForceDistributionViewer.get_instance()
 
 
 def show_bin_state(fcam, bin_state, fmap, draw_fmap=True, draw_force_gradient=False):
@@ -614,7 +540,7 @@ def virtual_pick(bin_state0, pick_vector, pick_moment, object_name='011_banana',
         do_virtual_pick()
 
 
-task = 'test-real'
+task = 'None'
 # model_file = 'ae_cp.basket-filling.model_resnet.20221115193122' # current best
 # model_file = 'ae_cp.basket-filling.model_resnet.20221125134301'
 model_file = 'ae_cp.basket-filling2.model_resnet.20221202165608'
@@ -635,10 +561,7 @@ elif task == 'test-real':
     model = model_rgb_to_fmap_res50()
     test_data = dl.load_real_data_for_rgb2fmap(test_mode=True)
     tester = Tester(model, test_data, model_file)
-elif task == 'pick':
-    model = model_rgb_to_fmap_res50()
-    test_data = dl.load_data_for_rgb2fmap(test_mode=True, load_bin_state=True)
-    tester = Tester(model, test_data, model_file)
+
 
 # tester = Tester(model, test_data, 'ae_cp.basket-filling.force_estimator.best')
 # tester = Tester(model, test_data, 'ae_cp.basket-filling.force_estimator.20221028172410')

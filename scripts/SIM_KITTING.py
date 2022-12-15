@@ -6,10 +6,8 @@ import pybullet as p
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from scipy import stats
-from sklearn.neighbors import KernelDensity
-# from ast import BitAnd
 # import forceGL3D
+import forcemap
 from pybullet_tools import *
 
 
@@ -79,32 +77,10 @@ class Camera(VirtualCamera):
         return self.cameraConfig
 
 
-def kde_scipy(x, x_grid, bandwidth=0.2, **kwargs):
-    kde = stats.gaussian_kde(x, bw_method=bandwidth, **kwargs)
-    return kde.evaluate(x_grid)
-
-
-def kde_sklearn(x, x_grid, bandwidth=1.0, **kwargs):
-    kde_skl = KernelDensity(kernel='gaussian', bandwidth=bandwidth, **kwargs)
-    kde_skl.fit(x)
-    # score_samples() returns the log-likelihood of the samples
-    log_pdf = kde_skl.score_samples(x_grid)
-    return np.exp(log_pdf)
-
-
 class ForceCamera(VirtualCamera):
     def __init__(self, fov=50, near=0.1, far=2.0):
         super().__init__(fov, near, far)
-        # sony box
-        # self.grid = np.mgrid[-0.115:0.115:40j, -0.115:0.115:40j, 0.93:1.16:40j]
-        # ipad box
-        self.grid = np.mgrid[-0.095:0.095:40j, -0.13:0.13:40j, 0.73:0.92:40j]
-        X, Y, Z = self.grid
-        self.dV = 0.19 * 0.26 * 0.20 / (40**3)
-        self.positions = np.vstack([X.ravel(), Y.ravel(), Z.ravel()])
-        self.positions = self.positions.T
-        self.V = np.zeros(self.positions.shape[0])
-        self.alpha = 0.8
+        self._fmap = forcemap.GridForceMap('seria_basket')
 
     # def getImg(self):
     #     cp = p.getContactPoints()
@@ -126,27 +102,16 @@ class ForceCamera(VirtualCamera):
     def getDensity(self, moving_average=True, reshape_result=False):
         cps = p.getContactPoints()
         l = len(cps)
-        print("l=", l)
-        if l > 0:
-            sample_coords = np.empty((l, 3))
-            sample_weights = np.empty(l)
-            for i, cp in enumerate(cps):
-                sample_coords[i][0] = cp[6][0]
-                sample_coords[i][1] = cp[6][1]
-                sample_coords[i][2] = cp[6][2]
-                sample_weights[i] = cp[9]
-            # V = kde_scipy(sample_coords, self.positions, bandwidth=0.3)
-            # V = stats.gaussian_kde(sample_coords, bw_method=0.3)
-            V = kde_sklearn(sample_coords, self.positions, bandwidth=0.012)
-            # V = kernel(self.positions)
+        print("number contact points: ", l)
 
-            W = np.sum(sample_weights)
-            V = W * V * self.dV
-            self.V = self.alpha*self.V + (1-self.alpha)*V
-            if moving_average:
-                V = self.V
-        else:
-            V = self.V
+        sample_positions = np.empty((l, 3))
+        sample_weights = np.empty(l)
+        for i, cp in enumerate(cps):
+            sample_positions[i][0] = cp[6][0]
+            sample_positions[i][1] = cp[6][1]
+            sample_positions[i][2] = cp[6][2]
+            sample_weights[i] = cp[9]
+        V = self._fmap.getDensity(sample_positions, sample_weights, moving_average=True)
 
         if reshape_result:
             V = np.reshape(V, self.grid[0].shape)

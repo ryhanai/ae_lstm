@@ -1,14 +1,12 @@
 # -*- coding: utf-8 -*-
 
 import os
-
 import attention_map2roi
 import generator
 import matplotlib.ticker as ptick
 import numpy as np
 import tensorflow as tf
 import tensorflow.keras.backend as K
-import tensorflow_addons as tfa
 import trainer
 from core.utils import *
 from model import *
@@ -20,6 +18,7 @@ from mpl_toolkits.mplot3d import Axes3D, axes3d
 
 os.environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
 
+dataset = 'reaching-real'
 input_image_size = (80, 160)
 time_window_size = 20
 latent_dim = 64
@@ -214,163 +213,6 @@ def train():
     tr.train(epochs=800, save_best_only=False, early_stop_patience=800, reduce_lr_patience=100)
 
 
-class Predictor(trainer.TimeSequenceTrainer):
-    def __init__(self, *args, time_window_size=20, **kargs):
-        super(Predictor, self).__init__(*args, time_window_size=time_window_size, **kargs)
-
-    def get_data(self):
-        return next(self.val_gen)
-
-    def get_a_sample_from_batch(self, batch, n):
-        x, y = batch
-        x_img = x[0][n:n+1]
-        x_joint = x[1][n:n+1]
-        y_img = y[0][n:n+1]
-        y_joint = y[1][n:n+1]
-        return (x_img, x_joint), (y_img, y_joint)
-
-    # evaluation of predictor
-    def predict_with_roi(self, batch, roi_params):
-        x, y = batch
-        batch_sz = x[1].shape[0]
-        if roi_params.ndim == 1:
-            roi_params = np.tile(roi_params, (batch_sz, 1))
-        predicted_images, predicted_joints = self.model.predict(x + (roi_params,))
-        # visualize_ds(y[0], roi_params) # to draw ROI roi_params must be converted to rectangle
-
-        if y[0].ndim == 5:
-            bboxes = roi_rect1((roi_params[:, :2], roi_params[:, 2]))
-            imgs = draw_bounding_boxes(x[0][:, -1], bboxes)
-            visualize_ds(imgs)
-        else:
-            visualize_ds(y[0])
-        visualize_ds(predicted_images)
-        plt.show()
-
-    def generate_roi_images(self, sample, n=5):
-        xs = np.linspace(0.1, 0.9, n)
-        ys = np.linspace(0.1, 0.9, n)
-        ss = 0.7 * np.sin(np.pi*xs)
-        out_images = []
-        for roi_params in zip(xs, ys, ss):
-            roi_params = np.expand_dims(np.array(roi_params), 0)
-            predicted_images, _ = self.model.predict(sample[0] + (roi_params,))
-            imgs = sample[0][0][0][-1:]
-            bboxes = roi_rect1((roi_params[:, :2], roi_params[:, 2]))
-            img_with_bb = draw_bounding_boxes(imgs, bboxes)[0]
-            img = np.concatenate([img_with_bb, predicted_images[0]], axis=1)
-            out_images.append(img)
-            # plt.imshow(img)
-            # plt.show()
-        create_anim_gif_from_images(out_images, 'generated_roi_images.gif')
-
-    def prediction_error(self, sample, roi_pos=[0.5, 0.5], roi_scale=0.8):
-        x, y = sample
-        batch_size = tf.shape(x[0])[0]
-        roi_pos = tf.tile([roi_pos], (batch_size, 1))
-        roi_scale = tf.repeat(roi_scale, batch_size)
-        image_loss, joint_loss, loss = self.model.do_predict(x, y, roi_pos, roi_scale, training=False)
-        return image_loss, joint_loss, loss
-
-    def prediction_errors(self, sample, nx=10, ny=10, ns=1, smin=0.6, smax=1.0):
-        x = np.linspace(0.0, 1.0, nx, dtype='float32')
-        y = np.linspace(0.0, 1.0, ny, dtype='float32')
-        s = np.linspace(smin, smax, ns, dtype='float32')
-        x, y, s = np.meshgrid(x, y, s)
-        z = np.array([self.prediction_error(sample, [x, y], s)[1] for x, y, s in zip(x.flatten(), y.flatten(), s.flatten())]).reshape((nx, ny, ns))
-        idx = np.unravel_index(np.argmin(z), z.shape)
-        xopt = x[idx]
-        yopt = y[idx]
-        sopt = s[idx]
-        sopt_idx = idx[2]
-        imgs = sample[0][0][0][-1:]
-        bboxes = roi_rect1((np.array([[xopt,yopt]]), np.array([sopt])))
-        img_with_bb = draw_bounding_boxes(imgs, bboxes)[0]
-        plt.imshow(img_with_bb)
-
-        fig = plt.figure()
-        ax = fig.add_subplot(projection='3d')
-        ax.set_xlabel('v')
-        ax.set_ylabel('u')
-        ax.zaxis.set_major_formatter(ptick.ScalarFormatter(useMathText=True))
-        ax.ticklabel_format(style='sci', axis='z', scilimits=(0, 0))
-        ax.plot_surface(x[:, :, sopt_idx], y[:, :, sopt_idx], z[:, :, sopt_idx], cmap='plasma')
-
-        plt.show()
-        # return x,y,z,imgs[0]
-
-    # evaluation of ROI estimator
-    def predict_images(self, batch=None):
-        if batch is None:
-            x, y = next(self.val_gen)
-        else:
-            x, y = batch
-        batch_size = tf.shape(x[0])[0]
-
-        roi_params = np.tile([0.5, 0.5, 0.8], (batch_size, 1))
-        roi_params = self.model.predict(x+(roi_params,))
-        bboxes = roi_rect1((roi_params[:, :2], roi_params[:, 2]))
-
-        imgs = draw_bounding_boxes(x[0][:, -1], bboxes)
-        visualize_ds(imgs)
-        # predicted_images, predicted_joints = self.model.predictor.predict(x + (roi_params,))
-        # visualize_ds(predicted_images)
-        plt.show()
-
-    # def predict(self, x):
-    #     batch_sz = x[1].shape[0]
-    #     roi_params0 = np.tile([0.5,0.5,0.8], (batch_sz,1))
-    #     roi_params = self.model.predict(x+(roi_params0,))
-    #     #pred_img, pred_joint = self.model.predictor.predict(x + (roi_params,))
-    #     #pred_img, pred_joint = self.model.predictor.predict(x + (roi_params0,))
-    #     #bboxes = roi_rect1((roi_params[:,:2], roi_params[:,2]))
-    #     return pred_img, pred_joint, bboxes
-
-    def predict(self, x):
-        'only used for Predictor test'
-        batch_sz = x[1].shape[0]
-        roi_params0 = np.tile([0.5, 0.5, 0.8], (batch_sz, 1))
-        pred_img, pred_joint = self.model.predict(x+(roi_params0,))
-        bboxes = roi_rect1((roi_params0[:, :2], roi_params0[:, 2]))
-        return pred_img, pred_joint, bboxes
-
-    def get_validation_sample(self, group_num=0, start_point=0):
-        d = self.val_ds.data
-        batch_x_jv = np.expand_dims(d[group_num][0][start_point:start_point+self.time_window], axis=0)
-        batch_y_jv = np.expand_dims(d[group_num][0][start_point+self.time_window:start_point+self.time_window+self.val_gen.prediction_window_size], axis=0)
-        batch_x_img = np.expand_dims(np.array(d[group_num][1][start_point:start_point+self.time_window]), axis=0)
-        batch_y_img = np.expand_dims(np.array(d[group_num][1][start_point+self.time_window:start_point+self.time_window+self.val_gen.prediction_window_size]), axis=0)
-        return (batch_x_img, batch_x_jv), (batch_y_img, batch_y_jv)
-
-    def predict_for_group(self, group_num=0):
-        res = []
-        d = self.val_ds.data
-        seq_len = len(d[group_num][1])
-        ishape = d[group_num][1][0].shape
-        jv_dim = d[group_num][0].shape[1]
-        batch_size = 1
-        batch_x_imgs = np.empty((batch_size, self.time_window) + ishape)
-        batch_x_jvs = np.empty((batch_size, self.time_window, jv_dim))
-        batch_y_img = np.empty((batch_size,) + ishape)
-        batch_y_jv = np.empty((batch_size, jv_dim))
-
-        roi_params = np.tile([0.5,0.5,0.8], (batch_size,1))
-        results = []
-
-        for seq_num in range(seq_len-self.time_window):
-            print(seq_num)
-            batch_x_jvs[:] = d[group_num][0][seq_num:seq_num+self.time_window]
-            batch_y_jv[:] = d[group_num][0][seq_num+self.time_window]
-            batch_x_imgs[:] = d[group_num][1][seq_num:seq_num+self.time_window]
-            batch_y_img[:] = d[group_num][1][seq_num+self.time_window]
-            estimated_roi_params = self.model.predict((batch_x_imgs, batch_x_jvs, roi_params))
-            bboxes = roi_rect1((estimated_roi_params[:,:2], estimated_roi_params[:,2]))
-            imgs = draw_bounding_boxes(batch_x_imgs[:,-1], bboxes)
-            results.append(imgs[0].numpy())
-
-        create_anim_gif_from_images(results, out_filename='estimated_roi_g{:05d}.gif'.format(group_num))
-
-
 class Tester(trainer.Trainer):
 
     def __init__(self, 
@@ -476,7 +318,7 @@ class Tester(trainer.Trainer):
 def prepare_for_test(cp='ae_cp.kitting.weighted_feature_prediction.20221213011838', cp_epoch=192):
     # ae_cp.reaching-real.weighted_feature_prediction.20220623184031
     # ae_cp.kitting.weighted_feature_prediction.20220907161250
-    val_ds = Dataset(dataset)
+    val_ds = Dataset(dataset, mode='test')
     val_ds.load(image_size=input_image_size)
     tr = Tester(wf_predictor, val_ds, checkpoint_file=cp, checkpoint_epoch=cp_epoch)
     return tr
@@ -485,7 +327,7 @@ def prepare_for_test(cp='ae_cp.kitting.weighted_feature_prediction.2022121301183
 def prepare_for_test_destructor(cp='ae_cp.reaching-real.weighted_feature_prediction.20221213011838', cp_epoch=192):
     # ae_cp.reaching-real.weighted_feature_prediction.20220623184031
     # ae_cp.kitting.weighted_feature_prediction.20220907161250
-    val_ds = Dataset(dataset)
+    val_ds = Dataset(dataset, mode='test')
     val_ds.load(groups=destructor_groups, image_size=input_image_size)
     tr = Tester(wf_predictor, val_ds, checkpoint_file=cp, checkpoint_epoch=cp_epoch)
     return tr
