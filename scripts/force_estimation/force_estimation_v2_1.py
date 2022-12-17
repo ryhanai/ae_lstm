@@ -10,7 +10,6 @@ import numpy as np
 import scipy.linalg
 import res_unet
 import tensorflow as tf
-# import tensorflow.keras.backend as K
 import tensorflow_addons as tfa
 from core.utils import *
 from force_estimation_data_loader import ForceEstimationDataLoader

@@ -19,7 +19,7 @@ def res_block_initial(x, num_filters, kernel_size, strides, name):
 
     if len(num_filters) == 1:
         num_filters = [num_filters[0], num_filters[0]]
-            
+
     x1 = tf.keras.layers.Conv2D(filters=num_filters[0], 
                                 kernel_size=kernel_size, 
                                 strides=strides[0], 
@@ -41,8 +41,9 @@ def res_block_initial(x, num_filters, kernel_size, strides, name):
     x = tf.keras.layers.BatchNormalization()(x)
 
     x1 = tf.keras.layers.Add()([x, x1])
-    
+
     return x1
+
 
 def res_block(x, num_filters, kernel_size, strides, name):
     """Residual Unet block layer
@@ -85,7 +86,6 @@ def res_block(x, num_filters, kernel_size, strides, name):
                                     padding='same',
                                     name=name+'_shortcut')(x)
     x = tf.keras.layers.BatchNormalization()(x)
-                                                            
     x1 = tf.keras.layers.Add()([x, x1])
 
     return x1
@@ -111,7 +111,8 @@ def upsample(x, target_size):
     x_resized = tf.keras.layers.Lambda(lambda x: tf.image.resize(x, target_size))(x)
 
     return x_resized
-        
+
+
 def encoder(x, num_filters, kernel_size):
     """Unet encoder
 
@@ -132,6 +133,7 @@ def encoder(x, num_filters, kernel_size):
         encoder_output.append(x)
 
     return encoder_output
+
 
 def decoder(x, encoder_output, num_filters, kernel_size):
     """Unet decoder
@@ -154,6 +156,7 @@ def decoder(x, encoder_output, num_filters, kernel_size):
         x = res_block(x, [num_filters[-i]], kernel_size, strides=[1,1], name=layer)
 
     return x
+
 
 def multi_head_decoder(x, encoder_output, num_filters, kernel_size, num_heads):
     """Unet decoder
@@ -184,8 +187,9 @@ def multi_head_decoder(x, encoder_output, num_filters, kernel_size, num_heads):
         layer = 'decoder_layer_' + str(j)
         output = res_block(shared_x, [num_filters[0]], kernel_size, strides=[1,1], name=layer)
         outputs.append(output)
-    
+
     return outputs
+
 
 def res_unet(input_shape, num_filters, kernel_size, num_channels, num_classes):
     """Residual Unet
