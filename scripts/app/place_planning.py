@@ -3,7 +3,7 @@
 import os
 import numpy as np
 from force_estimation.force_estimation_data_loader import ForceEstimationDataLoader
-# from sim import run_sim_basket_filling
+from sim import run_sim_basket_filling
 from functools import reduce
 from operator import and_
 

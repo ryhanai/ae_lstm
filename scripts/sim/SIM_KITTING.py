@@ -114,8 +114,8 @@ class ForceCamera(VirtualCamera):
         V = self._fmap.getDensity(sample_positions, sample_weights, moving_average=True)
 
         if reshape_result:
-            V = np.reshape(V, self.grid[0].shape)
-        return self.positions, V
+            V = np.reshape(V, self._fmap.grid[0].shape)
+        return self._fmap.positions, V
 
     def setViewMatrix(self, eyePosition, targetPosition, upVector):
         self.setViewMatrixParam(eyePosition, targetPosition, upVector)

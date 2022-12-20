@@ -45,10 +45,10 @@ class GridForceMap:
                    reshape_result=False):
 
         if len(sample_weights) > 0:
-            # V = kde_scipy(sample_coords, self.positions, bandwidth=0.3)
-            # V = stats.gaussian_kde(sample_coords, bw_method=0.3)
-            V = kde_sklearn(sample_coords, self.positions, bandwidth=0.012)
-            # V = kernel(self.positions)
+            # V = kde_scipy(sample_positions, self.positions, bandwidth=0.3)
+            # V = stats.gaussian_kde(sample_positions, bw_method=0.3)
+            V = kde_sklearn(sample_positions, self.positions, bandwidth=0.012)
+            # V = kernel(self.sample_positions)
 
             W = np.sum(sample_weights)
             V = W * V * self.dV
