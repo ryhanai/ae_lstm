@@ -3,6 +3,33 @@
 import numpy as np
 import force_estimation_v2 as fe
 
+# from core import dataset
+# from vis3d import force_distribution_viewer
+# from sim import run_sim_basket_filling
+
+
+def plan():
+    pass
+
+
+def load_scene():
+    pass
+
+
+def pick():
+    pass
+
+
+def compute_disturbance():
+    pass
+
+
+def evaluate_algorithm():
+    load_scene()
+    plan()
+    pick()
+    compute_disturbance()
+
 
 viewer = force_distribution_viewer.ForceDistributionViewer.get_instance()
 

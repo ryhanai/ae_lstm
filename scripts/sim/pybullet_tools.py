@@ -111,6 +111,7 @@ def create_collision_shape(geometry, pose=unit_pose()):
         # TODO: pybullet bug visual => length, collision => height
         collision_args['height'] = collision_args['length']
         del collision_args['length']
+    print('ARGS: ', collision_args)
     return p.createCollisionShape(**collision_args)
 
 def create_visual_shape(geometry, pose=unit_pose(), color=None, specular=None):

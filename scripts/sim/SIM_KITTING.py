@@ -6,9 +6,9 @@ import pybullet as p
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-# import forceGL3D
-import forcemap
-from pybullet_tools import *
+
+from force_estimation import forcemap
+from sim.pybullet_tools import *
 
 
 class VirtualCamera:
@@ -209,9 +209,9 @@ class Environment:
 
 
 class SIM(Environment):
-    def __init__(self, scene_file):
+    def __init__(self, scene_file, rootdir='../'):
         super().__init__()
-        self.rootdir = "../"
+        self.rootdir = rootdir
         self.connection = p.connect(p.GUI)
 
         p.resetSimulation()

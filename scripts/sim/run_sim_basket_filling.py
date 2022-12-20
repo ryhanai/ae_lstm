@@ -8,22 +8,24 @@ import argparse
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 
 from core.utils import *
-import SIM_KITTING as S
-# import tf
-from pybullet_tools import *
-import pandas as pd
-import domain_randomization
+from sim.pybullet_tools import *
+from sim import SIM_KITTING as S
+from sim import domain_randomization
 
-parser = argparse.ArgumentParser(description='')
-parser.add_argument('-s', '--scene', type=str, default='basket_filling_scene.yaml')
-parser.add_argument('-b', '--baseline', action='store_true')
-parser.add_argument('-u', '--ui', type=str, default='none')
-args = parser.parse_args()
 
-message('scene = {}'.format(args.scene))
-message('ui = {}'.format(args.ui))
+# parser = argparse.ArgumentParser(description='')
+# parser.add_argument('-s', '--scene', type=str, default='basket_filling_scene.yaml')
+# parser.add_argument('-b', '--baseline', action='store_true')
+# parser.add_argument('-u', '--ui', type=str, default='none')
+# args = parser.parse_args()
+
+# message('scene = {}'.format(args.scene))
+# message('ui = {}'.format(args.ui))
+
+scene = 'basket_filling_scene.yaml'
 
 use_rviz = False
 
@@ -31,7 +33,7 @@ if use_rviz:
     import force_distribution_viewer
     viewer = force_distribution_viewer.ForceDistributionViewer.get_instance()
 
-env = S.SIM(scene_file=args.scene)
+env = S.SIM(scene_file=scene, rootdir='../../')
 # S.p.changeDynamics(env.robot, 23, collisionMargin=0.0)
 S.p.changeDynamics(env.target, 0, collisionMargin=-0.03)
 S.p.changeDynamics(env.target, 1, collisionMargin=-0.03)
