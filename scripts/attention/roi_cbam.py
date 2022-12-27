@@ -1,24 +1,19 @@
 # -*- coding: utf-8 -*-
 
 import os
-import attention_map2roi
-import generator
-import matplotlib.ticker as ptick
 import numpy as np
+import argparse
 import tensorflow as tf
-import tensorflow.keras.backend as K
-import trainer
+
 from core.utils import *
-from model import *
-from tensorflow import keras
-from tensorflow.keras import layers, losses
-from tensorflow.keras.models import Model
-from AttentionLSTMCell import *
-from mpl_toolkits.mplot3d import Axes3D, axes3d
+from core.model import *
+from core import generator
+from core import trainer
+import attention_map2roi
+import AttentionLSTMCell
 
 os.environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
 
-dataset = 'reaching-real'
 input_image_size = (80, 160)
 time_window_size = 20
 latent_dim = 64
@@ -32,8 +27,8 @@ class WeightedFeaturePredictorModel(tf.keras.Model):
         self.train_trackers = {}
         self.test_trackers = {}
         for n in tracker_names:
-            self.train_trackers[n] = keras.metrics.Mean(name=n)
-            self.test_trackers[n] = keras.metrics.Mean(name='val_'+n)
+            self.train_trackers[n] = tf.keras.metrics.Mean(name=n)
+            self.test_trackers[n] = tf.keras.metrics.Mean(name='val_'+n)
 
         self.n_steps = 3
 
@@ -136,7 +131,7 @@ def model_time_distributed_encoder(input_shape, time_window_size, name='encoder'
     x = time_distributed_conv_block(x, 64, with_pooling=False)
     x = time_distributed_conv_block(x, 128, with_pooling=False)
 
-    encoder = keras.Model([image_input], x, name=name)
+    encoder = tf.keras.Model([image_input], x, name=name)
     encoder.summary()
     return encoder
 
@@ -148,7 +143,7 @@ def model_decoder(input_shape, name='decoder'):
     x = deconv_block(x, 16)
     decoded_img = tf.keras.layers.Conv2DTranspose(3, kernel_size=3, strides=1, padding='same', activation='sigmoid')(x)
 
-    decoder = keras.Model([input_feature], decoded_img, name=name)
+    decoder = tf.keras.Model([input_feature], decoded_img, name=name)
     decoder.summary()
     return decoder
 
@@ -171,7 +166,7 @@ def model_weighted_feature_prediction(input_image_shape, time_window_size, image
 
     joint_input_with_noise = tf.keras.layers.GaussianNoise(joint_noise)(joint_input)
 
-    cell = AttentionLSTMCell(image_vec_dim + dof)
+    cell = AttentionLSTMCell.AttentionLSTMCell(image_vec_dim + dof)
     layer = tf.keras.layers.RNN(cell)
     x, attention_map = layer((image_feature, joint_input_with_noise))
 
@@ -197,20 +192,6 @@ def model_weighted_feature_prediction(input_image_shape, time_window_size, image
 
     m.summary()
     return m
-
-
-wf_predictor = model_weighted_feature_prediction(input_image_size+(3,), time_window_size, latent_dim, dof, use_color_augmentation=True)
-
-
-def train():
-    train_ds = Dataset(dataset, mode='train')
-    train_ds.load(input_image_size)
-    train_ds.preprocess(time_window_size)
-    val_ds = Dataset(dataset, mode='test')
-    val_ds.load(input_image_size)
-    val_ds.preprocess(time_window_size)
-    tr = trainer.TimeSequenceTrainer(wf_predictor, train_ds, val_ds, time_window_size=time_window_size)
-    tr.train(epochs=800, save_best_only=False, early_stop_patience=800, reduce_lr_patience=100)
 
 
 class Tester(trainer.Trainer):
@@ -315,23 +296,40 @@ class Tester(trainer.Trainer):
         create_anim_gif_from_images(results, out_filename='estimated_roi_g{:05d}.gif'.format(group_num))
 
 
-def prepare_for_test(cp='ae_cp.kitting.weighted_feature_prediction.20221213011838', cp_epoch=192):
-    # ae_cp.reaching-real.weighted_feature_prediction.20220623184031
-    # ae_cp.kitting.weighted_feature_prediction.20220907161250
-    val_ds = Dataset(dataset, mode='test')
+
+parser = argparse.ArgumentParser(description='')
+parser.add_argument('-t', '--task', type=str, default='test')  # train | test
+parser.add_argument('-d', '--dataset', type=str, default='reaching-real')  # kitting | reaching-real | reaching-real-destructor | liquid-pouring
+parser.add_argument('-s', '--start_training', action='store_true')
+args = parser.parse_args()
+message('task = {}'.format(args.task))
+message('dataset = {}'.format(args.dataset))
+message('start_training = {}'.format(args.start_training))
+
+
+wf_predictor = model_weighted_feature_prediction(input_image_size+(3,), time_window_size, latent_dim, dof, use_color_augmentation=True)
+
+
+if args.task == 'train':
+    train_ds = Dataset(args.dataset, mode='train')
+    train_ds.load(image_size=input_image_size)
+    train_ds.preprocess(time_window_size)
+    val_ds = Dataset(args.dataset, mode='test')
+    val_ds.load(image_size=input_image_size)
+    val_ds.preprocess(time_window_size)
+    tr = trainer.TimeSequenceTrainer(wf_predictor, train_ds, val_ds, time_window_size=time_window_size)
+    if args.start_training:
+        tr.train(epochs=800, save_best_only=False, early_stop_patience=800, reduce_lr_patience=100)
+elif args.task == 'test':
+    if args.dataset == 'reaching-real' or args.dataset == 'reaching-real-destructor':
+        cp = 'ae_cp.reaching-real.weighted_feature_prediction.20221213011838'
+        cp_epoch = 192
+    elif args.dataset == 'kitting':
+        cp = None
+        cp_epoch = 100
+    elif args.dataset == 'liquid-pouring':
+        cp = None
+        cp_epoch = 100
+    val_ds = Dataset(args.dataset, mode='test')
     val_ds.load(image_size=input_image_size)
     tr = Tester(wf_predictor, val_ds, checkpoint_file=cp, checkpoint_epoch=cp_epoch)
-    return tr
-
-
-def prepare_for_test_destructor(cp='ae_cp.reaching-real.weighted_feature_prediction.20221213011838', cp_epoch=192):
-    # ae_cp.reaching-real.weighted_feature_prediction.20220623184031
-    # ae_cp.kitting.weighted_feature_prediction.20220907161250
-    val_ds = Dataset(dataset, mode='test')
-    val_ds.load(groups=destructor_groups, image_size=input_image_size)
-    tr = Tester(wf_predictor, val_ds, checkpoint_file=cp, checkpoint_epoch=cp_epoch)
-    return tr
-
-
-# if __name__ == "__main__":
-#    train()

@@ -187,7 +187,7 @@ class Dataset():
         try:
             config_file = kargs['config_file']
         except KeyError:
-            config_file = '../specification/training/dataset.yaml'
+            config_file = '../../specification/training/dataset.yaml'
         with open(config_file, mode='r') as f:
             tree = yaml.safe_load(f)
             self._config = tree[name]
@@ -196,6 +196,8 @@ class Dataset():
             self.dataset_path = kargs['dataset_path']
         except KeyError:
             self.dataset_path = eval(tree['dataset-path'])
+
+        self._directory = self._config['directory']
 
         assert mode == 'train' or mode == 'test'
         if mode == 'train':
@@ -224,7 +226,7 @@ class Dataset():
 
     def load_group(self, group, load_image=True, image_size=(90, 160),
                    sampling_interval=1, normalize=True):
-        path = os.path.join(self.dataset_path, '%s/%d' % (self._name, group))
+        path = os.path.join(self.dataset_path, '%s/%d' % (self._directory, group))
         # load joint and frame indices
         joint_file = os.path.join(path, 'joint_position.txt')
         joint_seq = np.loadtxt(joint_file)
@@ -253,9 +255,9 @@ class Dataset():
             return joint_seq
 
     def load(self,
+             image_size=(90, 160),
              groups=None,
              load_image=True,
-             image_size=(90, 160),
              sampling_interval=1,
              visualize=False,
              start_step=0,

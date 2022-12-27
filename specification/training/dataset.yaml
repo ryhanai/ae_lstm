@@ -1,32 +1,31 @@
 dataset-path: os.path.join(os.environ['HOME'], 'Dataset/dataset2')
 
 reaching-real:
-  train_groups: 'range(0, 136)'
+  directory: 'reaching-real'
+  train_groups: range(0, 136)
   validation_groups: range(136, 156)  
   destructor_groups: range(1000, 1029)
   joint_range_data: range(0, 156)
 
 reaching-real-destructor:
+  directory: 'reaching-real'
   validation_groups: range(1000, 1029)
   joint_range_data: range(0, 156)
 
 kitting:
+  directory: 'kitting'
   train_groups: range(0,90)
   validation_groups: range(90,111)
   joint_range_data: range(0,111)
 
 kitting-destructor:
+  directory: 'kitting-destructor'
   train_groups: range(0, 6)
   validation_groups: range(0, 6)
   joint_range_data: range(0, 6)
 
-kitting2:
-  train_groups: range(0,9)
-  validation_groups: range(9,15)
-  joint_range_data: range(0, 6)
-
-reaching-real:
-  train_groups: range(0,136)
-  validation_groups: range(136,156)
-  destructor_groups: range(1000,1029)
-  joint_range_data: range(0,156)
+liquid-pouring:
+  directory: 'liquid-pouring'
+  train_groups: range(1, 45)
+  validation_groups: range(45, 61)
+  joint_range_data: range(1, 61)

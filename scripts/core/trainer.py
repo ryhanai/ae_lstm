@@ -6,14 +6,12 @@ import copy
 import glob
 import re
 from datetime import datetime
-
 import numpy as np
 
 import tensorflow as tf
-from tensorflow import keras
 
-from core.utils import *
-import generator
+from .utils import *
+from . import generator
 
 
 class Trainer:
@@ -30,7 +28,7 @@ class Trainer:
         self.batch_size = batch_size
 
         self.model = model
-        self.opt = keras.optimizers.Adamax(learning_rate=0.001)
+        self.opt = tf.keras.optimizers.Adamax(learning_rate=0.001)
         self.model.compile(loss='mse', optimizer=self.opt)
 
         if train_dataset:
@@ -40,14 +38,13 @@ class Trainer:
             self.val_ds = val_dataset
             self.val_data_loaded = True
 
-        d = runs_directory if runs_directory else os.path.join(os.path.dirname(os.getcwd()), 'runs')
+        d = runs_directory if runs_directory else os.path.join(os.path.dirname(os.path.dirname(os.getcwd())), 'runs')
         f = checkpoint_file if checkpoint_file else 'ae_cp.{}.{}.{}'.format(val_dataset.name, self.model.name, datetime.now().strftime('%Y%m%d%H%M%S'))
         self.checkpoint_save_path = os.path.join(d, f, 'cp-{epoch:04d}-{val_loss:.4e}.ckpt')
 
-        cp_index_file = glob.glob(os.path.join(d, f, 'cp-{:04d}*.ckpt.index'.format(checkpoint_epoch)))[0]
-        self.checkpoint_load_path = re.sub('\.index', '', cp_index_file)
-
         if checkpoint_file:
+            cp_index_file = glob.glob(os.path.join(d, f, 'cp-{:04d}*.ckpt.index'.format(checkpoint_epoch)))[0]
+            self.checkpoint_load_path = re.sub('\.index', '', cp_index_file)
             print('load weights from ', self.checkpoint_load_path)
             self.model.load_weights(self.checkpoint_load_path)
 
@@ -77,10 +74,10 @@ class Trainer:
                                                          verbose=1,
                                                          min_lr=0.00001)
 
-        profiler = tf.keras.callbacks.TensorBoard(log_dir='logs',
-                                                  histogram_freq=1,
-                                                  profile_batch='15,25')
-        return cp_callback, early_stop, reduce_lr, profiler
+        # profiler = tf.keras.callbacks.TensorBoard(log_dir='logs',
+        #                                           histogram_freq=1,
+        #                                           profile_batch='15,25')
+        return cp_callback, early_stop, reduce_lr  # , profiler
 
     def train(self, epochs=100, save_best_only=True, early_stop_patience=100, reduce_lr_patience=50):
         xs = []
