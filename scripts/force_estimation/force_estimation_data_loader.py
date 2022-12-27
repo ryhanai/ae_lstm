@@ -186,7 +186,8 @@ class ForceEstimationDataLoader:
 
     def load_real_data(self, ids):
         total_frames = len(ids)
-        c = (-40, 25)
+        # c = (-40, 25)
+        c = (-30, 80)
         crop = 64
         X_rgb = np.empty((total_frames, self._image_height, self._image_width, 3))
 

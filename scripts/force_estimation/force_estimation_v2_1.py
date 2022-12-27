@@ -4,7 +4,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_addons as tfa
 from model import *
-import res_unet
+from core import res_unet
 from tensorflow.keras.applications.resnet50 import ResNet50
 from tensorflow.keras.models import Model
 

@@ -64,7 +64,9 @@ class GridForceMap:
 
     def set_values(self, values):
         if values.ndim == 3:
-            self.V = np.reshape(values, self.V.shape)
+            v = np.zeros((self.grid[0].shape))
+            v[:, :, :values.shape[-1]] = values
+            self.V = v.reshape(self.V.shape)
         else:
             self.V = values
 
@@ -80,7 +82,7 @@ class GridForceMap:
     def visualize(self, max_channels=20, zaxis_first=False):
         V = np.reshape(self.V, self.grid[0].shape)
         f = V / np.max(V)
-        fig = plt.figure(figsize=(16, 4))
+        fig = plt.figure(figsize=(16, 6))
         fig.subplots_adjust(hspace=0.1)
         fig.suptitle(self._title, fontsize=28)
 

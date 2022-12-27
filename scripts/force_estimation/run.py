@@ -2,13 +2,15 @@
 
 import os
 import time
+import cv2
 from datetime import datetime
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 
-# from core.utils import *
-# from pybullet_tools import *
+import argparse
+from core.utils import *
+
 import forcemap
 from force_estimation_data_loader import ForceEstimationDataLoader
 import force_estimation_v2_1 as fe
@@ -56,7 +58,7 @@ class Trainer:
             self.val_ds = val_dataset
             self.val_data_loaded = True
 
-        d = runs_directory if runs_directory else os.path.join(os.path.dirname(os.getcwd()), 'runs')
+        d = runs_directory if runs_directory else os.path.join(os.path.dirname(os.path.dirname(os.getcwd())), 'runs')
         f = checkpoint_file if checkpoint_file else 'ae_cp.{}.{}.{}'.format(dataset, self.model.name, datetime.now().strftime('%Y%m%d%H%M%S'))
         self.checkpoint_path = os.path.join(d, f, 'cp.ckpt')
 
@@ -83,10 +85,10 @@ class Trainer:
                                                          verbose=1,
                                                          min_lr=0.00001)
 
-        profiler = tf.keras.callbacks.TensorBoard(log_dir='logs',
-                                                  histogram_freq=1,
-                                                  profile_batch='15,25')
-        return cp_callback, early_stop, reduce_lr, profiler
+        # profiler = tf.keras.callbacks.TensorBoard(log_dir='logs',
+        #                                           histogram_freq=1,
+        #                                           profile_batch='15,25')
+        return cp_callback, early_stop, reduce_lr  # , profiler
 
     def train(self, epochs=300, early_stop_patience=100, reduce_lr_patience=50):
         xs = self.train_ds[0].astype('float32')
@@ -117,10 +119,12 @@ class Trainer:
 
 
 def visualize_result(f_prediction, f_label, rgb, filename=None):
+    forcemap.plot_force_map(f_prediction)
     plt.savefig('prediction.png')
     p = plt.imread('prediction.png')[:, :, :3]
+    p = p[60:300, 190:1450, :]
     if f_label is None:
-        p = cv2.resize(p, (1440, 360))
+        p = cv2.resize(p, (1890, 360))
         res = np.concatenate([rgb, p], axis=1)
     if f_label is not None:
         forcemap.plot_force_map(f_label, 'ground truth')
@@ -142,7 +146,7 @@ def visualize_result(f_prediction, f_label, rgb, filename=None):
 class Tester:
     def __init__(self, model, test_data, checkpoint_file, runs_directory=None):
         self.model = model
-        d = runs_directory if runs_directory else os.path.join(os.path.dirname(os.getcwd()), 'runs')
+        d = runs_directory if runs_directory else os.path.join(os.path.dirname(os.path.dirname(os.getcwd())), 'runs')
         self.checkpoint_path = os.path.join(d, checkpoint_file, 'cp.ckpt')
         print('load weights from ', self.checkpoint_path)
         self.model.load_weights(self.checkpoint_path)
@@ -202,29 +206,28 @@ class Tester:
         return y_pred_forces[0], force_label, rgb[n]
 
 
-def show_bin_state(fcam, bin_state, fmap, draw_fmap=True, draw_force_gradient=False):
-    fv = np.zeros((40, 40, 40))
-    fv[:, :, :20] = fmap
-    fmap.set_values(fv)
-    viewer.publish_bin_state(bin_state, fmap, draw_fmap=draw_fmap, draw_force_gradient=draw_force_gradient)
+
+parser = argparse.ArgumentParser(description='')
+parser.add_argument('-t', '--task', type=str, default='test-real')
+parser.add_argument('-w', '--weight', type=str, default='ae_cp.basket-filling2.model_resnet.20221202165608')
+args = parser.parse_args()
+message('task = {}'.format(args.task))
+message('weight = {}'.format(args.weight))
 
 
-task = 'test-real'
-model_file = 'ae_cp.basket-filling2.model_resnet.20221202165608'
-
-if task == 'train':
+if args.task == 'train':
     model = fe.model_rgb_to_fmap_res50()
     train_data, valid_data = dl.load_data_for_rgb2fmap(train_mode=True)
     trainer = Trainer(model, train_data, valid_data)
-elif task == 'adaptation':
+elif args.task == 'adaptation':
     model = fe.model_rgb_to_fmap_res50()
     train_data, valid_data = dl.load_data_for_rgb2fmap_with_real(train_mode=True)
     trainer = Trainer(model, train_data, valid_data)
-elif task == 'test':
+elif args.task == 'test':
     model = fe.model_rgb_to_fmap_res50()
     test_data = dl.load_data_for_rgb2fmap(test_mode=True)
-    tester = Tester(model, test_data, model_file)
-elif task == 'test-real':
+    tester = Tester(model, test_data, args.weight)
+elif args.task == 'test-real':
     model = fe.model_rgb_to_fmap_res50()
     test_data = dl.load_real_data_for_rgb2fmap(test_mode=True)
-    tester = Tester(model, test_data, model_file)
+    tester = Tester(model, test_data, args.weight)
