@@ -130,9 +130,10 @@ def visualize_result(f_prediction, f_label, rgb, filename=None):
         forcemap.plot_force_map(f_label, 'ground truth')
         plt.savefig('ground_truth.png')
         g = plt.imread('ground_truth.png')[:, :, :3]
+        g = g[60:300, 190:1450, :]
         pg = np.concatenate([p, g], axis=0)
-        rgb2 = np.ones((800, 512, 3))
-        rgb2[220:580] = rgb
+        rgb2 = np.ones((480, 512, 3))
+        rgb2[60:420] = rgb  # rgb.shape == (360, 512, 3)
         res = np.concatenate([rgb2, pg], axis=1)
     fig = plt.figure(figsize=(10, 4))
     ax = fig.add_subplot(111)
