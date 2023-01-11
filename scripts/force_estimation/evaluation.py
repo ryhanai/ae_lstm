@@ -31,12 +31,15 @@ test_data = dl.load_data_for_rgb2fmap(test_mode=True, load_bin_state=True)
 viewer = force_distribution_viewer.ForceDistributionViewer.get_instance()
 
 
-def plot_diff_fmap(n):
+def f_diff(t, y):
+    return np.abs(t - y)
+
+def plot_map(f, n):
     y_pred = model.predict(test_data[0][n:n+1])[0]
     force_label = test_data[1][n]
-    diff_map = np.abs(force_label - y_pred)
+    z = f(force_label, y_pred)
     fv = np.zeros((40, 40, 40))
-    fv[:, :, :20] = diff_map
+    fv[:, :, :20] = z
     fmap.set_values(fv)
     bin_state = test_data[2][n]
     viewer.publish_bin_state(bin_state, fmap, draw_fmap=True, draw_force_gradient=False)
