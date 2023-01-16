@@ -2,6 +2,7 @@
 
 import os
 import numpy as np
+import scipy
 import forcemap
 from force_estimation_data_loader import ForceEstimationDataLoader
 import force_estimation_v2_1 as fe
@@ -43,3 +44,55 @@ def plot_map(f, n):
     fmap.set_values(fv)
     bin_state = test_data[2][n]
     viewer.publish_bin_state(bin_state, fmap, draw_fmap=True, draw_force_gradient=False)
+
+def shoot_rays(p, directions):
+    return [S.p.rayTest(p, p + d)[0][3] for d in directions]
+
+def collect_bottom_voxels(voxels, epsilon=1e-2):
+    bottom_voxels = []
+    for i, p in enumerate(voxels):
+        if abs(p[2] - 0.73) < epsilon:
+            bottom_voxels.append((i, p))
+    return bottom_voxels
+
+def collect_wall_voxels(voxels, epsilon=1e-2):
+    wall_voxels = []
+    for i, p in enumerate(voxels):
+        cps = shoot_rays(p, directions = np.array([(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0)]))
+        distance = min(scipy.linalg.norm(cps - p, axis=1))
+        print(distance)
+        if distance < epsilon:
+            wall_voxels.append((i, p))
+    return wall_voxels
+
+def collect_mid_air_voxels(voxels, epsilon=2e-2):
+    mid_air_voxels = []
+    for i, p in voxels:
+        cps = shoot_rays(p, directions = np.array([(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, -1)]))
+        distance = min(scipy.linalg.norm(cps - p, axis=1))
+        print(distance)
+        if distance > epsilon:
+            mid_air_voxels.append((i, p))
+    return mid_air_voxels
+
+def separate_voxels():
+    bottom_voxels = collect_bottom_voxels(voxels)
+    wall_voxels = collect_wall_voxels(voxels)
+    mid_air_voxels = collect_mid_air_voxels(voxels)
+
+def recall(evaluation_points, f_label, f, epsilon=1e-3):
+    label_points = 0
+    recalled_points = 0
+    for i,p in evaluation_points:
+        if f_label[i] > epsilon:
+            label_points += 1
+            if f[i] > epsilon:
+                recalled_points += 1
+    return label_points, recalled_points, recalled_points/label_points
+
+def recall_curve(evaluation_points, f_lable, f):
+    f_targets = np.array([1e-4, 1e-3, 1e-2, 1e-1])
+    for f_target in f_targets:
+        recalls = recall(evaluation_points, f_label, f, f_target)
+    return recalls
+

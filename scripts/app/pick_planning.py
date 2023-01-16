@@ -1,11 +1,31 @@
 # -*- coding: utf-8 -*-
 
+import os
 import numpy as np
-import force_estimation_v2 as fe
+from force_estimation import force_estimation_v2_1 as fe
+from force_estimation import force_distribution_viewer
+from force_estimation import forcemap
+from force_estimation.force_estimation_data_loader import ForceEstimationDataLoader
 
 # from core import dataset
-# from vis3d import force_distribution_viewer
 # from sim import run_sim_basket_filling
+
+dataset = 'basket-filling2'
+image_height = 360
+image_width = 512
+input_image_shape = [image_height, image_width]
+
+fmap = forcemap.GridForceMap('seria_basket')
+
+dl = ForceEstimationDataLoader(os.path.join(os.environ['HOME'], 'Dataset/dataset2', dataset),
+                               os.path.join(os.environ['HOME'], 'Dataset/dataset2', dataset+'-real'),
+                               image_height=image_height,
+                               image_width=image_width,
+                               start_seq=1,
+                               n_seqs=1800,  # n_seqs=1500,
+                               start_frame=3, n_frames=3,
+                               real_start_frame=1, real_n_frames=294
+                               )
 
 
 def plan():
@@ -31,13 +51,12 @@ def evaluate_algorithm():
     compute_disturbance()
 
 
-viewer = force_distribution_viewer.ForceDistributionViewer.get_instance()
-
 model_file = 'ae_cp.basket-filling2.model_resnet.20221202165608'
 
 model = fe.model_rgb_to_fmap_res50()
+model.load_weights('../../runs/ae_cp.basket-filling2.model_resnet.20221202165608/cp.ckpt')
 test_data = dl.load_data_for_rgb2fmap(test_mode=True, load_bin_state=True)
-tester = Tester(model, test_data, model_file)
+viewer = force_distribution_viewer.ForceDistributionViewer.get_instance()
 
 
 def show_bin_state(fcam, bin_state, fmap, draw_fmap=True, draw_force_gradient=False):
@@ -48,8 +67,11 @@ def show_bin_state(fcam, bin_state, fmap, draw_fmap=True, draw_force_gradient=Fa
 
 
 def pick_direction_plan(fcam, n=25, gp=[0.02, -0.04, 0.79], radius=0.05, scale=[0.005, 0.01, 0.004]):
-    fmap, force_label, rgb = tester.predict_force_from_rgb(n, visualize_result=False)
-    bin_state = tester.test_data[2][n]
+    rgb = test_data[0][n]
+    fmap = model.predict([rgb])
+    
+    force_label = test_data[1][n]
+    bin_state = test_data[2][n]
 
     gp = np.array(gp)
     fv = np.zeros((40, 40, 40))

@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 
 import colorsys
-import rviz_client
 import numpy as np
 import scipy.linalg
-import forcemap
+from . import rviz_client
+from . import forcemap
 
 
 class ForceDistributionViewer:
