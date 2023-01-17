@@ -3,8 +3,8 @@
 import colorsys
 import numpy as np
 import scipy.linalg
-from . import rviz_client
-from . import forcemap
+import rviz_client
+import forcemap
 
 
 class ForceDistributionViewer:
