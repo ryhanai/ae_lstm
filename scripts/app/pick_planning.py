@@ -2,6 +2,7 @@
 
 import os
 import numpy as np
+import scipy
 from force_estimation import force_estimation_v2_1 as fe
 from force_estimation import force_distribution_viewer
 from force_estimation import forcemap
@@ -59,27 +60,26 @@ test_data = dl.load_data_for_rgb2fmap(test_mode=True, load_bin_state=True)
 viewer = force_distribution_viewer.ForceDistributionViewer.get_instance()
 
 
-def show_bin_state(fcam, bin_state, fmap, draw_fmap=True, draw_force_gradient=False):
+def show_bin_state(bin_state, force_values, draw_fmap=True, draw_force_gradient=False):
     fv = np.zeros((40, 40, 40))
-    fv[:, :, :20] = fmap
-    positions = fcam.positions
-    viewer.publish_bin_state(bin_state, positions, fv, draw_fmap=draw_fmap, draw_force_gradient=draw_force_gradient)
+    fv[:, :, :20] = force_values
+    fmap.set_values(fv)
+    viewer.publish_bin_state(bin_state, fmap, draw_fmap=draw_fmap, draw_force_gradient=draw_force_gradient)
 
 
-def pick_direction_plan(fcam, n=25, gp=[0.02, -0.04, 0.79], radius=0.05, scale=[0.005, 0.01, 0.004]):
-    rgb = test_data[0][n]
-    fmap = model.predict([rgb])
+def pick_direction_plan_old(n=25, gp=[0.02, -0.04, 0.79], radius=0.05, scale=[0.005, 0.01, 0.004]):
+    y_pred = model.predict(test_data[0][n:n+1])[0]
     
     force_label = test_data[1][n]
     bin_state = test_data[2][n]
 
     gp = np.array(gp)
     fv = np.zeros((40, 40, 40))
-    fv[:, :, :20] = fmap
+    fv[:, :, :20] = y_pred
     gxyz = np.gradient(-fv)
     g_vecs = np.column_stack([g.flatten() for g in gxyz])
 
-    ps = fcam.positions
+    ps = fmap.get_positions()
     idx = np.where(np.sum((ps - gp)*g_vecs, axis=1) < 0)[0]
     fps = ps[idx]
     fg_vecs = g_vecs[idx]
@@ -89,7 +89,8 @@ def pick_direction_plan(fcam, n=25, gp=[0.02, -0.04, 0.79], radius=0.05, scale=[
     pz, vz = zip(*filtered_pos_val_pairs)
     pz = np.array(pz)
     vz = np.array(vz)
-    viewer.publish_bin_state(bin_state, ps, fv, draw_fmap=False, draw_force_gradient=False)
+    fmap.set_values(ps)
+    viewer.publish_bin_state(bin_state, fmap, draw_fmap=False, draw_force_gradient=False)
     viewer.draw_vector_field(pz, vz, scale=0.3)
     viewer.rviz_client.draw_sphere(gp, [1, 0, 0, 1], [0.01, 0.01, 0.01])
     viewer.rviz_client.show()
@@ -105,6 +106,69 @@ def pick_direction_plan(fcam, n=25, gp=[0.02, -0.04, 0.79], radius=0.05, scale=[
     viewer.rviz_client.draw_arrow(gp, gp + pick_direction * 0.1, [0, 1, 0, 1], scale)
     pick_moment = np.sum(np.cross(pz - gp, vz), axis=0)
     pick_moment /= np.linalg.norm(pick_moment)
+    viewer.rviz_client.draw_arrow(gp, gp + pick_moment * 0.1, [1, 1, 0, 1], scale)
+
+    viewer.rviz_client.show()
+    return pz, vz, pick_direction, pick_moment
+
+
+def f(n=25, object_center=[0.02, -0.04, 0.79], object_radius=0.05):
+    y_pred = model.predict(test_data[0][n:n+1])[0]
+
+    object_center = np.array(object_center)
+    fv = np.zeros((40, 40, 40))
+    fv[:, :, :20] = y_pred
+    gxyz = np.gradient(-fv)
+    g_vecs = np.column_stack([g.flatten() for g in gxyz])
+
+    ps = fmap.get_positions()
+    idx = np.where(np.sum((ps - object_center) * g_vecs, axis=1) < 0)[0]
+    fps = ps[idx]
+    fg_vecs = g_vecs[idx]
+    return fps, fg_vecs
+
+
+def pick_direction_plan(n=25, object_center=[0.02, -0.04, 0.79], object_radius=0.05, scale=[0.005, 0.01, 0.004]):
+    y_pred = model.predict(test_data[0][n:n+1])[0]
+    bin_state = test_data[2][n]
+
+    gp = np.array(gp)
+    fv = np.zeros((40, 40, 40))
+    fv[:, :, :20] = y_pred
+    gxyz = np.gradient(-fv)
+    g_vecs = np.column_stack([g.flatten() for g in gxyz])
+
+    ps = fmap.get_positions()
+    idx = np.where(np.sum((ps - gp)*g_vecs, axis=1) < 0)[0]
+    fps = ps[idx]
+    fg_vecs = g_vecs[idx]
+
+    # points for visualization
+    filtered_pos_val_pairs = [(p, g) for (p, g) in zip(fps, fg_vecs) if scipy.linalg.norm(g) > 0.008]
+    pz, vz = zip(*filtered_pos_val_pairs)
+    pz = np.array(pz)
+    vz = np.array(vz)
+
+    # points for planning
+    pz = fps
+    vz = fg_vecs
+    idx = np.where(scipy.linalg.norm(pz - gp, axis=1) < radius)[0]
+    pz = pz[idx]
+    vz = vz[idx]
+
+    pick_direction = np.sum(vz, axis=0)
+    pick_direction /= np.linalg.norm(pick_direction)
+
+    pick_moment = np.sum(np.cross(pz - gp, vz), axis=0)
+    pick_moment /= np.linalg.norm(pick_moment)
+
+    fmap.set_values(ps)
+    viewer.publish_bin_state(bin_state, fmap, draw_fmap=False, draw_force_gradient=False)
+    viewer.draw_vector_field(pz, vz, scale=0.3)
+    viewer.rviz_client.draw_sphere(gp, [1, 0, 0, 1], [0.01, 0.01, 0.01])
+    viewer.rviz_client.show()
+
+    viewer.rviz_client.draw_arrow(gp, gp + pick_direction * 0.1, [0, 1, 0, 1], scale)
     viewer.rviz_client.draw_arrow(gp, gp + pick_moment * 0.1, [1, 1, 0, 1], scale)
 
     viewer.rviz_client.show()
