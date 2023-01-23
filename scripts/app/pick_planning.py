@@ -142,23 +142,35 @@ pick_example = [
 # real
 pick_example_real = [
     (1, [0.01, 0.02, 0.82]),
-    (7, [-0.01, -0.09, 0.75]),
+    (7, [0.02, -0.075, 0.78]),  # maybe best
     (8, [-0.03, 0.08, 0.78]),  # bimyo-
+    (9, [0.004, -0.07, 0.77]),  # need rotation
+    (10, [-0.01, 0.06, 0.75]),  # need rotation
+    (14, [0.02, 0.02, 0.76]),
+    (15, [-0.01, -0.01, 0.74]),  # need rotation
 ]
 
+# cons = (
+#     {'type': 'eq', 'fun': lambda x: scipy.linalg.norm(x) - 1}
+# )
 cons = (
-    {'type': 'eq', 'fun': lambda x: scipy.linalg.norm(x) - 1}
+    {'type': 'eq', 'fun': lambda x: scipy.linalg.norm(x[:3]) - 1},
+    {'type': 'eq', 'fun': lambda x: scipy.linalg.norm(x[3:]) - 1}
 )
 
+
 def f_target(fps,
-             fg_vecs, 
-             c = np.array([0.03, -0.02, 0.78]), 
-             v=np.array([0, 0, 1]), 
-             omega=np.array([0, 0, 1]), 
-             delta=0.05, 
-             alpha=0.0):
+             fg_vecs,
+             c=np.array([0.03, -0.02, 0.78]),
+             x=np.array([0, 0, 1, 0, 0, 1]),
+             omega=np.array([0, 0, 1]),
+             delta=0.05,
+             alpha=1.0):
+    v = x[:3]
+    omega = x[3:]
     dp = v + alpha * np.cross(omega, fps - c)
     return np.sum(fg_vecs * (delta * dp))
+
 
 def pick_direction_plan(y_pred, bin_state, object_center, object_radius, scale=[0.005, 0.01, 0.004]):
     fps, fg_vecs = f(y_pred, object_center, object_radius)
@@ -167,29 +179,35 @@ def pick_direction_plan(y_pred, bin_state, object_center, object_radius, scale=[
     viewer.rviz_client.draw_sphere(object_center, [1, 0, 0, 1], [0.01, 0.01, 0.01])
     viewer.rviz_client.show()
 
-    def f_objective(v):
-        return -f_target(fps, fg_vecs, object_center, v=v)
+    def f_objective(x):
+        return -f_target(fps, fg_vecs, object_center, x=x)
 
-    result = minimize(f_objective, x0=np.array([0., 0., 1.]), constraints=cons)
+    result = minimize(f_objective, x0=np.array([0, 0, 1, 0, 0, 1]), constraints=cons)
     print(result)
-    pick_direction = result.x
+    pick_direction = result.x[:3]
+    pick_omega = result.x[3:]
 
-    viewer.rviz_client.draw_arrow(object_center, object_center + pick_direction * 0.1, [0, 1, 0, 1], scale)
+    viewer.rviz_client.draw_arrow(object_center, object_center + pick_direction * 0.1, [1, 0, 1, 1], scale)
+    viewer.rviz_client.draw_arrow(object_center, object_center + pick_omega * 0.1, [1, 1, 0, 1], scale)
 
     viewer.rviz_client.show()
     return fps, fg_vecs, pick_direction
+
 
 def pick_direction_plan_sim(n=25, object_center=[0.03, -0.02, 0.78], object_radius=0.05):
     y_pred = model.predict(test_data[0][n:n+1])[0]
     bin_state = test_data[2][n]
     return pick_direction_plan(y_pred, bin_state, object_center=object_center, object_radius=object_radius)
 
-def pick_direction_plan_real(n=1, object_center=[0.03, -0.02, 0.78], object_radius=0.05):
+
+def pick_direction_plan_real(n=1, object_center=[0.03, -0.02, 0.78], object_radius=0.05, show_rgb=True):
     y_pred = model.predict(test_data_real[n:n+1])[0]
     result = pick_direction_plan(y_pred, None, object_center=object_center, object_radius=object_radius)
-    plt.imshow(test_data_real[n])
-    plt.show()
+    if show_rgb:
+        plt.imshow(test_data_real[n])
+        plt.show()
     return result
+
 
 def virtual_pick(bin_state0, pick_vector, pick_moment, object_name='011_banana', alpha=0.01, beta=0.05, repeat=5):
     def do_virtual_pick():

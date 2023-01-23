@@ -76,7 +76,7 @@ class ForceDistributionViewer:
                     rgbas.append([r, g, b, 1])
         self.rviz_client.draw_points(points, rgbas)
 
-    def draw_vector_field(self, positions, values, scale=0.3):
+    def draw_vector_field(self, positions, values, scale=0.5):
         self.rviz_client.draw_arrows(positions, positions+values*scale)
 
     def draw_force_gradient(self, positions, fvals, scale=0.3, threshold=0.008):

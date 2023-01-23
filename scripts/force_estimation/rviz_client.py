@@ -1,22 +1,97 @@
 # -*- coding: utf-8 -*-
 
 import rospy
-from visualization_msgs.msg import Marker, MarkerArray
+from visualization_msgs.msg import Marker, MarkerArray, InteractiveMarker, InteractiveMarkerControl
 from std_msgs.msg import ColorRGBA
 from geometry_msgs.msg import Point, Vector3
+from interactive_markers.interactive_marker_server import InteractiveMarkerServer
+import numpy as np
+
+
+def normalizeQuaternion(quaternion_msg):
+    norm = quaternion_msg.x**2 + quaternion_msg.y**2 + quaternion_msg.z**2 + quaternion_msg.w**2
+    s = norm**(-0.5)
+    quaternion_msg.x *= s
+    quaternion_msg.y *= s
+    quaternion_msg.z *= s
+    quaternion_msg.w *= s
 
 
 class RVizClient:
     def __init__(self):
         self._message_id = 0
         self._node_name = "force_distribution_publisher"
+        self._base_frame_id = "map"
         self.start_ros_node()
 
     def start_ros_node(self):
         rospy.init_node(self._node_name)
         self._pub = rospy.Publisher("scene_objects", MarkerArray, queue_size=1)
+
+        self._interactive_marker_server = InteractiveMarkerServer('simple_marker')
+        int_marker = InteractiveMarker()
+        int_marker.header.frame_id = self._base_frame_id
+        int_marker.name = 'object_center'
+        int_marker.description = 'Object Center'
+        int_marker.pose.position = Point(0.0, 0.0, 0.78)
+        int_marker.scale = 0.03
+        box_marker = self._make_marker(Marker.SPHERE)
+        box_marker.pose = int_marker.pose
+        box_marker.scale = Vector3(0.005, 0.005, 0.005)
+        box_marker.color = ColorRGBA(1, 0, 0, 0.5)
+
+        control = InteractiveMarkerControl()
+        control.always_visible = True
+        control.markers.append(box_marker)
+        int_marker.controls.append(control)
+
+        control = InteractiveMarkerControl()
+        control.name = 'move_x'
+        control.orientation.w = 1
+        control.orientation.x = 1
+        control.orientation.y = 0
+        control.orientation.z = 0
+        normalizeQuaternion(control.orientation)
+        control.interaction_mode = InteractiveMarkerControl.MOVE_AXIS
+        control.orientation_mode = InteractiveMarkerControl.FIXED
+        int_marker.controls.append(control)
+
+        control = InteractiveMarkerControl()
+        control.name = 'move_y'
+        control.orientation.w = 1
+        control.orientation.x = 0
+        control.orientation.y = 1
+        control.orientation.z = 0
+        normalizeQuaternion(control.orientation)
+        control.interaction_mode = InteractiveMarkerControl.MOVE_AXIS
+        control.orientation_mode = InteractiveMarkerControl.FIXED
+        int_marker.controls.append(control)
+
+        control = InteractiveMarkerControl()
+        control.name = 'move_z'
+        control.orientation.w = 1
+        control.orientation.x = 0
+        control.orientation.y = 0
+        control.orientation.z = 1
+        normalizeQuaternion(control.orientation)
+        control.interaction_mode = InteractiveMarkerControl.MOVE_AXIS
+        control.orientation_mode = InteractiveMarkerControl.FIXED
+        int_marker.controls.append(control)
+        
+        self._interactive_marker_server.insert(int_marker, self.processInteractiveMarkerFeedback)
+        self._interactive_marker_server.applyChanges()
+
+        self._object_position = np.array([0, 0, 0.78])
+
         self.rate = rospy.Rate(30)
-        self._base_frame_id = "map"
+
+    def processInteractiveMarkerFeedback(self, feedback):
+        #  print(feedback.pose.position.x, ', ', feedback.pose.position.y, ', ', feedback.pose.position.z)
+        p = feedback.pose.position
+        self._object_position = np.array([p.x, p.y, p.z])
+
+    def getObjectPosition(self):
+        return self._object_position
 
     def show(self):
         self._pub.publish(self._markerArray)
@@ -93,7 +168,7 @@ class RVizClient:
 
         self._markerArray.markers.append(marker)
 
-    def draw_arrows(self, tails, tips, rgba=[0.2, 0.5, 1.0, 0.3], scale=[0.0015, 0.003, 0.002]):
+    def draw_arrows(self, tails, tips, rgba=[0.2, 0.5, 1.0, 0.3], scale=[0.001, 0.001, 0.000]):
         """
             This methods is very slow because it sends a topic for each arrow.
         """
