@@ -182,7 +182,7 @@ def pick_direction_plan(y_pred, bin_state, object_center, object_radius, scale=[
     def f_objective(x):
         return -f_target(fps, fg_vecs, object_center, x=x)
 
-    result = minimize(f_objective, x0=np.array([0, 0, 1, 0, 0, 1]), constraints=cons)
+    result = minimize(f_objective, x0=np.array([0, 0, 1, 0, 0, 1]), constraints=cons, method='SLSQP')
     print(result)
     pick_direction = result.x[:3]
     pick_omega = result.x[3:]
