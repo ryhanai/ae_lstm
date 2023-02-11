@@ -5,6 +5,7 @@ import numpy as np
 import scipy
 from scipy.optimize import minimize
 import matplotlib.pyplot as plt
+import quaternion
 from force_estimation import force_estimation_v2_1 as fe
 from force_estimation import force_distribution_viewer
 from force_estimation import forcemap
@@ -172,7 +173,7 @@ def f_target(fps,
     return np.sum(fg_vecs * (delta * dp))
 
 
-def pick_direction_plan(y_pred, bin_state, object_center, object_radius, scale=[0.005, 0.01, 0.004]):
+def pick_direction_plan(y_pred, bin_state, object_center, object_radius, scale=[0.005, 0.02, 0.01]):
     fps, fg_vecs = f(y_pred, object_center, object_radius)
     viewer.publish_bin_state(bin_state, fmap, draw_fmap=False, draw_force_gradient=False)
     viewer.draw_vector_field(fps, fg_vecs, scale=0.3)
@@ -188,7 +189,17 @@ def pick_direction_plan(y_pred, bin_state, object_center, object_radius, scale=[
     pick_omega = result.x[3:]
 
     viewer.rviz_client.draw_arrow(object_center, object_center + pick_direction * 0.1, [1, 0, 1, 1], scale)
-    viewer.rviz_client.draw_arrow(object_center, object_center + pick_omega * 0.1, [1, 1, 0, 1], scale)
+    viewer.rviz_client.draw_arrow(object_center, object_center + pick_omega * 0.05, [1, 1, 0, 1], [0.002, 0, 0])
+
+    ez = pick_omega
+    ey = np.cross([1, 0, 0], ez)
+    ex = np.cross(ey, ez)
+    q = quaternion.from_rotation_matrix(np.transpose(np.stack([ex, ey, ez])))
+    quat = np.array([q.x, q.y, q.z, q.w])
+    viewer.rviz_client.draw_mesh("package://force_estimation/meshes_extra/rotation.dae",
+                                 (object_center, quat),
+                                 (1., 1., 0., 1.),
+                                 (0.6, 0.6, 1.0))
 
     viewer.rviz_client.show()
     return fps, fg_vecs, pick_direction
@@ -224,3 +235,35 @@ def virtual_pick(bin_state0, pick_vector, pick_moment, object_name='011_banana',
 
     for i in range(repeat):
         do_virtual_pick()
+
+
+def restore_scene(n):
+    """
+    restore the specified scene in the simulator
+
+    Args:
+        n (integer): number of the test scene)
+
+    Returns:
+        None
+
+    """
+
+
+def do_pick(object_name):
+    """
+    
+    """
+    poses_before_pick = get_object_poses()
+    v, omega = pick_direction_plan_sim()
+    move_with_screw(object_name, v, omega)
+    move_straight_up(object_name)
+    poses_after_pick = get_object_poses()
+    cost = evaluate_disturbance(poses_before_pick, poses_after_pick)
+    return cost
+
+
+def get_object_poses():
+    """
+    
+    """

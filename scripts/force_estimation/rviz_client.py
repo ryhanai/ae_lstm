@@ -104,7 +104,7 @@ class RVizClient:
         self._markerArray = MarkerArray()
         self._markerArray.markers.append(markerD)
 
-    def draw_mesh(self, mesh_file, pose, rgba):
+    def draw_mesh(self, mesh_file, pose, rgba, scale=[1., 1., 1.]):
         marker = self._make_marker(Marker.MESH_RESOURCE)
         marker.mesh_resource = mesh_file
         marker.mesh_use_embedded_materials = True
@@ -121,9 +121,9 @@ class RVizClient:
         marker.color.g = rgba[1]
         marker.color.b = rgba[2]
         marker.color.a = rgba[3]
-        marker.scale.x = 1
-        marker.scale.y = 1
-        marker.scale.z = 1
+        marker.scale.x = scale[0]
+        marker.scale.y = scale[1]
+        marker.scale.z = scale[2]
 
         self._markerArray.markers.append(marker)
 
