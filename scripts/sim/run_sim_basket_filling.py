@@ -69,6 +69,27 @@ objects = {
     '061_foam_brick': 0.059,
 }
 
+center_of_objects = {
+    '004_sugar_box': [-0.01, -0.018, 0.09],
+    '005_tomato_soup_can': [-0.01, 0.085, 0.054],
+    '007_tuna_fish_can': [-0.026, -0.021, 0.015],
+    '008_pudding_box': [0.004, 0.02, 0.02],
+    '009_gelatin_box': [-0.022, -0.007, 0.014],
+    '010_potted_meat_can': [-0.035, -0.026, 0.04],
+    '011_banana': [-0.013, 0.013, 0.019],
+    '012_strawberry': [-0.001, 0.017, 0.022],
+    '013_apple': [0.001, -0.001, 0.04],
+    '014_lemon': [-0.011, 0.024, 0.027],
+    '016_pear': [-0.015, 0.009, 0.03],
+    '017_orange': [-0.007, -0.015, 0.038],
+    '026_sponge': [-0.015, 0.019, 0.01],
+    '040_large_marker': [-0.036, -0.002, 0.01],
+    '055_baseball': [-0.01, -0.045, 0.04],
+    '056_tennis_ball': [0.008, -0.041, 0.035],
+    '061_foam_brick': [-0.018, 0.019, 0.025],
+}
+
+
 preferred_poses = {
     # (pose, center of placing area)
     '004_sugar_box': [([0, 0, 0], [0.01, 0.015]), ([math.pi / 2, -math.pi / 2, 0], [-0.02, 0.08]), ([-math.pi/2, -math.pi/2, 0], [0.02, -0.008])],
@@ -115,6 +136,13 @@ class ObjectProxy:
 
     def reset_pose(self):
         set_pose(self.body, self.default_pose)
+
+
+def get_object_center(name):
+    body = object_cache.get(name).get_body()
+    pose = S.get_pose(body)
+    center = center_of_objects[name]
+    return env.multiplyTransforms((center, [0,0,0,1]), pose)[0]
 
 
 def load_objects():
