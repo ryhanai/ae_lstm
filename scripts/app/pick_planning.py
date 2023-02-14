@@ -156,7 +156,8 @@ pick_example_real = [
 # )
 cons = (
     {'type': 'eq', 'fun': lambda x: scipy.linalg.norm(x[:3]) - 1},
-    {'type': 'eq', 'fun': lambda x: scipy.linalg.norm(x[3:]) - 1}
+    {'type': 'eq', 'fun': lambda x: scipy.linalg.norm(x[3:6]) - 1},
+    {'type': 'eq', 'fun': lambda x: np.abs(x[6])},
 )
 
 
@@ -207,7 +208,7 @@ def pick_direction_plan(y_pred, bin_state, object_center, object_radius, scale=[
                                  0.1 + 0.6 * np.abs(pick_omega) * np.array([1., 1., 1.]))
 
     viewer.rviz_client.show()
-    return fps, fg_vecs, pick_direction
+    return fps, fg_vecs, pick_direction, pick_rot_axis, pick_omega
 
 
 def pick_direction_plan_sim(n=25, object_center=[0.03, -0.02, 0.78], object_radius=0.05, alpha=1.0):

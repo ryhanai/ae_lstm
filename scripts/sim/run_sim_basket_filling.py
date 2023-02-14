@@ -142,7 +142,7 @@ def get_object_center(name):
     body = object_cache.get(name).get_body()
     pose = S.get_pose(body)
     center = center_of_objects[name]
-    return env.multiplyTransforms((center, [0,0,0,1]), pose)[0]
+    return env.multiplyTransforms(pose, (center, [0,0,0,1]))[0]
 
 
 def load_objects():
