@@ -3,6 +3,7 @@ from sim import run_sim_basket_filling as s
 import numpy as np
 import scipy.linalg
 import quaternion
+import pandas as pd
 from core.utils import *
 
 
@@ -148,22 +149,56 @@ def do_pick(scene_number, object_name, v=0.3, algorithm='fmap'):
     pick_v2 = np.array([0, 0, v])
     history = move_with_screw(object_name, pick_screw, pick_v2)
     poses_after_pick = get_object_poses(object_name)
-    cost = eval_disturbance(poses_before_pick, poses_after_pick)
-    print(cost)
-    return history
+    return history, pick_screw
 
 
-def test(scene_number, target_name):
+def test_single_pick(scene_number, target_name):
     restore_scene(scene_number)
-    history_fmap = do_pick(scene_number, target_name, algorithm='fmap')
+    s.p.performCollisionDetection()
+    initial_cps = s.p.getContactPoints()
+    
+    result = {}
+    history_fmap, pick_screw = do_pick(scene_number, target_name, algorithm='fmap')
     restore_scene(scene_number)
-    history_up = do_pick(scene_number, target_name, algorithm='up')
+    history_up, _ = do_pick(scene_number, target_name, algorithm='up')
     
     mvf, mdf, mavf, madf = analyze(history_fmap)
-    message('FMAP: max linear vel = {:.5f}[m/s], max linear disp = {:.5f}[m], max angular vel = {:.5f}[rad/s], max angular disp = {:.5f}[rad/s]'.format(mvf, mdf, mavf, madf))
+    message('FMAP: max linear vel = {:.5f}[m/s], max linear disp = {:.5f}[m], max angular vel = {:.5f}[rad/s], max angular disp = {:.5f}[rad]'.format(mvf, mdf, mavf, madf))
     mvu, mdu, mavu, madu = analyze(history_up)
-    message('UP: max linear vel = {:.5f}[m/s], max linear disp = {:.5f}[m], max angular vel = {:.5f}[rad/s], max angular disp = {:.5f}[rad/s]'.format(mvu, mdu, mavu, madu))
+    message('UP: max linear vel = {:.5f}[m/s], max linear disp = {:.5f}[m], max angular vel = {:.5f}[rad/s], max angular disp = {:.5f}[rad]'.format(mvu, mdu, mavu, madu))
 
+    result['scene number'] = scene_number
+    result['target'] = target_name
+    result['initial collisions'] = initial_cps
+    result['pick screw'] = pick_screw
+    result['metrics'] = {'fmap': {'max linear vel': mvf,
+                                  'max linear disp': mdf,
+                                  'max angular vel': mavf,
+                                  'max augular disp': madf},
+                         'up': {'max linear vel': mvu,
+                                'max linear disp': mdu,
+                                'max angular vel': mavu,
+                                'max augular disp': madu}
+                                }
+
+    return result                          
+
+
+def test_single_scene(scene_number):
+    """
+    try picking all the objects in the scene.
+    """
+    message('scene = {}'.format(scene_number))
+    result_for_scene = []
+    for name, pose in test_data[2][scene_number]:
+        result_for_scene.append(test_single_pick(scene_number, name))
+    pd.to_pickle(result_for_scene, 'picking_results/{}.pkl'.format(scene_number))
+
+
+def test(scene_numbers=range(3)):
+    for n in scene_numbers:
+        test_single_scene(n)
+ 
 
 s.load_objects()
 
