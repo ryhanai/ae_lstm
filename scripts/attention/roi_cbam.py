@@ -323,13 +323,14 @@ if args.task == 'train':
 elif args.task == 'test':
     if args.dataset == 'reaching-real' or args.dataset == 'reaching-real-destructor':
         cp = 'ae_cp.reaching-real.weighted_feature_prediction.20221213011838'
-        cp_epoch = 192
+        cp_epoch = None
+        # cp_epoch = 192
     elif args.dataset == 'kitting':
-        cp = None
-        cp_epoch = 100
+        cp = 'ae_cp.kitting.weighted_feature_prediction.20221210012310'
+        cp_epoch = None
     elif args.dataset == 'liquid-pouring':
         cp = None
-        cp_epoch = 100
+        cp_epoch = None
     val_ds = Dataset(args.dataset, mode='test')
     val_ds.load(image_size=input_image_size)
     tr = Tester(wf_predictor, val_ds, checkpoint_file=cp, checkpoint_epoch=cp_epoch)

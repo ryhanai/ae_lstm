@@ -43,8 +43,11 @@ class Trainer:
         self.checkpoint_save_path = os.path.join(d, f, 'cp-{epoch:04d}-{val_loss:.4e}.ckpt')
 
         if checkpoint_file:
-            cp_index_file = glob.glob(os.path.join(d, f, 'cp-{:04d}*.ckpt.index'.format(checkpoint_epoch)))[0]
-            self.checkpoint_load_path = re.sub('\.index', '', cp_index_file)
+            if type(checkpoint_epoch) == int:
+                cp_index_file = glob.glob(os.path.join(d, f, 'cp-{:04d}*.ckpt.index'.format(checkpoint_epoch)))[0]
+                self.checkpoint_load_path = re.sub('\.index', '', cp_index_file)
+            else:
+                self.checkpoint_load_path = os.path.join(d, f, 'cp.ckpt')
             print('load weights from ', self.checkpoint_load_path)
             self.model.load_weights(self.checkpoint_load_path)
 
