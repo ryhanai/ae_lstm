@@ -30,7 +30,7 @@ dof = 7
 class WeightedFeaturePredictorModel(tf.keras.Model):
     def __init__(self, image_encoder, *args, **kargs):
         super(WeightedFeaturePredictorModel, self).__init__(*args, **kargs)
-        tracker_names = ['image_loss', 'joint_loss', 'loss']
+        tracker_names = ['image_loss', 'joint_loss', 'attention_loss', 'loss']
         self.train_trackers = {}
         self.test_trackers = {}
         for n in tracker_names:
@@ -46,42 +46,8 @@ class WeightedFeaturePredictorModel(tf.keras.Model):
         batch_size = tf.shape(x_image)[0]
         input_noise = tf.random.uniform(shape=(batch_size, 2), minval=-1, maxval=1)
 
-        image_loss = 0.0
-        joint_loss = 0.0
-        y_images, y_joints = y
-        y_images_tr = tf.transpose(y_images, [1, 0, 2, 3, 4])
-        y_joints_tr = tf.transpose(y_joints, [1, 0, 2])
-
         with tf.GradientTape() as tape:
-            for n in range(self.n_steps):
-                pred_image, pred_joint, attention_map = self((x_image, x_joint, input_noise), training=True) # Forward pass
-
-                y_image_aug = translate_image(y_images_tr[n], input_noise)
-                # image_loss += tf.reduce_mean(tf.square(y_image_aug - pred_image))
-
-                y_image_aug = tf.expand_dims(y_image_aug, 0)
-                y_image_augs = tf.transpose(tf.tile(y_image_aug, [20, 1, 1, 1, 1]), [1, 0, 2, 3, 4])
-                y_image_features = self._image_encoder(y_image_augs)
-                y_image_feature = tf.transpose(y_image_features, [1, 0, 2, 3, 4])[0]
-                image_loss += tf.reduce_mean(tf.square(y_image_feature - pred_image))
-
-                joint_loss += tf.reduce_mean(tf.square(y_joints_tr[n] - pred_joint))
-
-                if n < self.n_steps:
-                    x_image_tr = tf.transpose(x_image, [1, 0, 2, 3, 4])
-                    x_image_tr_list = tf.unstack(x_image_tr)
-                    x_image_tr_list[1:].append(pred_image)
-                    x_image_tr = tf.stack(x_image_tr_list)
-                    x_image = tf.transpose(x_image_tr, [1, 0, 2, 3, 4])
-                    x_joint_tr = tf.transpose(x_joint, [1, 0, 2])
-                    x_joint_tr_list = tf.unstack(x_joint_tr)
-                    x_joint_tr_list[1:].append(pred_joint)
-                    x_joint_tr = tf.stack(x_joint_tr_list)
-                    x_joint = tf.transpose(x_joint_tr, [1, 0, 2])
-
-            image_loss /= self.n_steps
-            joint_loss /= self.n_steps
-            loss = image_loss + joint_loss
+            image_loss, joint_loss, attention_loss, loss = self.compute_loss(data, input_noise)
 
         trainable_vars = self.trainable_variables
         gradients = tape.gradient(loss, trainable_vars)
@@ -89,6 +55,7 @@ class WeightedFeaturePredictorModel(tf.keras.Model):
 
         self.train_trackers['image_loss'].update_state(image_loss)
         self.train_trackers['joint_loss'].update_state(joint_loss)
+        self.train_trackers['attention_loss'].update_state(attention_loss)
         self.train_trackers['loss'].update_state(loss)
         return dict([(trckr[0], trckr[1].result()) for trckr in self.train_trackers.items()])
 
@@ -98,10 +65,21 @@ class WeightedFeaturePredictorModel(tf.keras.Model):
         batch_size = tf.shape(x_image)[0]
         input_noise = tf.zeros(shape=(batch_size, 2))
 
+        image_loss, joint_loss, attention_loss, loss = self.compute_loss(data, input_noise)
+
+        self.test_trackers['image_loss'].update_state(image_loss)
+        self.test_trackers['joint_loss'].update_state(joint_loss)
+        self.test_trackers['attention_loss'].update_state(attention_loss)        
+        self.test_trackers['loss'].update_state(loss)
+        return dict([(trckr[0], trckr[1].result()) for trckr in self.test_trackers.items()])
+
+    def compute_loss(self, data, input_noise):
+        x, y = data
+        x_image, x_joint = x
+
         image_loss = 0.0
         joint_loss = 0.0
         y_images, y_joints = y
-
         y_images_tr = tf.transpose(y_images, [1, 0, 2, 3, 4])
         y_joints_tr = tf.transpose(y_joints, [1, 0, 2])
 
@@ -109,10 +87,17 @@ class WeightedFeaturePredictorModel(tf.keras.Model):
             pred_image, pred_joint, attention_map = self((x_image, x_joint, input_noise), training=False)  # Forward pass
 
             y_image_aug = translate_image(y_images_tr[n], input_noise)
-            image_loss += tf.reduce_mean(tf.square(y_image_aug - pred_image))
-            joint_loss += tf.reduce_mean(tf.square(y_joints_tr[n] - pred_joint))
+            # image_loss += tf.reduce_mean(tf.square(y_image_aug - pred_image))
 
-            if n < self.n_steps:
+            y_image_aug = tf.expand_dims(y_image_aug, 0)
+            y_image_augs = tf.transpose(tf.tile(y_image_aug, [time_window_size, 1, 1, 1, 1]), [1, 0, 2, 3, 4])
+            y_image_features = self._image_encoder(y_image_augs)
+            y_image_feature = tf.transpose(y_image_features, [1, 0, 2, 3, 4])[0]
+
+            # image_loss += tf.reduce_mean(tf.square(attention_map * y_image_feature - pred_image))
+            # joint_loss += tf.reduce_mean(tf.square(y_joints_tr[n] - pred_joint))
+
+            if n < self.n_steps - 1:
                 x_image_tr = tf.transpose(x_image, [1, 0, 2, 3, 4])
                 x_image_tr_list = tf.unstack(x_image_tr)
                 x_image_tr_list[1:].append(pred_image)
@@ -123,15 +108,15 @@ class WeightedFeaturePredictorModel(tf.keras.Model):
                 x_joint_tr_list[1:].append(pred_joint)
                 x_joint_tr = tf.stack(x_joint_tr_list)
                 x_joint = tf.transpose(x_joint_tr, [1, 0, 2])
+            else:
+                image_loss = tf.reduce_mean(tf.square(attention_map * y_image_feature - pred_image))
+                joint_loss = tf.reduce_mean(tf.square(y_joints_tr[n] - pred_joint))
+                attention_loss = tf.square(tf.reduce_mean(attention_map) - 0.2)
 
-        image_loss /= self.n_steps
-        joint_loss /= self.n_steps
-        loss = image_loss + joint_loss
-
-        self.test_trackers['image_loss'].update_state(image_loss)
-        self.test_trackers['joint_loss'].update_state(joint_loss)
-        self.test_trackers['loss'].update_state(loss)
-        return dict([(trckr[0], trckr[1].result()) for trckr in self.test_trackers.items()])
+        # image_loss /= self.n_steps
+        # joint_loss /= self.n_steps
+        loss = image_loss + joint_loss + attention_loss
+        return image_loss, joint_loss, attention_loss, loss
 
     @property
     def metrics(self):
@@ -243,25 +228,29 @@ class Tester(trainer.Trainer):
                                                          add_roi=False)
             self.val_data_loaded = True
 
-    def predict_images(self, random_shift=True, return_data=False):
+    def predict_images(self, return_data=False, save_to_file=False, normalize_for_visualization=False):
         x, y = next(self.val_gen)
 
-        if random_shift:
-            noise = tf.zeros(shape=(x[0].shape[0], 2))
-            y_pred = self.model.predict(x+(noise,))
-        else:
-            y_pred = self.model.predict(x)
-
+        noise = tf.zeros(shape=(x[0].shape[0], 2))
+        y_pred = self.model.predict(x+(noise,))
         predicted_images, predicted_joints, attention_map = y_pred
 
         visualize_ds(x[0][:,-1,:,:,:])
-        visualize_ds(predicted_images)
+        if save_to_file:
+            plt.savefig('test_rgb.png')
+            plt.close()
 
-        # a = attention_map[:,-1]
-        a = attention_map
-        a /= (np.max(a) - np.min(a))
+        if normalize_for_visualization:
+            a = attention_map / np.max(attention_max)
+        else:
+            a = attention_map
         visualize_ds(a)
-        plt.show()
+
+        if save_to_file:
+            plt.savefig('test_attention.png')
+            plt.close()
+        else:
+            plt.show()
         if return_data:
             return x, y_pred
 
@@ -302,7 +291,8 @@ class Tester(trainer.Trainer):
 
             cm = plt.get_cmap('viridis')
             a = tf.squeeze(attention_maps[0])
-            a = np.array(list(map(cm, a*5.)))[:, :, :3]
+            a = np.array(list(map(cm, a*3.)))[:, :, :3]
+            # a = np.array(list(map(cm, a*5.)))[:, :, :3]
             resized_attention_map = tf.image.resize(a, b[0].shape[:2])
 
             if out_roi_image:
@@ -314,6 +304,28 @@ class Tester(trainer.Trainer):
 
         create_anim_gif_from_images(results, out_filename='estimated_roi_g{:05d}.gif'.format(group_num))
 
+
+class CustomCallback(tf.keras.callbacks.Callback):
+    def __init__(self, val_gen, save_dir='.'):
+        self._val_gen = val_gen
+        self._save_dir = save_dir
+
+    def on_epoch_end(self, epoch, logs=None):
+        print('Evaluating Model...')
+        x, y = next(self._val_gen)
+        noise = tf.zeros(shape=(x[0].shape[0], 2))
+        y_pred = self.model.predict(x+(noise,))
+        predicted_images, predicted_joints, attention_map = y_pred
+
+        visualize_ds(x[0][:,-1,:,:,:])
+        plt.savefig(self._save_dir + '/{:04d}_rgb.png'.format(epoch))
+        plt.close()
+
+        a = attention_map
+        a /= (np.max(a) - np.min(a))
+        visualize_ds(a)
+        plt.savefig(self._save_dir + '/{:04d}_attention.png'.format(epoch))
+        plt.close()
 
 
 parser = argparse.ArgumentParser(description='')
@@ -337,16 +349,18 @@ if args.task == 'train':
     val_ds.load(image_size=input_image_size)
     val_ds.preprocess(time_window_size)
     tr = trainer.TimeSequenceTrainer(predictor, train_ds, val_ds, time_window_size=time_window_size)
+    cb = CustomCallback(tr.val_gen, save_dir='/'.join(tr.checkpoint_save_path.split('/')[:-1]))
+
     if args.start_training:
-        tr.train(epochs=800, save_best_only=False, early_stop_patience=800, reduce_lr_patience=100)
+        tr.train(epochs=500, save_best_only=False, early_stop_patience=300, reduce_lr_patience=100, custom_callbacks=[cb])
 elif args.task == 'test':
     if args.dataset == 'reaching-real' or args.dataset == 'reaching-real-destructor':
         cp = 'ae_cp.reaching-real.weighted_feature_prediction.20221213011838'
         cp_epoch = None
         # cp_epoch = 192
     elif args.dataset == 'kitting':
-        cp = 'ae_cp.kitting.weighted_feature_prediction.20221210012310'
-        cp_epoch = None
+        cp = 'ae_cp.kitting.roi_cbam_v2.20230320143036'
+        cp_epoch = 41
     elif args.dataset == 'liquid-pouring':
         cp = None
         cp_epoch = None

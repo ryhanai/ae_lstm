@@ -89,9 +89,11 @@ def create_anim_gif_for_group(images, rois, group_num, dir='./images'):
         create_anim_gif_from_images(image_files, 'group{:05}.gif'.format(group_num))
 
 
-def visualize_ds(images, rois=[], max_samples=20):
-    if images.shape[-1] == 1:  # gray scale
+def visualize_ds(images, rois=[], max_samples=20, colorize_gray_image=True):
+    if images.shape[-1] == 1 and (not colorize_gray_image):  # gray scale
         images = np.repeat(images, 3, axis=-1)
+    else:
+        images = np.squeeze(images)
 
     samples = min(len(images), max_samples)
 

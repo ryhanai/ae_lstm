@@ -80,7 +80,7 @@ class Trainer:
         # profiler = tf.keras.callbacks.TensorBoard(log_dir='logs',
         #                                           histogram_freq=1,
         #                                           profile_batch='15,25')
-        return cp_callback, early_stop, reduce_lr  # , profiler
+        return [cp_callback, early_stop, reduce_lr]  # , profiler
 
     def train(self, epochs=100, save_best_only=True, early_stop_patience=100, reduce_lr_patience=50):
         xs = []
@@ -96,6 +96,7 @@ class Trainer:
 
         start = time.time()
         callbacks = self.prepare_callbacks(save_best_only, early_stop_patience, reduce_lr_patience)
+        # callbacks.extend(custom_callbacks)
 
         history = self.model.fit(xs, xs,
                                  batch_size=self.batch_size,
@@ -192,9 +193,10 @@ class TimeSequenceTrainer(Trainer):
                                                          add_roi=False)
             self.val_data_loaded = True
 
-    def train(self, epochs=100, save_best_only=True, early_stop_patience=100, reduce_lr_patience=50):
+    def train(self, epochs=100, save_best_only=True, early_stop_patience=100, reduce_lr_patience=50, custom_callbacks=[]):
         start = time.time()
         callbacks = self.prepare_callbacks(save_best_only, early_stop_patience, reduce_lr_patience)
+        callbacks.extend(custom_callbacks)
 
         # train the model
         total_train = self.train_gen.number_of_data()
