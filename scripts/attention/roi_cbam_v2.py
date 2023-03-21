@@ -30,7 +30,7 @@ dof = 7
 class WeightedFeaturePredictorModel(tf.keras.Model):
     def __init__(self, image_encoder, *args, **kargs):
         super(WeightedFeaturePredictorModel, self).__init__(*args, **kargs)
-        tracker_names = ['image_loss', 'joint_loss', 'attention_loss', 'loss']
+        tracker_names = ['image_loss', 'joint_loss', 'loss']
         self.train_trackers = {}
         self.test_trackers = {}
         for n in tracker_names:
@@ -38,16 +38,17 @@ class WeightedFeaturePredictorModel(tf.keras.Model):
             self.test_trackers[n] = tf.keras.metrics.Mean(name='val_'+n)
 
         self._image_encoder = image_encoder
-        self.n_steps = 3
+        self.n_steps = 2
 
     def train_step(self, data):
         x, y = data
         x_image, x_joint = x
         batch_size = tf.shape(x_image)[0]
         input_noise = tf.random.uniform(shape=(batch_size, 2), minval=-1, maxval=1)
+        # input_noise = tf.zeros(shape=(batch_size, 2))
 
         with tf.GradientTape() as tape:
-            image_loss, joint_loss, attention_loss, loss = self.compute_loss(data, input_noise)
+            image_loss, joint_loss, loss = self.compute_loss(data, input_noise)
 
         trainable_vars = self.trainable_variables
         gradients = tape.gradient(loss, trainable_vars)
@@ -55,7 +56,6 @@ class WeightedFeaturePredictorModel(tf.keras.Model):
 
         self.train_trackers['image_loss'].update_state(image_loss)
         self.train_trackers['joint_loss'].update_state(joint_loss)
-        self.train_trackers['attention_loss'].update_state(attention_loss)
         self.train_trackers['loss'].update_state(loss)
         return dict([(trckr[0], trckr[1].result()) for trckr in self.train_trackers.items()])
 
@@ -65,11 +65,10 @@ class WeightedFeaturePredictorModel(tf.keras.Model):
         batch_size = tf.shape(x_image)[0]
         input_noise = tf.zeros(shape=(batch_size, 2))
 
-        image_loss, joint_loss, attention_loss, loss = self.compute_loss(data, input_noise)
+        image_loss, joint_loss, loss = self.compute_loss(data, input_noise)
 
         self.test_trackers['image_loss'].update_state(image_loss)
         self.test_trackers['joint_loss'].update_state(joint_loss)
-        self.test_trackers['attention_loss'].update_state(attention_loss)        
         self.test_trackers['loss'].update_state(loss)
         return dict([(trckr[0], trckr[1].result()) for trckr in self.test_trackers.items()])
 
@@ -87,14 +86,13 @@ class WeightedFeaturePredictorModel(tf.keras.Model):
             pred_image, pred_joint, attention_map = self((x_image, x_joint, input_noise), training=False)  # Forward pass
 
             y_image_aug = translate_image(y_images_tr[n], input_noise)
-            # image_loss += tf.reduce_mean(tf.square(y_image_aug - pred_image))
 
             y_image_aug = tf.expand_dims(y_image_aug, 0)
             y_image_augs = tf.transpose(tf.tile(y_image_aug, [time_window_size, 1, 1, 1, 1]), [1, 0, 2, 3, 4])
             y_image_features = self._image_encoder(y_image_augs)
             y_image_feature = tf.transpose(y_image_features, [1, 0, 2, 3, 4])[0]
 
-            # image_loss += tf.reduce_mean(tf.square(attention_map * y_image_feature - pred_image))
+            # image_loss += tf.reduce_mean(attention_map * tf.square((y_image_feature - pred_image))
             # joint_loss += tf.reduce_mean(tf.square(y_joints_tr[n] - pred_joint))
 
             if n < self.n_steps - 1:
@@ -109,14 +107,14 @@ class WeightedFeaturePredictorModel(tf.keras.Model):
                 x_joint_tr = tf.stack(x_joint_tr_list)
                 x_joint = tf.transpose(x_joint_tr, [1, 0, 2])
             else:
+                # image_loss = tf.reduce_mean(tf.square(attention_map * (y_image_feature - pred_image)))
                 image_loss = tf.reduce_mean(tf.square(attention_map * y_image_feature - pred_image))
                 joint_loss = tf.reduce_mean(tf.square(y_joints_tr[n] - pred_joint))
-                attention_loss = tf.square(tf.reduce_mean(attention_map) - 0.2)
 
         # image_loss /= self.n_steps
         # joint_loss /= self.n_steps
-        loss = image_loss + joint_loss + attention_loss
-        return image_loss, joint_loss, attention_loss, loss
+        loss = image_loss + joint_loss
+        return image_loss, joint_loss, loss
 
     @property
     def metrics(self):
@@ -148,7 +146,7 @@ def model_decoder(input_shape, name='decoder'):
     return decoder
 
 
-def model_weighted_feature_prediction(input_image_shape, time_window_size, image_vec_dim, dof, image_noise=0.2, joint_noise=0.02, use_color_augmentation=False):
+def model_weighted_feature_prediction(input_image_shape, time_window_size, image_vec_dim, dof, image_noise=0.3, joint_noise=0.02, use_color_augmentation=True):
     image_input = tf.keras.Input(shape=((time_window_size,) + input_image_shape))
     joint_input = tf.keras.Input(shape=(time_window_size, dof))
     noise_input = tf.keras.Input(shape=(2,))
@@ -319,13 +317,13 @@ class CustomCallback(tf.keras.callbacks.Callback):
 
         visualize_ds(x[0][:,-1,:,:,:])
         plt.savefig(self._save_dir + '/{:04d}_rgb.png'.format(epoch))
-        plt.close()
+        # plt.close()
 
         a = attention_map
         a /= (np.max(a) - np.min(a))
         visualize_ds(a)
         plt.savefig(self._save_dir + '/{:04d}_attention.png'.format(epoch))
-        plt.close()
+        # plt.close()
 
 
 parser = argparse.ArgumentParser(description='')
@@ -359,8 +357,18 @@ elif args.task == 'test':
         cp_epoch = None
         # cp_epoch = 192
     elif args.dataset == 'kitting':
-        cp = 'ae_cp.kitting.roi_cbam_v2.20230320143036'
-        cp_epoch = 41
+        # cp = 'ae_cp.kitting.roi_cbam_v2.20230320143036'
+        # cp_epoch = 41
+        # cp = 'ae_cp.kitting.roi_cbam_v2.20230320184123'
+        # cp_epoch = 77
+        # cp = 'ae_cp.kitting.roi_cbam_v2.20230320212314'
+        # cp_epoch = 71
+        # cp = 'ae_cp.kitting.roi_cbam_v2.20230321001902'
+        # cp_epoch = 100
+        # cp = 'ae_cp.kitting.roi_cbam_v2.20230321092920'  # 2nd best
+        # cp_epoch = 72
+        cp = 'ae_cp.kitting.roi_cbam_v2.20230321162820'  # best
+        cp_epoch = 151
     elif args.dataset == 'liquid-pouring':
         cp = None
         cp_epoch = None
