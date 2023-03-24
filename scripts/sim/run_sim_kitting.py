@@ -29,7 +29,7 @@ message('ui = {}'.format(args.ui))
 
 # tr = mdl.prepare_for_test()
 
-env = S.SIM(scene_file=args.scene)
+env = S.SIM(scene_file=args.scene, rootdir='../../')
 # S.p.changeDynamics(env.robot, 23, collisionMargin=0.0)
 S.p.changeDynamics(env.target, 0, collisionMargin=-0.03)
 S.p.changeDynamics(env.target, 1, collisionMargin=-0.03)
@@ -304,24 +304,21 @@ def calc_train_data_bias(groups=range(1, 5)):
 
 def rerender(groups=range(1,2), task='reaching'):
     for g in groups:
-        env.clearFrames()
-        env.resetRobot()
+        reset()
         for s in pd.read_pickle('~/Dataset/dataset2/{}/{}/sim_states.pkl'.format(task, g))[1]:
             q = s['jointPosition']
-            p_target = np.array(s['target'][0])
-            env.setObjectPosition(p_target)
-            env.moveArm(q[:6])
+            name = 'target'
+            p_target = s[name]
+            env.setObjectPosition(name, p_target[0], p_target[1])
+            env.setArmJointPositions(q[:6])
+            if q[6] < 0.5:
+                env.setGripperJointPositions(0.65)
+                release_object()
             sync()
             js = env.getJointState()
             img = cam.getImg()
-            print('save:[{}]: {}'.format(env.frameNo, js))
-            d = {'frameNo':env.frameNo, 'jointPosition':js, 'image':img}
-            for k,id in env.objects.items():
-                d[k] = S.p.getBasePositionAndOrientation(id)
-            env.frames.append(d)
-            env.frameNo += 1
-        env.groupNo = g
-        env.writeFrames(cam.getCameraConfig())
+            rec.saveFrame(img, js, env)
+        rec.writeFrames()
 
 
 n_runs = 0
