@@ -74,10 +74,13 @@ def teach():
 
 def teach_procedurally(noise_approach=0.03):
     S.p.setRealTimeSimulation(True)
-    tf_target_approach_noise = (tf_target_approach[0] + noise_approach * (np.random.random(3) - 0.1), tf_target_approach[1])
+    # tf_target_approach_noise = (tf_target_approach[0] + noise_approach * (np.random.random(3) - 0.1), tf_target_approach[1])
 
-    follow_trajectory(generate_trajectory(tf_target_approach_noise))
-    follow_trajectory(generate_trajectory(tf_target_fitted))
+    wps = gen_waypoints()
+    follow_trajectory(generate_trajectory(wps[0], duration=3.5))
+    follow_trajectory(generate_trajectory(wps[1], duration=0.8))
+    follow_trajectory(generate_trajectory(wps[2], duration=1.5))
+    follow_trajectory(generate_trajectory(wps[3], duration=0.8))
     release_object()
     env.setGripperJointPositions(0.65)
     start = time.time()
@@ -103,8 +106,27 @@ tf_approach = ((0.03664122521408607, -0.5315819169452275, 0.963800216862066),
                 0.6339807881054513))
 
 # target
-tf_target = ((0.03975343991738431, -0.6731654428797486, 0.79),
-             (0.0, 0.0, -0.6185583387305793, 0.785738876209435))
+# tf_target = ((0.03975343991738431, -0.6731654428797486, 0.79),
+#              (0.0, 0.0, -0.6185583387305793, 0.785738876209435))
+
+
+def gen_waypoints():
+    pen_id = 4
+    tf_target = get_pose(env.target)
+    tf_pen = get_pose(pen_id)
+    tf_cur = S.p.getLinkState(env.robot, 11)[0:2]
+    tf_grasp = multiply_transforms(invert_transform(tf_pen), tf_cur)
+
+    # poses are defined with respect to the target object pose
+    tf_pen3 = ((-0.01, 0, 0.02), quat_from_euler((0,0,np.pi)))  # pen pose fitted to the hole
+    tf_pen_tip = ((0.073, 0, 0), unit_quat())
+
+    tf_tip1 = multiply_transforms(tf_target, ((0.05,0,0.02), quat_from_euler((0,0.5,0.5))))
+    tf_tip0 = (np.array(tf_tip1[0]) + [0, 0, 0.01], tf_tip1[1])
+    tf_tip2 = multiply_transforms(tf_target, ((0.064,0,0.02), quat_from_euler((0,0.3,0))))
+    tf_tip3 = multiply_transforms(tf_target, ((0.064,0,0.02), quat_from_euler((0,0.06,0))))
+    return [multiply_transforms(multiply_transforms(tf_tip, invert_transform(tf_pen_tip)), tf_grasp) for tf_tip in [tf_tip0, tf_tip1, tf_tip2, tf_tip3]]
+    # return [multiply_transforms(tf_tip, invert_transform(tf_pen_tip)) for tf_tip in [tf_tip0, tf_tip1, tf_tip2, tf_tip3]]
 
 
 # approach waypoint relative to tf_target
@@ -118,13 +140,9 @@ tf_target_fitted = ([-0.13951663,  0.01109836,  0.17042246],
 # tf_hand_pen: <origin rpy="0 -1.0 0" xyz="0.19 0 0.05"/>
 
 
-def generate_trajectory(tf_target_approach):
+def generate_trajectory(tf_goal, duration=3.5):
     tf_cur = S.p.getLinkState(env.robot, 11)[0:2]
-    tf_target = S.p.getBasePositionAndOrientation(env.target)
-    # m_approach = np.dot(transform2homogeneousM(tf_target), transform2homogeneousM(tf_target_approach))
-    tf_approach = multiply_transforms(tf_target[0], tf_target[1], tf_target_approach[0], tf_target_approach[1])
-    # tf_approach = homogeneousM2transform(m_approach)
-    return interpolate_cartesian(tf_cur, tf_approach)
+    return interpolate_cartesian(tf_cur, tf_goal, duration=duration)
 
 
 def goto_waypoint(tf_wp):
@@ -141,8 +159,7 @@ def follow_trajectory(traj):
         rec.saveFrame(img, js, env)      
 
 
-def interpolate_cartesian(tf_cur, tf_goal):
-    duration = 3.5
+def interpolate_cartesian(tf_cur, tf_goal, duration=3.5):
     dt = 0.1
     key_times = [0., duration]
     slerp = Slerp(key_times, R.from_quat([tf_cur[1], tf_goal[1]]))

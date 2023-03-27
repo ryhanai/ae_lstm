@@ -74,9 +74,14 @@ def quat_from_axis_angle(axis, angle): # axis-angle
 def unit_pose():
     return (unit_point(), unit_quat())
 
-def multiply_transforms(p1, q1, p2, q2):
-    return p.multiplyTransforms(p1, q1, p2, q2)
+# def multiply_transforms(p1, q1, p2, q2):
+#     return p.multiplyTransforms(p1, q1, p2, q2)
 
+def multiply_transforms(tf1, tf2):
+    return p.multiplyTransforms(tf1[0], tf1[1], tf2[0], tf2[1])
+
+def invert_transform(tf):
+    return p.invertTransform(tf[0], tf[1])
 
 NULL_ID = -1
 STATIC_MASS = 0
