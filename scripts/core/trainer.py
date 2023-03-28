@@ -82,7 +82,7 @@ class Trainer:
         #                                           profile_batch='15,25')
         return [cp_callback, early_stop, reduce_lr]  # , profiler
 
-    def train(self, epochs=100, save_best_only=True, early_stop_patience=100, reduce_lr_patience=50):
+    def train(self, epochs=200, save_best_only=True, early_stop_patience=150, reduce_lr_patience=50):
         xs = []
         for d in self.train_ds.data:
             for frame in d[1]:

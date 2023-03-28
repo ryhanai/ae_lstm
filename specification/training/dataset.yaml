@@ -18,6 +18,18 @@ kitting:
   validation_groups: range(90,111)
   joint_range_data: range(0,111)
 
+kitting2:
+  directory: 'kitting2'
+  train_groups: range(0,90)
+  validation_groups: range(90,110)
+  joint_range_data: range(0,110)
+
+kitting3:
+  directory: 'kitting3'
+  train_groups: range(0,90)
+  validation_groups: range(90,110)
+  joint_range_data: range(0,110)
+
 kitting-destructor:
   directory: 'kitting-destructor'
   train_groups: range(0, 6)

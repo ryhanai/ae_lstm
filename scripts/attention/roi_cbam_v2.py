@@ -328,7 +328,7 @@ class CustomCallback(tf.keras.callbacks.Callback):
 
 parser = argparse.ArgumentParser(description='')
 parser.add_argument('-t', '--task', type=str, default='test')  # train | test
-parser.add_argument('-d', '--dataset', type=str, default='reaching-real')  # kitting | reaching-real | reaching-real-destructor | liquid-pouring
+parser.add_argument('-d', '--dataset', type=str, default='reaching-real')  # kitting2 | kitting | reaching-real | reaching-real-destructor | liquid-pouring
 parser.add_argument('-s', '--start_training', action='store_true')
 args = parser.parse_args()
 message('task = {}'.format(args.task))
@@ -369,6 +369,12 @@ elif args.task == 'test':
         # cp_epoch = 72
         cp = 'ae_cp.kitting.roi_cbam_v2.20230321162820'  # best
         cp_epoch = 151
+    elif args.dataset == 'kitting2':
+        cp = 'ae_cp.kitting2.roi_cbam_v2.20230327190940'
+        cp_epoch = 200
+    elif args.dataset == 'kitting3':
+        cp = 'ae_cp.kitting3.roi_cbam_v2.20230328145933'
+        cp_epoch = 139
     elif args.dataset == 'liquid-pouring':
         cp = None
         cp_epoch = None
