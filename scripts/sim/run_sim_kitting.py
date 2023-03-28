@@ -34,6 +34,10 @@ env = S.SIM(scene_file=args.scene, rootdir='../../')
 S.p.changeDynamics(env.target, 0, collisionMargin=-0.03)
 S.p.changeDynamics(env.target, 1, collisionMargin=-0.03)
 
+# remove shadow
+S.p.configureDebugVisualizer(lightPosition=[0,0,10000])
+S.p.configureDebugVisualizer(shadowMapIntensity=0.0)
+
 # S.p.setCollisionFilterPair(env.robot, env.cabinet, 23, 0, 0)
 cam = env.getCamera('camera1')
 rec = S.RECORDER_KITTING(cam.getCameraConfig())
@@ -88,6 +92,7 @@ def teach_procedurally(noise_approach=0.03):
         img = cam.getImg()
         js = env.getJointState(min_closed=0.7)
         rec.saveFrame(img, js, env, save_threshold=0.)
+    follow_trajectory(generate_trajectory(wps[2], duration=0.8))
     rec.writeFrames()
 
 
@@ -121,7 +126,7 @@ def gen_waypoints():
     tf_pen3 = ((-0.01, 0, 0.02), quat_from_euler((0,0,np.pi)))  # pen pose fitted to the hole
     tf_pen_tip = ((0.073, 0, 0), unit_quat())
 
-    tf_tip1 = multiply_transforms(tf_target, ((0.05,0,0.02), quat_from_euler((0,0.5,0.5))))
+    tf_tip1 = multiply_transforms(tf_target, ((0.05,0,0.02), quat_from_euler((0,0.4, -0.3 + 0.6 * np.random.random()))))
     tf_tip0 = (np.array(tf_tip1[0]) + [0, 0, 0.01], tf_tip1[1])
     tf_tip2 = multiply_transforms(tf_target, ((0.064,0,0.02), quat_from_euler((0,0.3,0))))
     tf_tip3 = multiply_transforms(tf_target, ((0.064,0,0.02), quat_from_euler((0,0.06,0))))
@@ -202,7 +207,7 @@ roi_hist = []
 predicted_images = []
 
 
-def grasp_object(name='pen', tf_hand_obj=([0.19, 0, 0.05], quat_from_euler((0, -1, 0)))):
+def grasp_object(name='pen'):
     # tf_hand = S.p.getLinkState(env.robot, 11)[0:2] # gripper_base_joint
     # m_hand = transform2homogeneousM(tf_hand)
     # m_hand_pen = transform2homogeneousM(tf_hand_obj)
@@ -210,6 +215,10 @@ def grasp_object(name='pen', tf_hand_obj=([0.19, 0, 0.05], quat_from_euler((0, -
     # tf_pen = homogeneousM2transform(m_pen)
     # env.setObjectPosition('pen', tf_pen[0], tf_pen[1])
     # sync()
+
+    grasp_pos = np.array([0.19, 0, 0.05]) + np.array([0.019, 0, 0.005]) * (np.random.random(3) - 0.5)
+    grasp_ori_euler = np.array([0, -1, 0]) + np.array([0, 0.2, 0]) * (np.random.random(3) - 0.5)
+    tf_hand_obj=(grasp_pos, quat_from_euler(grasp_ori_euler))
 
     cstr = S.p.createConstraint(
         parentBodyUniqueId=env.robot,
@@ -234,7 +243,7 @@ def release_object():
 def reset(target_pose=None, relocate_target=True):
     env.resetRobot()
     sync()
-    dp = np.append(np.array([-0.15, -0.2]) + 0.28 * np.random.random(2), -0.03 + 0.06 * np.random.random())
+    dp = np.append(np.array([0.0, -0.2]) + 0.2 * np.random.random(2), -0.03 + 0.06 * np.random.random())
     env.moveEF(dp)
 
     if relocate_target:
@@ -244,8 +253,8 @@ def reset(target_pose=None, relocate_target=True):
             # target_ori = S.p.getQuaternionFromEuler([0,0,0])
 
             # 'reaching_2ways_scene'
-            target_pos = np.append([0.0, 0.3] + 0.2 * np.random.random(2), 0.73)
-            target_ori = S.p.getQuaternionFromEuler(np.append([0,0], -0.5 + 1.0*np.random.random(1)))
+            target_pos = np.append([0.0, -0.75] + 0.2 * np.random.random(2), 0.73)
+            target_ori = S.p.getQuaternionFromEuler(np.append([0,0], -1.5 + 1.0*np.random.random(1)))
         else:
             target_pos, target_ori = target_pose
         env.setObjectPosition('target', target_pos, target_ori)
