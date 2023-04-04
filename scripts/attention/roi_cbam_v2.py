@@ -16,8 +16,8 @@ from core.utils import *
 from core.model import *
 from core import generator
 from core import trainer
-import attention_map2roi
-import AttentionLSTMCell
+from attention import attention_map2roi
+from attention import AttentionLSTMCell
 
 os.environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
 
@@ -226,6 +226,11 @@ class Tester(trainer.Trainer):
                                                          add_roi=False)
             self.val_data_loaded = True
 
+    def predict(self, x):
+        noise = tf.zeros(shape=(x[0].shape[0], 2))
+        y_pred = self.model.predict(x+(noise,))
+        return y_pred
+
     def predict_images(self, return_data=False, save_to_file=False, normalize_for_visualization=False):
         x, y = next(self.val_gen)
 
@@ -251,6 +256,18 @@ class Tester(trainer.Trainer):
             plt.show()
         if return_data:
             return x, y_pred
+
+    def post_process(self, input_images, y_pred, n_sigma=0.5, epsilon=1e-2):
+        predicted_images, predicted_joints, attention_maps = y_pred
+        b, rect = attention_map2roi.apply_filters(input_images, attention_maps, visualize_result=False, return_result=True, n_sigma=n_sigma, epsilon=epsilon)
+
+        cm = plt.get_cmap('viridis')
+        a = tf.squeeze(attention_maps[0])
+        a = np.array(list(map(cm, a*3.)))[:, :, :3]
+        resized_attention_map = tf.image.resize(a, b[0].shape[:2])
+        res = tf.concat([b[0], resized_attention_map], axis=1)
+        return res.numpy()
+
 
     def predict_for_group(self, group_num=0, random_shift=True, out_roi_image=False, n_sigma=1.5, epsilon=1e-2):
         res = []
@@ -326,58 +343,71 @@ class CustomCallback(tf.keras.callbacks.Callback):
         # plt.close()
 
 
-parser = argparse.ArgumentParser(description='')
-parser.add_argument('-t', '--task', type=str, default='test')  # train | test
-parser.add_argument('-d', '--dataset', type=str, default='reaching-real')  # kitting2 | kitting | reaching-real | reaching-real-destructor | liquid-pouring
-parser.add_argument('-s', '--start_training', action='store_true')
-args = parser.parse_args()
-message('task = {}'.format(args.task))
-message('dataset = {}'.format(args.dataset))
-message('start_training = {}'.format(args.start_training))
-
-
 predictor = model_weighted_feature_prediction(input_image_size+(3,), time_window_size, latent_dim, dof, use_color_augmentation=True)
 
 
-if args.task == 'train':
-    train_ds = Dataset(args.dataset, mode='train')
-    train_ds.load(image_size=input_image_size)
-    train_ds.preprocess(time_window_size)
-    val_ds = Dataset(args.dataset, mode='test')
-    val_ds.load(image_size=input_image_size)
-    val_ds.preprocess(time_window_size)
-    tr = trainer.TimeSequenceTrainer(predictor, train_ds, val_ds, time_window_size=time_window_size)
-    cb = CustomCallback(tr.val_gen, save_dir='/'.join(tr.checkpoint_save_path.split('/')[:-1]))
+def prepare(task, dataset):
+    if task == 'train':
+        train_ds = Dataset(dataset, mode='train')
+        train_ds.load(image_size=input_image_size)
+        train_ds.preprocess(time_window_size)
+        val_ds = Dataset(dataset, mode='test')
+        val_ds.load(image_size=input_image_size)
+        val_ds.preprocess(time_window_size)
+        tr = trainer.TimeSequenceTrainer(predictor, train_ds, val_ds, time_window_size=time_window_size)
+        return tr
+    elif task == 'test':
+        if dataset == 'reaching-real' or dataset == 'reaching-real-destructor':
+            cp = 'ae_cp.reaching-real.weighted_feature_prediction.20221213011838'
+            cp_epoch = None
+            # cp_epoch = 192
+        elif dataset == 'kitting':
+            # cp = 'ae_cp.kitting.roi_cbam_v2.20230320143036'
+            # cp_epoch = 41
+            # cp = 'ae_cp.kitting.roi_cbam_v2.20230320184123'
+            # cp_epoch = 77
+            # cp = 'ae_cp.kitting.roi_cbam_v2.20230320212314'
+            # cp_epoch = 71
+            # cp = 'ae_cp.kitting.roi_cbam_v2.20230321001902'
+            # cp_epoch = 100
+            # cp = 'ae_cp.kitting.roi_cbam_v2.20230321092920'  # 2nd best
+            # cp_epoch = 72
+            cp = 'ae_cp.kitting.roi_cbam_v2.20230321162820'  # best
+            cp_epoch = 151
+        elif dataset == 'kitting2':
+            cp = 'ae_cp.kitting2.roi_cbam_v2.20230327190940'
+            cp_epoch = 200
+        elif dataset == 'kitting3':
+            cp = 'ae_cp.kitting3.roi_cbam_v2.20230328145933'
+            cp_epoch = 139
+        elif dataset == 'liquid-pouring':
+            cp = None
+            cp_epoch = None
+        val_ds = Dataset(dataset, mode='test')
+        val_ds.load(image_size=input_image_size)
+        tr = Tester(predictor, val_ds, checkpoint_file=cp, checkpoint_epoch=cp_epoch)
+        return tr
 
+
+def main():
+    parser = argparse.ArgumentParser(description='')
+    parser.add_argument('-t', '--task', type=str, default='test')  # train | test
+    parser.add_argument('-d', '--dataset', type=str, default='reaching-real')  # kitting2 | kitting | reaching-real | reaching-real-destructor | liquid-pouring
+    parser.add_argument('-s', '--start_training', action='store_true')
+    args = parser.parse_args()
+    message('task = {}'.format(args.task))
+    message('dataset = {}'.format(args.dataset))
+    message('start_training = {}'.format(args.start_training))
+
+    tr = prepare(args.task, args.dataset)
+    
+    if args.task == 'train':
+        cb = CustomCallback(tr.val_gen, save_dir='/'.join(tr.checkpoint_save_path.split('/')[:-1]))
     if args.start_training:
         tr.train(epochs=500, save_best_only=False, early_stop_patience=300, reduce_lr_patience=100, custom_callbacks=[cb])
-elif args.task == 'test':
-    if args.dataset == 'reaching-real' or args.dataset == 'reaching-real-destructor':
-        cp = 'ae_cp.reaching-real.weighted_feature_prediction.20221213011838'
-        cp_epoch = None
-        # cp_epoch = 192
-    elif args.dataset == 'kitting':
-        # cp = 'ae_cp.kitting.roi_cbam_v2.20230320143036'
-        # cp_epoch = 41
-        # cp = 'ae_cp.kitting.roi_cbam_v2.20230320184123'
-        # cp_epoch = 77
-        # cp = 'ae_cp.kitting.roi_cbam_v2.20230320212314'
-        # cp_epoch = 71
-        # cp = 'ae_cp.kitting.roi_cbam_v2.20230321001902'
-        # cp_epoch = 100
-        # cp = 'ae_cp.kitting.roi_cbam_v2.20230321092920'  # 2nd best
-        # cp_epoch = 72
-        cp = 'ae_cp.kitting.roi_cbam_v2.20230321162820'  # best
-        cp_epoch = 151
-    elif args.dataset == 'kitting2':
-        cp = 'ae_cp.kitting2.roi_cbam_v2.20230327190940'
-        cp_epoch = 200
-    elif args.dataset == 'kitting3':
-        cp = 'ae_cp.kitting3.roi_cbam_v2.20230328145933'
-        cp_epoch = 139
-    elif args.dataset == 'liquid-pouring':
-        cp = None
-        cp_epoch = None
-    val_ds = Dataset(args.dataset, mode='test')
-    val_ds.load(image_size=input_image_size)
-    tr = Tester(predictor, val_ds, checkpoint_file=cp, checkpoint_epoch=cp_epoch)
+
+    return tr
+
+
+if __name__ == '__main__':
+    tr = main()

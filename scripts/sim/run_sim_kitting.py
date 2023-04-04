@@ -16,18 +16,23 @@ from scipy.interpolate import interp1d
 
 from core.utils import *
 import SIM_KITTING as S
-# import tf
+
 
 parser = argparse.ArgumentParser(description='')
 parser.add_argument('-s', '--scene', type=str, default='kitting_scene.yaml')
-parser.add_argument('-b', '--baseline', action='store_true')
+# parser.add_argument('-b', '--baseline', action='store_true')
+parser.add_argument('-m', '--load_model', action='store_true')
 parser.add_argument('-u', '--ui', type=str, default='none')
 args = parser.parse_args()
 
 message('scene = {}'.format(args.scene))
 message('ui = {}'.format(args.ui))
 
-# tr = mdl.prepare_for_test()
+if args.load_model:
+    message('loading model ...')
+    from attention import roi_cbam_v2 as mdl
+    tr = mdl.prepare(task='test', dataset='kitting3')
+
 
 env = S.SIM(scene_file=args.scene, rootdir='../../')
 # S.p.changeDynamics(env.robot, 23, collisionMargin=0.0)
@@ -267,14 +272,18 @@ def reset(target_pose=None, relocate_target=True):
 
     img0 = captureRGB()
     js0 = env.getJointState()
-    # js0 = normalize_joint_position(js0)
-    # sm.initializeHistory(img0, js0)
     rec.clearFrames()
+
+    # parepare for motion generation
+    js0 = normalize_joint_position(js0)
+    sm.initializeHistory(img0, js0)
+    roi_history = []
+    attention_map_history = []
 
 
 def captureRGB():
     img = cam.getImg()[2][:,:,:3]
-    # img = cv2.resize(img, swap(mdl.input_image_size))
+    img = cv2.resize(img, swap(mdl.input_image_size))
     return img / 255.
 
 
@@ -347,11 +356,24 @@ def rerender(groups=range(1,2), task='reaching'):
         rec.writeFrames()
 
 
+
+def normalize_joint_position(q):
+    return tr.val_ds.normalize_joint_position(q)
+
+
+def unnormalize_joint_position(q):
+    return tr.val_ds.unnormalize_joint_position(q)
+
+
 n_runs = 0
+sm = StateManager(mdl.time_window_size)
+roi_history = []
+attention_map_history = []
 
 
-def run(max_steps=80, anim_gif=False):
+def run(max_steps=50, anim_gif=False):
     global n_runs
+    attention_map_history = []
 
     for i in range(max_steps):
         print('i = ', i)
@@ -360,29 +382,22 @@ def run(max_steps=80, anim_gif=False):
 
         js = normalize_joint_position(js)
         sm.addState(img, js)
-        res = tr.predict(sm.getHistory())
-        if len(res) == 3:
-            imgs, jvs, rois = res
-            if rois.ndim == 3:
-                roi_hist.append(rois[0][0])
-            else:
-                roi_hist.append(rois[0])
-        else:
-            imgs, jvs = res
+        y_pred = tr.predict(sm.getHistory())
+        feat_pred, q_pred, attention_map = y_pred
+        input_image = sm.getHistory()[0][:,-1]
+        attention_map_history.append(tr.post_process(input_image, y_pred))
 
-        predicted_images.append(imgs[0])
-        # plt.imshow(imgs[0])
-        # plt.pause(.01)
-
-        jv = jvs[0]
+        jv = q_pred[0]
         jv = unnormalize_joint_position(jv)
 
         print(jv)
-        env.moveArm(jv[:6])
+        env.setArmJointPositions(jv[:6])
+        if jv[6] < 0.5:
+            release_object()
         sync()
 
     if anim_gif:
-        create_anim_gif_from_images(sm.getFrameImages(), 'run{:0=5}.gif'.format(n_runs), roi_hist, predicted_images)
+        create_anim_gif_from_images(attention_map_history, out_filename='run_{:05d}.gif'.format(n_runs))
     n_runs += 1
 
 
