@@ -138,21 +138,14 @@ pub = rospy.Publisher('/jog_frame', JogFrame, queue_size=1)
 # initial_position = np.array([-0.0778662, 0.36922, -0.187572])
 
 # initial position for 'kitting task'
-# initial_position = np.array([-0.097, 0.5, -0.147])
-# initial_rotation = np.array([-0.720, 0.012, -0.011, 0.694])]
-
-# initial position for 'pen kitting task'
-initial_position = np.array([0.050, 0.561, 0.054])
-initial_rotation = np.array([0.988, 0.153, -0.006, -0.008])
-# RPY (radian) [-3.124, 0.009, 0.308]
-# RPY (degree) [-178.997, 0.537, 17.647]
-
+initial_position = np.array([-0.097, 0.5, -0.147])
+initial_rotation = np.array([-0.720, 0.012, -0.011, 0.694])
 moving_to_initial_position = False
 
 rate = rospy.Rate(15.0)
 
 while not rospy.is_shutdown():
-    # trans = tfBuffer.lookup_transform('base_link', 'tool0', rospy.Time.now(), rospy.Duration(0.2))
+    trans = tfBuffer.lookup_transform('base_link', 'tool0', rospy.Time.now(), rospy.Duration(0.2))
     # p = trans.transform.translation
     # print('translation = ', np.array([p.x, p.y, p.z]))
     # p = trans.transform.rotation
