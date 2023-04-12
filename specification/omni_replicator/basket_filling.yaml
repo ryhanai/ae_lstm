@@ -1,0 +1,51 @@
+# dropped warehouse objects
+# colorful ceiling lights
+lights:
+  light_count: Range(1, 3)
+
+  light_coord_camera_relative: False
+  light_coord: (Uniform(-2, 2), Uniform(-2, 2), 3)
+
+  light_color: Uniform((0.4, 0.4, 0.4), (0.6, 0.6, 0.6))
+  light_intensity: Uniform(5000, 100000)
+  light_radius: 1
+
+
+# warehouse scenario
+scenario_room_enabled: False
+wall_height: 0
+floor_size: 0.5
+
+scenario_model: /home/ryo/Downloads/Collected_ycb_piled_scene/ycb_piled_scene.usd
+
+scenario_class_id: 0
+
+
+# camera
+stereo: False
+camera_coord: (0, 0, 1.358)
+camera_rot: (0, -90, 0)
+
+
+# camera_coord: Uniform((-1, -1, -1), (1, 1, 1))
+# camera_rot: Uniform((-90, -90, -90), (90, 90, 90))
+
+focal_length: 1.88
+focus_distance: 40
+f_stop: 0
+horiz_aperture: 2.7288
+vert_aperture: 1.5498
+
+# output
+output_dir: dataset
+num_scenes: 10
+
+img_width: 1280
+img_height: 720
+
+rgb: True
+groundtruth_visuals: True
+
+# simulate
+physics_simulate_time: 2
+scene_meters_per_unit: 1
