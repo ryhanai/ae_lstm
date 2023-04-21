@@ -70,3 +70,6 @@ def run_orchestrator():
 
     rep.BackendDispatch.wait_until_done()
     rep.orchestrator.stop()
+
+
+run_orchestrator()

@@ -11,9 +11,10 @@ from omni.isaac.core.utils.stage import add_reference_to_stage
 import numpy as np
 import os
 import omni
+from omni.physx.scripts import utils
+import glob
 
-from pxr import Gf, UsdGeom
-from omni.isaac.core.objects import VisualSphere
+from pxr import Gf, Usd, UsdGeom
 import carb
 import omni.usd
 import gc
@@ -22,11 +23,10 @@ import gc
 # assets_root_path = get_assets_root_path()
 # asset_path = assets_root_path + "/Isaac/Robots/Franka/franka_alt_fingers.usd"
 
-my_world = World(stage_units_in_meters=1.0)
-my_world.scene.add_default_ground_plane()
+world = World(stage_units_in_meters=1.0)
+world.scene.add_default_ground_plane()
 
-asset_path = os.environ["HOME"] + "/Downloads/Collected_ycb_piled_scene/ycb_piled_scene.usd"
-# asset_path = os.environ["HOME"] + "/Program/moonshot/ae_lstm/specification/meshes/objects/seria_basket/seria_basket.usd"
+asset_path = os.environ["HOME"] + "/Downloads/Collected_ycb_piled_scene/simple_shelf_scene.usd"
 
 simulation_context = SimulationContext()
 # add_reference_to_stage(usd_path=asset_path, prim_path="/World")
@@ -38,14 +38,16 @@ simulation_context = SimulationContext()
 #     )
 # )
 
-objects = ['_09_gelatin_box', '_61_foam_brick']
+
+number_objects = 5
+usd_files = glob.glob('/home/ryo/Dataset/Konbini/VER002/Seamless/vt2048/*/*/*.usd')[:number_objects]
+objects = [os.path.splitext(s.split("/")[-1])[0] for s in usd_files]
 
 
 def set_translate(prim, new_loc):
     properties = prim.GetPropertyNames()
     if "xformOp:translate" in properties:
         translate_attr = prim.GetAttribute("xformOp:translate")
-
         translate_attr.Set(new_loc)
     elif "xformOp:translation" in properties:
         translation_attr = prim.GetAttribute("xformOp:translate")
@@ -61,27 +63,41 @@ def set_translate(prim, new_loc):
         xform_op.Set(Gf.Matrix4d().SetTranslate(new_loc))
 
 
-prim = my_world.stage.GetPrimAtPath('/World')
-# prim = my_world.stage.DefinePrim('/World/ycb', "Xform")
-prim.GetReferences().AddReference(asset_path)
-ch_prim = my_world.stage.GetPrimAtPath('/World/seria_basket')
-set_translate(ch_prim, Gf.Vec3d([0,0,1.]))
+def create_prim_from_usd(stage, prim_env_path, prim_usd_path, location):
+    envPrim = stage.DefinePrim(prim_env_path, "Xform")
+    envPrim.GetReferences().AddReference(prim_usd_path)
+    set_translate(envPrim, location)
+    return stage.GetPrimAtPath(envPrim.GetPath().pathString)
 
 
-contact_sensors = []
-for o in objects:
-    contact_sensors.append(
-        my_world.scene.add(
-            ContactSensor(
-                prim_path="/World/{}/contact_sensor".format(o),
-                name="{}_cs".format(o),
-                min_threshold=0,
-                max_threshold=10000000,
-                radius=0.5,
-                translation=np.array([0, 0, 0])
-            )
-        )
-    )
+# prim = world.stage.GetPrimAtPath('/World')
+# stage = get_current_stage()
+# scope = UsdGeom.Scope.Define(world.stage, 'Objects')
+
+# prim.GetReferences().AddReference(asset_path)
+# ch_prim = world.stage.GetPrimAtPath('/World/simple_shelf')
+
+create_prim_from_usd(world.stage, '/World/env', asset_path, Gf.Vec3d([0, 0, 0.0]))
+
+for i, usd_file in enumerate(usd_files):
+    pos = np.array([-0.1, -0.1, 0.8]) + 0.2 * np.random.random(3)
+    prim = create_prim_from_usd(world.stage, '/World/object{}'.format(i), usd_file, Gf.Vec3d(list(pos)))
+    utils.setRigidBody(prim, "convexDecomposition", False)
+
+# contact_sensors = []
+# for o in objects:
+#     contact_sensors.append(
+#         my_world.scene.add(
+#             ContactSensor(
+#                 prim_path="/World/{}/contact_sensor".format(o),
+#                 name="{}_cs".format(o),
+#                 min_threshold=0,
+#                 max_threshold=10000000,
+#                 radius=0.5,
+#                 translation=np.array([0, 0, 0])
+#             )
+#         )
+#     )
 
 
 # need to initialize physics getting any articulation..etc
@@ -180,14 +196,14 @@ def is_scene_stable():
         return False
 
 
-sr = my_world.scene._scene_registry
+sr = world.scene._scene_registry
 print(sr._rigid_objects, sr._geometry_objects)
 
 
 while simulation_app.is_running():
-    my_world.step(render=True)
+    world.step(render=True)
     
-    if my_world.is_playing():
+    if world.is_playing():
 
         # while o in objects:
         #     if stable:
@@ -200,7 +216,7 @@ while simulation_app.is_running():
             # print(contact_sensors[0].get_current_frame())
             # print(contact_sensors[0]._contact_sensor_interface.get_contact_sensor_raw_data(contact_sensors[0].prim_path))
 
-        print(read_contact_sensor(contact_sensors[0]))
+#        print(read_contact_sensor(contact_sensors[0]))
         
         # prim = object_prims[objects[0]]
         # pose = omni.usd.utils.get_world_transform_matrix(prim)
@@ -208,8 +224,8 @@ while simulation_app.is_running():
         # quat = pose.ExtractRotation().GetQuaternion()
         # print(trans, quat)
 
-        if my_world.current_time_step_index == 0:
-            my_world.reset()
+        if world.current_time_step_index == 0:
+            world.reset()
 
 #     simulation_context.step(render=True)
 
