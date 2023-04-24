@@ -33,13 +33,6 @@ simulation_context = SimulationContext()
 # add_reference_to_stage(usd_path=asset_path, prim_path="/World")
 
 
-# follow_sphere = my_world.scene.add(
-#     VisualSphere(
-#         name="follow_sphere", prim_path="/World/FollowSphere", radius=0.02, color=np.array([0.7, 0.0, 0.7])
-#     )
-# )
-
-
 usd_files = glob.glob('/home/ryo/Dataset/Konbini/VER002/Seamless/vt2048/*/*/*.usd')
 
 
@@ -66,11 +59,45 @@ def set_translate(prim, new_loc):
         xform_op.Set(Gf.Matrix4d().SetTranslate(new_loc))
 
 
-def create_prim_from_usd(stage, prim_env_path, prim_usd_path, location):
+def create_prim_from_usd(stage, prim_env_path, prim_usd_path, location=[0, 0, 0.1], set_rigid_body=True):
     envPrim = stage.DefinePrim(prim_env_path, "Xform")
     envPrim.GetReferences().AddReference(prim_usd_path)
-    set_translate(envPrim, location)
-    return stage.GetPrimAtPath(envPrim.GetPath().pathString)
+    set_translate(envPrim, Gf.Vec3d(*location))
+    prim = stage.GetPrimAtPath(envPrim.GetPath().pathString)
+    if set_rigid_body:
+        utils.setRigidBody(prim, "convexDecomposition", False)
+    return prim
+
+
+# def set_world_pose(prim, position=[0, 0, 0]):
+#     xform = UsdGeom.Xformable(prim)
+#     xform.ClearXformOpOrder() # Is this necessary?
+#     transform = xform.AddTransformOp()
+#     mat = Gf.Matrix4d()
+#     mat.SetTranslateOnly(Gf.Vec3d(*position))
+#     mat.SetRotateOnly(Gf.Rotation(Gf.Vec3d(0, 0, 1), 0))
+#     transform.Set(mat)
+
+
+contact_sensors = []
+loaded_objects = []
+used_objects = []
+
+
+def reset_object_positions():
+    global used_objects
+    for i, prim in enumerate(loaded_objects):
+        set_translate(prim, Gf.Vec3d(0.05*i, 0, 0))
+    used_objects = []
+
+
+def place_objects(n):
+    global used_objects
+    for prim in np.random.choice(loaded_objects, n):
+        pos = np.array([-0.1, -0.1, 0.8]) + 0.2 * np.random.random(3)
+        set_translate(prim, Gf.Vec3d(*pos))
+        used_objects.append(prim)
+        print(f'LOADED OBJECTS: {loaded_objects}')
 
 
 # prim = world.stage.GetPrimAtPath('/World')
@@ -81,40 +108,32 @@ def create_prim_from_usd(stage, prim_env_path, prim_usd_path, location):
 # ch_prim = world.stage.GetPrimAtPath('/World/simple_shelf')
 
 
-contact_sensors = []
-loaded_objects = []
-
 def create_env():
-    create_prim_from_usd(world.stage, '/World/env', asset_path, Gf.Vec3d([0, 0, 0.0]))
+    create_prim_from_usd(world.stage, '/World/env', asset_path, Gf.Vec3d([0, 0, 0.0]), set_rigid_body=False)
 
 
-def create_objects():
-    number_of_samples = 30
-    global loaded_objects, global_object_number
-
-    for i, usd_file in enumerate(np.random.choice(usd_files, number_of_samples)):
-        pos = np.array([-0.1, -0.1, 0.8]) + 0.2 * np.random.random(3)
-        prim = create_prim_from_usd(world.stage, f'/World/object{i}', usd_file, Gf.Vec3d(list(pos)))
-        utils.setRigidBody(prim, "convexDecomposition", False)
-        loaded_objects.append(get_object_name(usd_file))
-        print(f'LOADED OBJECTS: {loaded_objects}')
+def create_objects(number_of_samples=30):
+    global loaded_objects
+    for i, usd_file in enumerate(usd_files[:number_of_samples]):
+        prim = create_prim_from_usd(world.stage, f'/World/object{i}', usd_file)
+        loaded_objects.append(prim)
 
 
-def delete_objects():
-    global loaded_objects, contact_sensors
-    for i, _ in enumerate(loaded_objects):
-        # world.scene.remove_object(f'{i}_cs')
-        world.scene.clear()
-        prims.delete_prim(f'/World/object{i}')
-    loaded_objects = []
-    contact_sensors = []
+# def delete_objects():
+#     global loaded_objects, contact_sensors
+#     for i, _ in enumerate(loaded_objects):
+#         # world.scene.remove_object(f'{i}_cs')
+#         world.scene.clear()
+#         prims.delete_prim(f'/World/object{i}')
+#     loaded_objects = []
+#     contact_sensors = []
 
 
 def attach_contact_sensors():
     global contact_sensors
     contact_sensors = []
-    for i, name in enumerate(loaded_objects):
-        print(f'ADDING SENSOR TO: {name}')
+    for i, prim in enumerate(loaded_objects):
+        # print(f'ADDING SENSOR TO: {name}')
         contact_sensors.append(
             world.scene.add(
                 ContactSensor(
@@ -127,7 +146,6 @@ def attach_contact_sensors():
                 )
             )
         )
-        print(f'ADDED SENSOR TO: {name}')
 
 
 create_env()
@@ -191,14 +209,6 @@ def get_bin_state():
 # for o in objects:
 #     object_prims[o] = stage.GetPrimAtPath('/World/{}'.format(o))
 
-def set_world_pose(prim, position=Gf.Vec3d(0, 0, 1.5)):
-    xform = UsdGeom.Xformable(prim)
-    # xform.ClearXformOpOrder()
-    transform = xform.AddTransformOp()
-    mat = Gf.Matrix4d()
-    mat.SetTranslateOnly(position)
-    mat.SetRotateOnly(Gf.Rotation(Gf.Vec3d(0, 0, 1), 0))
-    transform.Set(mat)
 
 # prim = object_prims[objects[0]]
 # set_world_pose(prim)
@@ -209,6 +219,7 @@ def set_world_pose(prim, position=Gf.Vec3d(0, 0, 1.5)):
 
 number_of_scenes = 3
 create_objects()
+reset_object_positions()
 attach_contact_sensors()
 
 
@@ -218,13 +229,15 @@ simulation_context.play()
 
 # while simulation_app.is_running():
 for j in range(number_of_scenes):
+    place_objects(5)
+
     #     if world.is_playing():
 
     for n in range(100):
         world.step(render=True)
 
     cs_data = []
-    for i, object_name in enumerate(loaded_objects):
+    for i, prim in enumerate(loaded_objects):
         # contact_sensor = contact_sensors[i]
         # cs_data.append(read_contact_sensor(contact_sensor))
 
@@ -235,7 +248,7 @@ for j in range(number_of_scenes):
         pose = omni.usd.utils.get_world_transform_matrix(prim)
         trans = pose.ExtractTranslation()
         quat = pose.ExtractRotation().GetQuaternion()
-        print(f'SAVE SCENE[{j},{object_name}]:', trans, quat)
+#        print(f'SAVE SCENE[{j},{object_name}]:', trans, quat)
 
     # simulation_context.stop()
     # delete_objects()
