@@ -45,6 +45,32 @@ simulation_context = SimulationContext()
 usd_files = glob.glob('/home/ryo/Dataset/Konbini/VER002/Seamless/vt2048/*/*/*.usd')
 
 
+masses = {
+    '15_TOPPO-ART-pl2048SA': 0.072,
+    '05_JIF-ART-pl2048SA': 0.358,
+    'akaikitsune_mini-ART-pl2048SA': 0.136,
+    '21_MT-KINOKO-ART-pl2048SA': 0.074,
+    '20_MELTYKISS-ART-pl2048SA': 0.050, # not found in csv
+    '07_GREEN-TEA-ART-pl2048SA': 0.040,
+    '14_SHAMPOO-ART-pl2048SA': 0.633,
+    'face_tawel-ART-pl2048SA': 0.179,
+    '18_WAKAME-SOUP-ART-pl2048SA': 0.050,
+    '16_CHOCO-RUSK-ART-pl2048SA': 0.090,
+    '17_BUTTER-COOKIE-ART-pl2048SA': 0.120,
+    '16cha_660-ART-pl2048SA': 0.656,
+    '7i_barley_tea-ART-pl2048SA': 1.508,
+    '2nd_cupnoodle_origin-ART-pl2048SA': 0.077,
+    '11_XYLITOL-ART-pl2048SA': 0.023,
+    '28_KOALAS-MARCH-ART-pl2048SA': 0.050,
+    '19_POCKY-ART-pl2048SA': 0.072,
+    'Panasonic_9v_battery-ART-pl2048SA': 0.044,
+    '7i_edamamearare-ART-pl2048SA': 0.040,
+    '13_CLORETS-ART-pl2048SA': 0.140,
+    'vc_3000_dozen-ART-pl2048SA': 0.090,
+    'Ayataka_pet1l-ART-pl2048SA': 1.006,
+}
+
+
 def set_translate(prim, new_loc):
     properties = prim.GetPropertyNames()
     if "xformOp:translate" in properties:
@@ -64,14 +90,11 @@ def set_translate(prim, new_loc):
         xform_op.Set(Gf.Matrix4d().SetTranslate(new_loc))
 
 
-def create_prim_from_usd(stage, prim_env_path, prim_usd_path, location=[0, 0, 0.1], set_rigid_body=True):
+def create_prim_from_usd(stage, prim_env_path, prim_usd_path, location=[0, 0, 0.1]):
     envPrim = stage.DefinePrim(prim_env_path, "Xform")
     envPrim.GetReferences().AddReference(prim_usd_path)
     set_translate(envPrim, Gf.Vec3d(*location))
     prim = stage.GetPrimAtPath(envPrim.GetPath().pathString)
-    if set_rigid_body:
-        utils.setRigidBody(prim, "convexDecomposition", False)
-        set_mass(prim, kg=0.3)
     return prim
 
 
@@ -106,6 +129,11 @@ class Object:
         self._prim = create_prim_from_usd(world.stage, f'/World/object{object_id}', usd_file)
         self._id = object_id
         self._name = os.path.splitext(usd_file.split("/")[-1])[0]
+        utils.setRigidBody(self._prim, "convexDecomposition", False)
+        for node_prim in Usd.PrimRange(self._prim):
+            for prim in Usd.PrimRange(node_prim):
+                if prim.IsA(UsdGeom.Mesh):
+                    print('SET_MASS: ', self._name, set_mass(prim, kg=masses[self._name]))  # why is this called 3 times?
         self.attach_contact_sensor()
 
     def get_primitive(self):
@@ -149,7 +177,7 @@ def place_objects(n):
     for i, o in enumerate(np.random.choice(loaded_objects, n)):
         prim = o.get_primitive()
         pos_xy = np.array([-0.15, -0.15]) + 0.3 * np.random.random(2)
-        pos_z = 0.74 + 0.01 * i
+        pos_z = 0.74 + 0.03 * i
         set_translate(prim, Gf.Vec3d(pos_xy[0], pos_xy[1], pos_z))
         used_objects.append(o)
 
@@ -181,7 +209,7 @@ def wait_for_stability():
 
 
 def create_env():
-    create_prim_from_usd(world.stage, '/World/env', asset_path, Gf.Vec3d([0, 0, 0.0]), set_rigid_body=False)
+    create_prim_from_usd(world.stage, '/World/env', asset_path, Gf.Vec3d([0, 0, 0.0]))
 
 
 def create_objects(number_of_samples=30):
@@ -222,9 +250,9 @@ def randomize_lights():
     for i in range(number_of_lights):
         prim = world.stage.GetPrimAtPath(f'/World/Light/SphereLight{i}')
         pos_xy = np.array([-2.5, -2.5]) + 5.0 * np.random.random(2)
-        pos_z = 2.0 + 2.0 * np.random.random()
+        pos_z = 2.5 + 1.5 * np.random.random()
         set_translate(prim, Gf.Vec3d(pos_xy[0], pos_xy[1], pos_z))
-        prim.GetAttribute("intensity").Set(2000. + 18000. * np.random.random())
+        prim.GetAttribute("intensity").Set(2000. + 8000. * np.random.random())
         prim.GetAttribute("color").Set(Gf.Vec3f(*(np.array([0.2, 0.2, 0.2]) + 0.6 * np.random.random(3))))
         # prim.GetAttribute("scale").Set(Gf.Vec3f(*(np.array([0.2, 0.2, 0.2]) + 0.6 * np.random.random(3))))        
 
@@ -316,7 +344,7 @@ def get_bin_state():
 # sr = world.scene._scene_registry
 # print(sr._rigid_objects, sr._geometry_objects)
 
-number_of_scenes = 3
+number_of_scenes = 10
 create_objects()
 reset_object_positions()
 
@@ -326,16 +354,12 @@ simulation_context.initialize_physics()
 simulation_context.play()
 
 
-def save(frameNo, rgb, forcemap, bin_state, filtered_cs_data, camera_pose):
+def save(frameNo, rgb, bin_state, contact_raw_data, camera_pose):
     data_dir = 'data/'
     cv2.imwrite(os.path.join(data_dir, 'rgb{:05d}.jpg'.format(frameNo)), cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
     pd.to_pickle(bin_state, os.path.join(data_dir, 'bin_state{:05d}.pkl'.format(frameNo)))
-
-    # filtered_contacts = list(filter(lambda x: scipy.linalg.norm(x['impulse']) > 1e-8, contacts))
-    # contact_positions = np.array([x['position'] for x in filtered_contacts])
-    # impulse_value = np.array([scipy.linalg.norm(x['impulse']) for x in filtered_contacts])
-
-    # return contact_positions, impulse_value, bin_state
+    pd.to_pickle(contact_raw_data, os.path.join(data_dir, 'contact_raw_data{:05d}.pkl'.format(frameNo)))
+    pd.to_pickle(camera_pose, os.path.join(data_dir, 'camera_info{:05d}.pkl'.format(frameNo)))
 
 
 for frameNo in range(number_of_scenes):
@@ -350,26 +374,31 @@ for frameNo in range(number_of_scenes):
 
     rgb = camera.get_current_frame()['rgba'][:, :, :3]
 
-    cs_data = []
+    contact_positions = []
+    impulse_values = []
     bin_state = []
+
     for o in used_objects:
         contact_sensor = o.get_contact_sensor()
-        cs_data.append(read_contact_sensor(contact_sensor))
+        contacts = read_contact_sensor(contact_sensor)
         # print(contact_sensor.get_current_frame())
         # print(contact_sensor_contact_sensor_interface.get_contact_sensor_raw_data(contact_sensor.prim_path))
+
+        for contact in contacts:
+            if scipy.linalg.norm(contact['impulse']) > 1e-8:
+                contact_positions.append(contact['position'])
+                impulse_values.append(scipy.linalg.norm(contact['impulse']))
 
         prim = o.get_primitive()
         pose = omni.usd.utils.get_world_transform_matrix(prim)
         trans = pose.ExtractTranslation()
+        trans = np.array(trans)
         quat = pose.ExtractRotation().GetQuaternion()
+        quat = np.array(list(quat.imaginary) + [quat.real])
         bin_state.append((o.get_name(), (trans, quat)))
     
-    camera_pose = camera.get_world_pose()
-    forcemap = None
-    
-    filtered_cs_data = cs_data
     print(f'SAVE SCENE[{frameNo},{o.get_name()}]:', trans, quat)
-    save(frameNo, rgb, forcemap, bin_state, filtered_cs_data, camera_pose)
+    save(frameNo, rgb, bin_state, (contact_positions, impulse_values), camera.get_world_pose())
 
     # simulation_context.stop()
     # if world.current_time_step_index == 0:
@@ -382,3 +411,4 @@ while simulation_app.is_running():
 
 simulation_context.stop()
 simulation_app.close()
+
