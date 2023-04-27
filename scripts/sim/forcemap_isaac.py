@@ -28,6 +28,8 @@ import omni.usd
 # from omni.isaac.dynamic_control import _dynamic_control
 # dc = _dynamic_control.acquire_dynamic_control_interface()
 
+from force_estimation import forcemap
+
 
 # assets_root_path = get_assets_root_path()
 # asset_path = assets_root_path + "/Isaac/Robots/Franka/franka_alt_fingers.usd"
@@ -63,12 +65,22 @@ masses = {
     '11_XYLITOL-ART-pl2048SA': 0.023,
     '28_KOALAS-MARCH-ART-pl2048SA': 0.050,
     '19_POCKY-ART-pl2048SA': 0.072,
-    'Panasonic_9v_battery-ART-pl2048SA': 0.044,
     '7i_edamamearare-ART-pl2048SA': 0.040,
     '13_CLORETS-ART-pl2048SA': 0.140,
     'vc_3000_dozen-ART-pl2048SA': 0.090,
     'Ayataka_pet1l-ART-pl2048SA': 1.006,
 }
+
+
+def set_pose(prim, pose):
+    p, (axis, angle) = pose
+    xform = UsdGeom.Xformable(prim)
+    xform.ClearXformOpOrder() # Is this necessary?
+    transform = xform.AddTransformOp()
+    mat = Gf.Matrix4d()
+    mat.SetTranslateOnly(Gf.Vec3d(*p))
+    mat.SetRotateOnly(Gf.Rotation(Gf.Vec3d(*axis), angle))
+    transform.Set(mat)
 
 
 def set_translate(prim, new_loc):
@@ -88,6 +100,34 @@ def set_translate(prim, new_loc):
         xform = UsdGeom.Xformable(prim)
         xform_op = xform.AddXformOp(UsdGeom.XformOp.TypeTransform, UsdGeom.XformOp.PrecisionDouble, "")
         xform_op.Set(Gf.Matrix4d().SetTranslate(new_loc))
+
+
+def set_rotate_mat(prim, rot_mat):
+    properties = prim.GetPropertyNames()
+    # if "xformOp:rotate" in properties:
+    #     rotate_attr = prim.GetAttribute("xformOp:rotate")
+    #     rotate_attr.Set(rot_mat)
+    # elif "xformOp:transform" in properties:
+    #     transform_attr = prim.GetAttribute("xformOp:transform")
+    #     matrix = prim.GetAttribute("xformOp:transform").Get()
+    #     matrix.SetRotateOnly(rot_mat.ExtractRotation())
+    #     transform_attr.Set(matrix)
+    # else:
+    #     xform = UsdGeom.Xformable(prim)
+    #     xform_op = xform.AddXformOp(UsdGeom.XformOp.TypeTransform, UsdGeom.XformOp.PrecisionDouble, "")
+    #     xform_op.Set(Gf.Matrix4d().SetRotate(rot_mat))
+    xform = UsdGeom.Xformable(prim)
+    xform_op = xform.AddXformOp(UsdGeom.XformOp.TypeTransform, UsdGeom.XformOp.PrecisionDouble, "")
+    xform_op.Set(Gf.Matrix4d().SetRotate(rot_mat))
+
+
+def set_rotate_euler(prim, rot_euler):
+    """
+    rot_euler : np.array
+    """
+    q = rot_utils.euler_angles_to_quats(rot_euler, degrees=True)
+    print(q)
+    set_rotate_mat(prim, Gf.Matrix3d(Gf.Quatd(q[3], q[0], q[1], q[2])))
 
 
 def create_prim_from_usd(stage, prim_env_path, prim_usd_path, location=[0, 0, 0.1]):
@@ -111,16 +151,6 @@ def create_camera_D415():
     camera.set_vertical_aperture(1.5498)
     camera.set_clipping_range(0.1, 5.0)
     return camera
-
-
-# def set_world_pose(prim, position=[0, 0, 0]):
-#     xform = UsdGeom.Xformable(prim)
-#     xform.ClearXformOpOrder() # Is this necessary?
-#     transform = xform.AddTransformOp()
-#     mat = Gf.Matrix4d()
-#     mat.SetTranslateOnly(Gf.Vec3d(*position))
-#     mat.SetRotateOnly(Gf.Rotation(Gf.Vec3d(0, 0, 1), 0))
-#     transform.Set(mat)
 
 
 class Object:
@@ -168,17 +198,23 @@ def reset_object_positions():
     global used_objects
     for i, o in enumerate(loaded_objects):
         prim = o.get_primitive()
-        set_translate(prim, Gf.Vec3d(0.05*i, 0, 0))
+        set_translate(prim, Gf.Vec3d(0.1*i, 0, 0))
     used_objects = []
 
 
 def place_objects(n):
     global used_objects
-    for i, o in enumerate(np.random.choice(loaded_objects, n)):
+    used_objects = []
+    for i, o in enumerate(np.random.choice(loaded_objects, n, replace=False)):
         prim = o.get_primitive()
-        pos_xy = np.array([-0.15, -0.15]) + 0.3 * np.random.random(2)
-        pos_z = 0.74 + 0.03 * i
-        set_translate(prim, Gf.Vec3d(pos_xy[0], pos_xy[1], pos_z))
+        pos_xy = np.array([-0.10, 0.0]) + np.array([0.2, 0.3]) * (np.random.random(2) - 0.5)
+        pos_z = 0.76 + 0.03 * i
+
+        theta = 180 * np.random.random()
+        phi = 360 * np.random.random()
+        axis = [np.cos(theta)*np.cos(phi), np.cos(theta)*np.sin(phi), np.sin(theta)]
+        angle = 360 * np.random.random()
+        set_pose(prim, ([pos_xy[0], pos_xy[1], pos_z], (axis, angle)))
         used_objects.append(o)
 
 
@@ -259,7 +295,8 @@ def randomize_lights():
 
 def randomize_camera_parameters():
     global camera
-    position = np.array([0.4, 0.0, 1.15]) + 0.04 * (np.random.random(3) - 0.5)
+    # position = np.array([0.4, 0.0, 1.15]) + 0.04 * (np.random.random(3) - 0.5)
+    position = np.array([1.2, 0.0, 2.0]) + 0.04 * (np.random.random(3) - 0.5)
     orientation = rot_utils.euler_angles_to_quats(np.array([0, 45, 180] + 8 * (np.random.random(3) - 0.5)), degrees=True)
     camera.set_world_pose(position, orientation)
     # camera.set_focal_length(1.88)
@@ -269,6 +306,10 @@ def randomize_camera_parameters():
 
 
 def randomize_object_colors():
+    # for o in used_objects:
+    #     object_id = o.get_ID()
+    #     prim = world.stage.GetPrimAtPath(f'/World/object{object_id}/Looks/material_0')
+    #     prim.GetAttribute("color tint").Set()
     pass
 
 
@@ -364,7 +405,7 @@ def save(frameNo, rgb, bin_state, contact_raw_data, camera_pose):
 
 for frameNo in range(number_of_scenes):
     world.reset()
-    place_objects(10)
+    place_objects(3)
     randomize_lights()
     randomize_camera_parameters()
     randomize_object_colors()
@@ -396,8 +437,8 @@ for frameNo in range(number_of_scenes):
         quat = pose.ExtractRotation().GetQuaternion()
         quat = np.array(list(quat.imaginary) + [quat.real])
         bin_state.append((o.get_name(), (trans, quat)))
+        print(f'SCENE[{frameNo},{o.get_name()}]:', trans, quat)
     
-    print(f'SAVE SCENE[{frameNo},{o.get_name()}]:', trans, quat)
     save(frameNo, rgb, bin_state, (contact_positions, impulse_values), camera.get_world_pose())
 
     # simulation_context.stop()
