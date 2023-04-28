@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 
 from omni.isaac.kit import SimulationApp
 
@@ -7,23 +8,20 @@ from omni.isaac.core import World
 from omni.isaac.sensor import ContactSensor
 from omni.isaac.sensor import Camera
 from omni.isaac.core import SimulationContext
-# from omni.isaac.core.utils.nucleus import get_assets_root_path
-# from omni.isaac.core.utils.stage import add_reference_to_stage
-# from omni.isaac.core.utils import prims
 import omni.isaac.core.utils.numpy.rotations as rot_utils
-import numpy as np
-import os, glob, cv2, scipy
-import pandas as pd
 
 import omni
 from pxr import UsdPhysics
 from omni.physx.scripts import utils
 import omni.isaac.core.utils.prims as prim_utils
-import matplotlib.pyplot as plt
 
 from pxr import Gf, Usd, UsdGeom
-# import carb
 import omni.usd
+
+import numpy as np
+import os, glob, cv2, scipy
+import pandas as pd
+import matplotlib.pyplot as plt
 
 # from omni.isaac.dynamic_control import _dynamic_control
 # dc = _dynamic_control.acquire_dynamic_control_interface()
@@ -39,12 +37,11 @@ world = World(stage_units_in_meters=1.0)
 # world.scene.add_default_ground_plane()
 
 asset_path = os.environ["HOME"] + "/Downloads/Collected_ycb_piled_scene/simple_shelf_scene.usd"
+usd_files = glob.glob('/home/ryo/Dataset/Konbini/VER002/Seamless/vt2048/*/*/*.usd')
+
 
 simulation_context = SimulationContext()
 # add_reference_to_stage(usd_path=asset_path, prim_path="/World")
-
-
-usd_files = glob.glob('/home/ryo/Dataset/Konbini/VER002/Seamless/vt2048/*/*/*.usd')
 
 
 masses = {
@@ -208,7 +205,7 @@ def place_objects(n):
     for i, o in enumerate(np.random.choice(loaded_objects, n, replace=False)):
         prim = o.get_primitive()
         pos_xy = np.array([-0.10, 0.0]) + np.array([0.2, 0.3]) * (np.random.random(2) - 0.5)
-        pos_z = 0.76 + 0.03 * i
+        pos_z = 0.75 + 0.03 * i
 
         theta = 180 * np.random.random()
         phi = 360 * np.random.random()
@@ -220,7 +217,7 @@ def place_objects(n):
 
 def wait_for_stability():
     stable = True
-    for n in range(150):
+    for n in range(100):
         world.step(render=True)
         # for i in range(10):
         #     o = world.scene.get_object(f'object{i}')
@@ -239,9 +236,7 @@ def wait_for_stability():
 # prim = world.stage.GetPrimAtPath('/World')
 # stage = get_current_stage()
 # scope = UsdGeom.Scope.Define(world.stage, 'Objects')
-
 # prim.GetReferences().AddReference(asset_path)
-# ch_prim = world.stage.GetPrimAtPath('/World/simple_shelf')
 
 
 def create_env():
@@ -368,18 +363,10 @@ def get_bin_state():
     return obj.get_world_pose()
 
 
-# def drop_an_object(name='_09_gelatin_box'):
-#     prim = object_prims[name]
-#     set_world_pose(prim)
-
-# stage = omni.usd.get_context().get_stage()
-# object_prims = {}
-# for o in objects:
-#     object_prims[o] = stage.GetPrimAtPath('/World/{}'.format(o))
-
-
-# prim = object_prims[objects[0]]
-# set_world_pose(prim)
+def convert_to_force_distribution(contact_positions, impulse_values, bin_state):
+    fmap = forcemap.GridForceMap('seria_basket')
+    d = fmap.getDensity(contact_positions, impulse_values)
+    return d
 
 
 # sr = world.scene._scene_registry
@@ -395,17 +382,18 @@ simulation_context.initialize_physics()
 simulation_context.play()
 
 
-def save(frameNo, rgb, bin_state, contact_raw_data, camera_pose):
+def save(frameNo, rgb, bin_state, contact_raw_data, force_distribution, camera_pose):
     data_dir = 'data/'
     cv2.imwrite(os.path.join(data_dir, 'rgb{:05d}.jpg'.format(frameNo)), cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
     pd.to_pickle(bin_state, os.path.join(data_dir, 'bin_state{:05d}.pkl'.format(frameNo)))
     pd.to_pickle(contact_raw_data, os.path.join(data_dir, 'contact_raw_data{:05d}.pkl'.format(frameNo)))
+    pd.to_pickle(force_distribution, os.path.join(data_dir, 'force_zip{:05d}.pkl'.format(frameNo)))
     pd.to_pickle(camera_pose, os.path.join(data_dir, 'camera_info{:05d}.pkl'.format(frameNo)))
 
 
 for frameNo in range(number_of_scenes):
     world.reset()
-    place_objects(3)
+    place_objects(10)
     randomize_lights()
     randomize_camera_parameters()
     randomize_object_colors()
@@ -439,7 +427,8 @@ for frameNo in range(number_of_scenes):
         bin_state.append((o.get_name(), (trans, quat)))
         print(f'SCENE[{frameNo},{o.get_name()}]:', trans, quat)
     
-    save(frameNo, rgb, bin_state, (contact_positions, impulse_values), camera.get_world_pose())
+    force_dist = convert_to_force_distribution(contact_positions, impulse_values, bin_state)
+    save(frameNo, rgb, bin_state, (contact_positions, impulse_values), force_dist, camera.get_world_pose())
 
     # simulation_context.stop()
     # if world.current_time_step_index == 0:
