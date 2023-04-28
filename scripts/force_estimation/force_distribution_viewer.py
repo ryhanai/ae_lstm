@@ -35,7 +35,7 @@ class ForceDistributionViewer:
                           draw_fmap=True,
                           draw_force_gradient=False):
         self.rviz_client.delete_all()
-        self.draw_bin()
+        self.draw_bin(fmap)
 
         positions = fmap.get_positions()
         fvals = fmap.get_values()
@@ -48,15 +48,32 @@ class ForceDistributionViewer:
             self.draw_force_gradient(positions, fvals)
         self.rviz_client.show()
 
-    def draw_bin(self):
-        self.rviz_client.draw_mesh("package://force_estimation/meshes_extra/seria_basket.dae",
-                                   ((0, 0, 0.73), (0, 0, 0.70711, 0.70711)),
-                                   (0.5, 0.5, 0.5, 0.2))
+    def draw_bin(self, fmap):
+        scene = fmap.get_scene()
+        if scene == 'seria_basket':
+            mesh_file = 'seria_basket.dae'
+            mesh_pose = ([0, 0, 0.73], [0, 0, 0.70711, 0.70711])
+            scale = [1, 1, 1]
+        elif scene == 'konbini_shelf':
+            mesh_file = 'simple_shelf.obj'
+            mesh_pose = ([0, 0, 0], [0, 0, 0, 1])
+            scale = [0.01, 0.01, 0.01]
+        else:
+            print(f'unknown scene: {scene}')
+            return
+
+        self.rviz_client.draw_mesh(f"package://force_estimation/meshes_extra/{mesh_file}",
+                                   mesh_pose,
+                                   rgba=(0.5, 0.5, 0.5, 0.2),
+                                   scale=scale)
 
     def draw_objects(self, bin_state):
         for object_state in bin_state:
             name, pose = object_state
-            self.rviz_client.draw_mesh("package://force_estimation/meshes/{}/google_16k/textured.dae".format(name),
+            # self.rviz_client.draw_mesh("package://force_estimation/meshes/{}/google_16k/textured.dae".format(name),
+            #                            pose,
+            #                            (0.5, 0.5, 0.5, 0.3))
+            self.rviz_client.draw_mesh("package://force_estimation/meshes/konbini/{}.obj".format(name),
                                        pose,
                                        (0.5, 0.5, 0.5, 0.3))
 

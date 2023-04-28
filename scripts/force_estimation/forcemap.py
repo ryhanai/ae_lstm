@@ -21,8 +21,14 @@ def kde_sklearn(x, x_grid, bandwidth=1.0, **kwargs):
 
 class GridForceMap:
     def __init__(self, name):
-        assert name == 'seria_basket'
+        assert name == 'seria_basket' or 'konbini_shelf'
         if name == 'seria_basket':
+            self.grid = np.mgrid[-0.095:0.095:40j, -0.13:0.13:40j, 0.73:0.92:40j]
+            X, Y, Z = self.grid
+            self.dV = 0.19 * 0.26 * 0.20 / (40**3)
+            positions = np.vstack([X.ravel(), Y.ravel(), Z.ravel()])
+            self.positions = positions.T  # [number of points, 3]
+        elif name == 'konbini_shelf':
             self.grid = np.mgrid[-0.095:0.095:40j, -0.13:0.13:40j, 0.73:0.92:40j]
             X, Y, Z = self.grid
             self.dV = 0.19 * 0.26 * 0.20 / (40**3)
@@ -37,6 +43,7 @@ class GridForceMap:
         self.alpha = 0.8
 
         self._title = 'force map'
+        self._scene_name = name
 
     def getDensity(self,
                    sample_positions,
@@ -98,6 +105,8 @@ class GridForceMap:
             else:
                 ax.imshow(f[:, :, p], cmap='gray', vmin=0, vmax=1.0)
 
+    def get_scene(self):
+        return self._scene_name
 
 def plot_force_map(force_map, title=''):
     fmap = GridForceMap('seria_basket')

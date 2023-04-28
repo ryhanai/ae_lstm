@@ -41,7 +41,7 @@ from force_estimation import forcemap
 from force_estimation import force_distribution_viewer
 
 
-fmap = forcemap.GridForceMap('seria_basket')
+fmap = forcemap.GridForceMap('konbini_shelf')
 viewer = force_distribution_viewer.ForceDistributionViewer.get_instance()
 # a = load_contact_data()
 # d = fmap.getDensity(a[0], a[1])
