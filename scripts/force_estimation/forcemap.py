@@ -28,12 +28,15 @@ class GridForceMap:
             self.dV = 0.19 * 0.26 * 0.20 / (40**3)
             positions = np.vstack([X.ravel(), Y.ravel(), Z.ravel()])
             self.positions = positions.T  # [number of points, 3]
+            self.bandwidth = 0.012
         elif name == 'konbini_shelf':
-            self.grid = np.mgrid[-0.095:0.095:40j, -0.13:0.13:40j, 0.73:0.92:40j]
+            # self.grid = np.mgrid[-0.095:0.095:40j, -0.13:0.13:40j, 0.73:0.92:40j]
+            self.grid = np.mgrid[-0.3:0.3:60j, -0.4:0.4:80j, 0.73:0.93:40j]
             X, Y, Z = self.grid
             self.dV = 0.19 * 0.26 * 0.20 / (40**3)
             positions = np.vstack([X.ravel(), Y.ravel(), Z.ravel()])
             self.positions = positions.T  # [number of points, 3]
+            self.bandwidth = 0.02
 
         # 'sony_box'
         # self.grid = np.mgrid[-0.115:0.115:40j, -0.115:0.115:40j, 0.93:1.16:40j]
@@ -54,7 +57,7 @@ class GridForceMap:
         if len(sample_weights) > 0:
             # V = kde_scipy(sample_positions, self.positions, bandwidth=0.3)
             # V = stats.gaussian_kde(sample_positions, bw_method=0.3)
-            V = kde_sklearn(sample_positions, self.positions, bandwidth=0.012)
+            V = kde_sklearn(sample_positions, self.positions, bandwidth=self.bandwidth)
             # V = kernel(self.sample_positions)
 
             W = np.sum(sample_weights)

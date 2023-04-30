@@ -47,7 +47,7 @@ simulation_context = SimulationContext()
 masses = {
     '15_TOPPO-ART-pl2048SA': 0.072,
     '05_JIF-ART-pl2048SA': 0.358,
-    'akaikitsune_mini-ART-pl2048SA': 0.136,
+    # 'akaikitsune_mini-ART-pl2048SA': 0.136, # mesh is too bad
     '21_MT-KINOKO-ART-pl2048SA': 0.074,
     '20_MELTYKISS-ART-pl2048SA': 0.050, # not found in csv
     '07_GREEN-TEA-ART-pl2048SA': 0.040,
@@ -290,9 +290,9 @@ def randomize_lights():
 
 def randomize_camera_parameters():
     global camera
-    # position = np.array([0.4, 0.0, 1.15]) + 0.04 * (np.random.random(3) - 0.5)
-    position = np.array([1.2, 0.0, 2.0]) + 0.04 * (np.random.random(3) - 0.5)
-    orientation = rot_utils.euler_angles_to_quats(np.array([0, 45, 180] + 8 * (np.random.random(3) - 0.5)), degrees=True)
+    position = np.array([0.5, 0.0, 1.25]) + 0.04 * (np.random.random(3) - 0.5)
+    # position = np.array([1.2, 0.0, 2.0]) + 0.04 * (np.random.random(3) - 0.5)
+    orientation = rot_utils.euler_angles_to_quats(np.array([0, 40, 180] + 6 * (np.random.random(3) - 0.5)), degrees=True)
     camera.set_world_pose(position, orientation)
     # camera.set_focal_length(1.88)
     # camera.set_focus_distance(40)
@@ -364,7 +364,7 @@ def get_bin_state():
 
 
 def convert_to_force_distribution(contact_positions, impulse_values, bin_state):
-    fmap = forcemap.GridForceMap('seria_basket')
+    fmap = forcemap.GridForceMap('konbini_shelf')
     d = fmap.getDensity(contact_positions, impulse_values)
     return d
 
@@ -372,7 +372,6 @@ def convert_to_force_distribution(contact_positions, impulse_values, bin_state):
 # sr = world.scene._scene_registry
 # print(sr._rigid_objects, sr._geometry_objects)
 
-number_of_scenes = 10
 create_objects()
 reset_object_positions()
 
@@ -391,54 +390,56 @@ def save(frameNo, rgb, bin_state, contact_raw_data, force_distribution, camera_p
     pd.to_pickle(camera_pose, os.path.join(data_dir, 'camera_info{:05d}.pkl'.format(frameNo)))
 
 
-for frameNo in range(number_of_scenes):
-    world.reset()
-    place_objects(10)
-    randomize_lights()
-    randomize_camera_parameters()
-    randomize_object_colors()
+def main(number_of_scenes):
+    for frameNo in range(number_of_scenes):
+        world.reset()
+        place_objects(10)
+        randomize_lights()
+        randomize_camera_parameters()
+        randomize_object_colors()
 
-    # if world.is_playing():
-    wait_for_stability()
+        # if world.is_playing():
+        wait_for_stability()
 
-    rgb = camera.get_current_frame()['rgba'][:, :, :3]
+        rgb = camera.get_current_frame()['rgba'][:, :, :3]
 
-    contact_positions = []
-    impulse_values = []
-    bin_state = []
+        contact_positions = []
+        impulse_values = []
+        bin_state = []
 
-    for o in used_objects:
-        contact_sensor = o.get_contact_sensor()
-        contacts = read_contact_sensor(contact_sensor)
-        # print(contact_sensor.get_current_frame())
-        # print(contact_sensor_contact_sensor_interface.get_contact_sensor_raw_data(contact_sensor.prim_path))
+        for o in used_objects:
+            contact_sensor = o.get_contact_sensor()
+            contacts = read_contact_sensor(contact_sensor)
+            # print(contact_sensor.get_current_frame())
+            # print(contact_sensor_contact_sensor_interface.get_contact_sensor_raw_data(contact_sensor.prim_path))
 
-        for contact in contacts:
-            if scipy.linalg.norm(contact['impulse']) > 1e-8:
-                contact_positions.append(contact['position'])
-                impulse_values.append(scipy.linalg.norm(contact['impulse']))
+            for contact in contacts:
+                if scipy.linalg.norm(contact['impulse']) > 1e-8:
+                    contact_positions.append(contact['position'])
+                    impulse_values.append(scipy.linalg.norm(contact['impulse']))
 
-        prim = o.get_primitive()
-        pose = omni.usd.utils.get_world_transform_matrix(prim)
-        trans = pose.ExtractTranslation()
-        trans = np.array(trans)
-        quat = pose.ExtractRotation().GetQuaternion()
-        quat = np.array(list(quat.imaginary) + [quat.real])
-        bin_state.append((o.get_name(), (trans, quat)))
-        print(f'SCENE[{frameNo},{o.get_name()}]:', trans, quat)
-    
-    force_dist = convert_to_force_distribution(contact_positions, impulse_values, bin_state)
-    save(frameNo, rgb, bin_state, (contact_positions, impulse_values), force_dist, camera.get_world_pose())
+            prim = o.get_primitive()
+            pose = omni.usd.utils.get_world_transform_matrix(prim)
+            trans = pose.ExtractTranslation()
+            trans = np.array(trans)
+            quat = pose.ExtractRotation().GetQuaternion()
+            quat = np.array(list(quat.imaginary) + [quat.real])
+            bin_state.append((o.get_name(), (trans, quat)))
+            print(f'SCENE[{frameNo},{o.get_name()}]:', trans, quat)
 
-    # simulation_context.stop()
-    # if world.current_time_step_index == 0:
+        force_dist = convert_to_force_distribution(contact_positions, impulse_values, bin_state)
+        save(frameNo, rgb, bin_state, (contact_positions, impulse_values), force_dist, camera.get_world_pose())
+
+        # simulation_context.stop()
+        # if world.current_time_step_index == 0:
 
 
-while simulation_app.is_running():
-    world.step(render=True)
+    while simulation_app.is_running():
+        world.step(render=True)
 
 #     simulation_context.step(render=True)
+    simulation_context.stop()
+    simulation_app.close()
 
-simulation_context.stop()
-simulation_app.close()
 
+main(number_of_scenes=10)
