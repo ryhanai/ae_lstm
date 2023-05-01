@@ -2,7 +2,11 @@
 
 import pandas as pd
 import numpy as np
-# import scipy
+import glob
+import os
+import re
+import time
+from concurrent import futures
 
 
 # rotate the basket by 90 degrees in Isaac
@@ -46,8 +50,35 @@ viewer = force_distribution_viewer.ForceDistributionViewer.get_instance()
 # a = load_contact_data()
 # d = fmap.getDensity(a[0], a[1])
 
-def load_data(frameNo=0, scale=1e+4):
+def load_data(frameNo=0, scale=1):
     d = pd.read_pickle('../sim/data/force_zip{:05d}.pkl'.format(frameNo))
     bin_state = pd.read_pickle('../sim/data/bin_state{:05d}.pkl'.format(frameNo))
     fmap.set_values(d*scale)
     viewer.publish_bin_state(bin_state, fmap)
+    return d, bin_state
+
+
+data_dir = '../sim/data'
+
+
+def compute_force_distribution(contact_raw_data_file, log_scale=True, overwrite=False):
+    local_fmap = forcemap.GridForceMap('konbini_shelf')
+    frameNo = int(re.search('\d+', os.path.basename(contact_raw_data_file)).group())
+    out_file = os.path.join(data_dir, 'force_zip{:05d}.pkl'.format(frameNo))
+    if (not overwrite) and os.path.exists(out_file):
+        print(f'skip [{frameNo}]')
+    else:
+        print(f'process [{frameNo}]')
+        contact_positions, impulse_values = pd.read_pickle(contact_raw_data_file)
+        d = local_fmap.getDensity(contact_positions, impulse_values)
+        if log_scale:
+            d = np.log(1 + d)
+        pd.to_pickle(d, out_file)
+
+
+def compute_force_distribution_for_all():
+    start_tm = time.time()
+    contact_raw_data_files = glob.glob(os.path.join(data_dir, 'contact_raw_data*.pkl'))
+    with futures.ProcessPoolExecutor() as executor:
+        executor.map(compute_force_distribution, contact_raw_data_files)
+    print(f'compute force distribution took: {time.time() - start_tm} [sec]')
