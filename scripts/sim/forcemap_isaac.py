@@ -59,7 +59,7 @@ masses = {
     '16cha_660-ART-pl2048SA': 0.656,
     '7i_barley_tea-ART-pl2048SA': 1.508,
     '2nd_cupnoodle_origin-ART-pl2048SA': 0.077,
-    '11_XYLITOL-ART-pl2048SA': 0.023,
+    '11_XYLITOL-ART-pl2048SA': 0.143,
     '28_KOALAS-MARCH-ART-pl2048SA': 0.050,
     '19_POCKY-ART-pl2048SA': 0.072,
     '7i_edamamearare-ART-pl2048SA': 0.040,
@@ -363,9 +363,11 @@ def get_bin_state():
     return obj.get_world_pose()
 
 
-def convert_to_force_distribution(contact_positions, impulse_values, bin_state):
+def convert_to_force_distribution(contact_positions, impulse_values, bin_state, log_scale=True):
     fmap = forcemap.GridForceMap('konbini_shelf')
     d = fmap.getDensity(contact_positions, impulse_values)
+    if log_scale:
+        d = np.log(1 + d)
     return d
 
 
@@ -386,11 +388,12 @@ def save(frameNo, rgb, bin_state, contact_raw_data, force_distribution, camera_p
     cv2.imwrite(os.path.join(data_dir, 'rgb{:05d}.jpg'.format(frameNo)), cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
     pd.to_pickle(bin_state, os.path.join(data_dir, 'bin_state{:05d}.pkl'.format(frameNo)))
     pd.to_pickle(contact_raw_data, os.path.join(data_dir, 'contact_raw_data{:05d}.pkl'.format(frameNo)))
-    pd.to_pickle(force_distribution, os.path.join(data_dir, 'force_zip{:05d}.pkl'.format(frameNo)))
+    if force_distribution != None:
+        pd.to_pickle(force_distribution, os.path.join(data_dir, 'force_zip{:05d}.pkl'.format(frameNo)))
     pd.to_pickle(camera_pose, os.path.join(data_dir, 'camera_info{:05d}.pkl'.format(frameNo)))
 
 
-def main(number_of_scenes):
+def main(number_of_scenes, out_distribution=False):
     for frameNo in range(number_of_scenes):
         world.reset()
         place_objects(10)
@@ -427,7 +430,10 @@ def main(number_of_scenes):
             bin_state.append((o.get_name(), (trans, quat)))
             print(f'SCENE[{frameNo},{o.get_name()}]:', trans, quat)
 
-        force_dist = convert_to_force_distribution(contact_positions, impulse_values, bin_state)
+        if out_distribution:
+            force_dist = convert_to_force_distribution(contact_positions, impulse_values, bin_state)
+        else:
+            force_dist = None
         save(frameNo, rgb, bin_state, (contact_positions, impulse_values), force_dist, camera.get_world_pose())
 
         # simulation_context.stop()
@@ -442,4 +448,4 @@ def main(number_of_scenes):
     simulation_app.close()
 
 
-main(number_of_scenes=10)
+main(number_of_scenes=5000)
