@@ -13,14 +13,13 @@ import message_filters
 import os
 import pandas as pd
 from tf.transformations import *
-from aist_robotiq import RobotiqGripper
-
 
 bridge = CvBridge()
 groupNo = 1
 frameNo = 0
 frames = []
 recording_now = False
+
 
 import sys, select, termios, tty
 
@@ -30,42 +29,19 @@ def getch():
     else:
         return ''
 
-last_image = Image()
-last_arm_joint_observation = JointState()
-last_gripper_joint_observation = JointState()
-last_action = JointTrajectory()
 
-def image_callback(image_msg):
-    global recording_now
-    global last_image
-    # print(f'Image msg: {image_msg.header.stamp}')
-    last_image = image_msg
-
-def joint_observation_callback(joint_msg):
-    global recording_now
-    global last_arm_joint_observation
-    global last_gripper_joint_observation
-    # print(f'Joint msg: {joint_msg.header.stamp}')   
-    if 'elbow_joint' in joint_msg.name:
-        last_arm_joint_observation = joint_msg
-    else:
-        last_gripper_joint_observation = joint_msg
-    last_joint_observation = joint_msg
-
-def action_ballback(traj_msg):
-    global recording_now
-    global last_action
-    # print(f'Action msg: {traj_msg.header.stamp}')        
-    last_action = traj_msg
-
-def save_frame():
-    frame = (last_image, last_action, last_arm_joint_observation, last_gripper_joint_observation)
-    frames.append(frame)
-
-def start_recording():
-    global recording_now
+def state_callback(image_msg, joint_msg, traj_msg):
     global frameNo
     global frames
+    global recording_now
+    #print(image_msg.header.stamp, joint_msg.header.stamp, traj_msg.header.stamp)
+    if recording_now:
+        frames.append([image_msg, joint_msg, traj_msg])
+
+def start_recording():
+    global frameNo
+    global frames
+    global recording_now
     print('start recording')
     frameNo = 0
     frames = []
@@ -77,7 +53,7 @@ def stop_recording():
     global frames
     recording_now = False
     print('stop recording')
-    print(f'writing to files [{len(frames)} frames] ...')
+    print('writing to files ...')
     group_dir = 'data/{:d}'.format(groupNo)
     if not os.path.exists(group_dir):
         os.makedirs(group_dir)
@@ -102,7 +78,7 @@ def stop_recording():
             msg.encoding = frame[0].encoding
             msg.is_bigendian = frame[0].is_bigendian
             msg.step = frame[0].step
-            output.append([msg, frame[1], frame[2], frame[3]])
+            output.append([msg,frame[1],frame[2]])
 
     pd.to_pickle(output, os.path.join(group_dir, 'states.pkl'))
 
@@ -154,10 +130,12 @@ def joy_callback(msg):
 
 rospy.init_node('recorder')
 rospy.loginfo('recorder node started')
-
-rospy.Subscriber("/camera/color/image_raw", Image, image_callback)
-rospy.Subscriber("/joint_states", JointState, joint_observation_callback)
-rospy.Subscriber("/scaled_pos_joint_traj_controller/command", JointTrajectory, action_ballback)
+image_sub = message_filters.Subscriber("/camera/color/image_raw", Image)
+joint_state_sub = message_filters.Subscriber("/joint_states", JointState)
+trajectory_sub = message_filters.Subscriber("/scaled_pos_joint_traj_controller/command", JointTrajectory)
+#ts = message_filters.TimeSynchronizer([image_sub, joint_state_sub, trajectory_sub], queue_size=10)
+ts = message_filters.ApproximateTimeSynchronizer([image_sub, joint_state_sub, trajectory_sub], queue_size=1, slop=0.05)
+ts.registerCallback(state_callback)
 
 rospy.Subscriber("/spacenav/joy", Joy, joy_callback, queue_size=1)
 
@@ -165,13 +143,6 @@ tfBuffer = tf2_ros.Buffer()
 listener = tf2_ros.TransformListener(tfBuffer)
 
 pub = rospy.Publisher('/jog_frame', JogFrame, queue_size=1)
-
-prefix = 'a_bot_gripper_'
-gripper = RobotiqGripper(prefix)
-# gripper.grasp()
-# gripper.release()
-# gripper.move(<float>)
-
 
 # initial position for 'red cube reacing task'
 # initial_position = np.array([-0.0778662, 0.36922, -0.187572])
@@ -181,7 +152,7 @@ gripper = RobotiqGripper(prefix)
 # initial_rotation = np.array([-0.720, 0.012, -0.011, 0.694])]
 
 # initial position for 'pen kitting task'
-initial_position = np.array([0.080, 0.571, 0.054])
+initial_position = np.array([0.050, 0.561, 0.054])
 initial_rotation = np.array([0.988, 0.153, -0.006, -0.008])
 # RPY (radian) [-3.124, 0.009, 0.308]
 # RPY (degree) [-178.997, 0.537, 17.647]
@@ -227,8 +198,6 @@ while not rospy.is_shutdown():
         continue
 
     else:
-        save_frame()
-
         try:
             if joy_msg.buttons[1] == 1: # right button is down
                 if recording_now:
@@ -242,10 +211,8 @@ while not rospy.is_shutdown():
                 key = getch()
                 if key == 'g':
                     print('GRASP!')
-                    gripper.move(0.005)
                 elif key == 'r':
                     print('RELEASE!')
-                    gripper.move(0.020)
         except:
             pass
         rate.sleep()
