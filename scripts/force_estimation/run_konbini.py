@@ -12,27 +12,28 @@ import argparse
 from core.utils import *
 
 import forcemap
-from force_estimation_data_loader import ForceEstimationDataLoader
+from force_estimation_data_loader import ForceEstimationDataLoaderNoSeq
 import force_estimation_v2_1 as fe
 
 
-dataset = 'basket-filling2'
+from force_estimation import force_distribution_viewer
+viewer = force_distribution_viewer.ForceDistributionViewer.get_instance()
+
+
+dataset = 'konbini-stacked'
 image_height = 360
 image_width = 512
 input_image_shape = [image_height, image_width]
-num_classes = 62
 
-fmap = forcemap.GridForceMap('seria_basket')
+fmap = forcemap.GridForceMap('konbini_shelf')
 
-dl = ForceEstimationDataLoader(os.path.join(os.environ['HOME'], 'Dataset/dataset2', dataset),
-                               os.path.join(os.environ['HOME'], 'Dataset/dataset2', dataset+'-real'),
-                               image_height=image_height,
-                               image_width=image_width,
-                               start_seq=1,
-                               n_seqs=1800,  # n_seqs=1500,
-                               start_frame=3, n_frames=3,
-                               real_start_frame=1, real_n_frames=294
-                               )
+dl = ForceEstimationDataLoaderNoSeq(os.path.join(os.environ['HOME'], 'Dataset/dataset2', dataset),
+                                    os.path.join(os.environ['HOME'], 'Dataset/dataset2', dataset+'-real'),
+                                    image_height=image_height,
+                                    image_width=image_width,
+                                    start_frame=0, n_frames=4000,
+                                    real_start_frame=1, real_n_frames=30
+                                    )
 
 
 class Trainer:
@@ -119,7 +120,7 @@ class Trainer:
 
 
 def visualize_result(f_prediction, f_label, rgb, filename=None):
-    forcemap.plot_force_map(f_prediction)
+    forcemap.plot_force_map(f_prediction, env='konbini_shelf')
     plt.savefig('prediction.png')
     p = plt.imread('prediction.png')[:, :, :3]
     p = p[60:300, 190:1450, :]
@@ -184,7 +185,11 @@ class Tester:
             force_label = None
         y_preds = self.model.predict(xs)
         y_pred_forces = y_preds
-        visualize_result(y_pred_forces[0], force_label, xs[0], 'result{:05d}.png'.format(n))
+        # visualize_result(y_pred_forces[0], force_label, xs[0], 'result{:05d}.png'.format(n))
+        fmap.set_values(y_pred_forces[0])
+        bin_state = self.test_data[2][n]
+        viewer.publish_bin_state(bin_state, fmap)
+
         return y_pred_forces[0], force_label, xs[0]
 
     def predict_force_from_rgb_with_img(self, rgb):
@@ -207,28 +212,29 @@ class Tester:
         return y_pred_forces[0], force_label, rgb[n]
 
 
+num_z_channels = 30
 
 parser = argparse.ArgumentParser(description='')
-parser.add_argument('-t', '--task', type=str, default='test-real')
-parser.add_argument('-w', '--weight', type=str, default='ae_cp.basket-filling2.model_resnet.20221202165608')
+parser.add_argument('-t', '--task', type=str, default='konbini-stacked')
+parser.add_argument('-w', '--weight', type=str, default='ae_cp.konbini-stacked.model_resnet_wide.20230502171152')
 args = parser.parse_args()
 message('task = {}'.format(args.task))
 message('weight = {}'.format(args.weight))
 
 
 if args.task == 'train':
-    model = fe.model_rgb_to_fmap_res50()
-    train_data, valid_data = dl.load_data_for_rgb2fmap(train_mode=True)
+    model = fe.model_rgb_to_fmap_res50_wide()
+    train_data, valid_data = dl.load_data_for_rgb2fmap(train_mode=True, num_z_channels=num_z_channels)
     trainer = Trainer(model, train_data, valid_data)
 elif args.task == 'adaptation':
-    model = fe.model_rgb_to_fmap_res50()
-    train_data, valid_data = dl.load_data_for_rgb2fmap_with_real(train_mode=True)
+    model = fe.model_rgb_to_fmap_res50_wide()
+    train_data, valid_data = dl.load_data_for_rgb2fmap_with_real(train_mode=True, num_z_channels=num_z_channels)
     trainer = Trainer(model, train_data, valid_data)
 elif args.task == 'test':
-    model = fe.model_rgb_to_fmap_res50()
-    test_data = dl.load_data_for_rgb2fmap(test_mode=True, load_bin_state=True)
+    model = fe.model_rgb_to_fmap_res50_wide()
+    test_data = dl.load_data_for_rgb2fmap(test_mode=True, load_bin_state=True, num_z_channels=num_z_channels)
     tester = Tester(model, test_data, args.weight)
 elif args.task == 'test-real':
-    model = fe.model_rgb_to_fmap_res50()
-    test_data = dl.load_real_data_for_rgb2fmap(test_mode=True)
+    model = fe.model_rgb_to_fmap_res50_wide()
+    test_data = dl.load_real_data_for_rgb2fmap(test_mode=True, num_z_channels=num_z_channels)
     tester = Tester(model, test_data, args.weight)

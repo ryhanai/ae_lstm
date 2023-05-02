@@ -223,6 +223,25 @@ def model_resnet_decoder(input_shape, name='resnet_decoder'):
     return decoder
 
 
+def model_resnet_decoder_wide(input_shape, name='resnet_decoder_wide'):
+    feature_input = tf.keras.Input(shape=(input_shape))
+    x = feature_input
+    x = res_unet.res_block(x, [1024, 512], 3, strides=[1, 1], name='resb1')
+    x = res_unet.upsample(x, (24, 32))
+    x = res_unet.res_block(x, [256, 128], 3, strides=[1, 1], name='resb2')
+    x = res_unet.upsample(x, (48, 64))
+    x = res_unet.res_block(x, [64, 64], 3, strides=[1, 1], name='resb3')
+    x = res_unet.upsample(x, (96, 128))
+    x = res_unet.res_block(x, [32, 32], 3, strides=[1, 1], name='resb4')
+
+    x = tf.keras.layers.Conv2DTranspose(30, kernel_size=3, strides=1, padding='same', activation='sigmoid')(x)
+    x = tf.keras.layers.Resizing(120, 160)(x)
+    decoder_output = x
+    decoder = tf.keras.Model(feature_input, decoder_output, name=name)
+    decoder.summary()
+    return decoder
+
+
 def model_resnet_decoder2(input_shape, name='resnet_decoder2'):
     feature_input = tf.keras.Input(shape=(input_shape))
     x = feature_input
@@ -260,6 +279,31 @@ def model_rgb_to_fmap_res50(input_shape=input_image_shape, input_noise_stddev=0.
 
     model = ForceEstimationModel(inputs=[image_input], outputs=[decoded_img], name='model_resnet')
     # model = DRCNForceEstimationModel(inputs=[image_input], outputs=[decoded_img], name='model_resnet')
+    model.summary()
+
+    return model
+
+
+def model_rgb_to_fmap_res50_wide(input_shape=input_image_shape, input_noise_stddev=0.3):
+    input_shape = input_shape + [3]
+    image_input = tf.keras.Input(shape=input_shape)
+
+    x = image_input
+
+    # augmentation layers
+    x = tf.keras.layers.RandomZoom(0.05)(x)
+    x = tf.keras.layers.RandomBrightness(factor=0.2, value_range=(0, 1.0))(x)
+    x = tf.keras.layers.RandomContrast(factor=0.3)(x)
+    x = tf.keras.layers.GaussianNoise(input_noise_stddev)(x)
+
+    # encoder
+    resnet50 = ResNet50(include_top=False, input_shape=input_shape)
+    encoded_img = resnet50(x)
+    
+    # decoder
+    decoded_img = model_resnet_decoder_wide((12, 16, 2048))(encoded_img)
+
+    model = ForceEstimationModel(inputs=[image_input], outputs=[decoded_img], name='model_resnet_wide')
     model.summary()
 
     return model

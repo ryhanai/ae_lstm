@@ -6,54 +6,26 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import abc
 
 
-class ForceEstimationDataLoader:
-    def __init__(self,
-                 synthetic_data_path, real_data_path,
-                 image_height=360, image_width=512,
-                 num_classes=62,
-                 start_seq=1, n_seqs=1500,
-                 start_frame=3, n_frames=3,
-                 real_start_frame=1, real_n_frames=294,
-                 ):
-
-        self._dataset_path = synthetic_data_path
-        self._real_dataset_path = real_data_path
+class ForceEstimationDataLoaderBase(object, metaclass=abc.ABCMeta):
+    def __init__(self, image_height, image_width, synthetic_data_path, real_data_path, crop=128):
         self._image_height = image_height
         self._image_width = image_width
-        self._num_classes = num_classes
-
-        # configuration for synthetic data    
-        # self.__start_seq = start_seq
-        # self._n_seqs = n_seqs
-        # self._start_frame = start_frame
-        # self._n_frames = n_frames
-
-        # configuration for real data
-        self._real_start_frame = real_start_frame
-        self._real_n_frames = real_n_frames
-
-        self._crop = 128
-
-        x, y = np.mgrid[start_seq:start_seq + n_seqs, start_frame:start_frame + n_frames]
-        data_ids = list(zip(x.ravel(), y.ravel()))
-        self._train_ids, self._valid_ids, self._test_ids = np.split(data_ids, [int(len(data_ids)*.75), int(len(data_ids)*.875)])
-
-        np.random.seed(0)
-        self._train_real_ids, self._valid_real_ids, self._test_real_ids = np.split(np.random.permutation(range(self._real_start_frame, self._real_start_frame+self._real_n_frames)), [int(self._real_n_frames*.75), int(self._real_n_frames*.875)])
+        self._dataset_path = synthetic_data_path
+        self._real_dataset_path = real_data_path
+        self._crop = crop
 
     def load_rgb(self, data_id, resize=True):
-        seqNo, frameNo = data_id
-        rgb_path = os.path.join(self._dataset_path, str(seqNo), 'rgb{:05d}.jpg'.format(frameNo))
+        rgb_path = self.rgb_path_from_id(data_id)
         rgb = cv2.cvtColor(cv2.imread(rgb_path), cv2.COLOR_BGR2RGB)
         rgb = rgb[:,self._crop:-self._crop] # crop the right & left side
         rgb = cv2.resize(rgb, (self._image_width, self._image_height))
         return rgb
 
     def load_depth(self, data_id, resize=True):
-        seqNo, frameNo = data_id
-        depth_path = os.path.join(self._dataset_path, str(seqNo), 'depth_zip{:05d}.pkl'.format(frameNo))
+        depth_path = self.depth_path_from_id(data_id)
         depth = pd.read_pickle(depth_path, compression='zip')
         depth = depth[:, self._crop:-self._crop]
         depth = cv2.resize(depth, (self._image_width, self._image_height))
@@ -61,27 +33,45 @@ class ForceEstimationDataLoader:
         return depth
 
     def load_segmentation_mask(self, data_id, resize=True):
-        seqNo, frameNo = data_id
-        seg_path = os.path.join(self._dataset_path, str(seqNo), 'seg{:05d}.png'.format(frameNo))            
+        seg_path = self.segmentation_mask_path_from_id(data_id)
         seg = cv2.imread(seg_path, cv2.IMREAD_GRAYSCALE)    
         seg = seg[:, self._crop:-self._crop]
         seg = seg[::2, ::2]  # resize
         return seg
 
-    def load_force(self, data_id, resize=True):
-        seqNo, frameNo = data_id
-        force_path = os.path.join(self._dataset_path, str(seqNo), 'force_zip{:05d}.pkl'.format(frameNo))
-        force = pd.read_pickle(force_path, compression='zip')
-        force = force[:, :, :20]
+    def load_force(self, data_id, num_z_channels=20, resize=True):
+        force_path = self.force_path_from_id(data_id)
+        # force = pd.read_pickle(force_path, compression='zip')
+        force = pd.read_pickle(force_path, compression='zip')  # compression='infer' didn't work
+        force = force[:, :, :num_z_channels]
         return force
 
     def load_bin_state(self, data_id):
-        seqNo, frameNo = data_id
-        bin_state_path = os.path.join(self._dataset_path, str(seqNo), 'bin_state{:05d}.pkl'.format(frameNo))
+        bin_state_path = self.bin_state_path_from_id(data_id)
         bin_state = pd.read_pickle(bin_state_path)
         return bin_state
 
-    def load_data(self, ids, data_type):
+    @abc.abstractmethod
+    def rgb_path_from_id(self):
+        pass
+
+    @abc.abstractmethod
+    def depth_path_from_id(self):
+        pass
+
+    @abc.abstractmethod
+    def segmentation_mask_path_from_id(self):
+        pass
+
+    @abc.abstractmethod
+    def force_path_from_id(self):
+        pass
+
+    @abc.abstractmethod
+    def bin_state_path_from_id(self):
+        pass
+
+    def load_data(self, ids, data_type, num_z_channels=20):
         total_frames = len(ids)
 
         if data_type == 'rgb':
@@ -110,10 +100,11 @@ class ForceEstimationDataLoader:
             return Y_seg
 
         if data_type == 'force':
-            Y_force = np.empty((total_frames, 40, 40, 20))
+            f = self.load_force(ids[0], num_z_channels=num_z_channels)
+            Y_force = np.empty((total_frames,) + f.shape)
             for i in range(0, total_frames):
                 print('\rloading force ... {}({:3.1f}%)'.format(i, i/total_frames*100.), end='')
-                Y_force[i] = self.load_force(ids[i])
+                Y_force[i] = self.load_force(ids[i], num_z_channels=num_z_channels)
             fmax = np.max(Y_force)
             Y_force /= fmax
             return Y_force
@@ -137,7 +128,7 @@ class ForceEstimationDataLoader:
     #     visualize_forcemaps(force)
     #     plt.show()
 
-    def load_data_for_rgb2fmap(self, train_mode=False, test_mode=False, load_bin_state=False):
+    def load_data_for_rgb2fmap(self, train_mode=False, test_mode=False, load_bin_state=False, num_z_channels=20):
         """
         Returns:
             train_data, valid_data, test_data
@@ -148,13 +139,13 @@ class ForceEstimationDataLoader:
         if train_mode:
             train_rgb = self.load_data(self._train_ids, 'rgb')
             valid_rgb = self.load_data(self._valid_ids, 'rgb')
-            train_force = self.load_data(self._train_ids, 'force')
-            valid_force = self.load_data(self._valid_ids, 'force')
+            train_force = self.load_data(self._train_ids, 'force', num_z_channels=num_z_channels)
+            valid_force = self.load_data(self._valid_ids, 'force', num_z_channels=num_z_channels)
             return (train_rgb, train_force), (valid_rgb, valid_force)
 
         if test_mode:
             test_rgb = self.load_data(self._test_ids, 'rgb')
-            test_force = self.load_data(self._test_ids, 'force')
+            test_force = self.load_data(self._test_ids, 'force', num_z_channels=num_z_channels)
             if load_bin_state:
                 test_bin_state = self.load_data(self._test_ids, 'bin-state')
                 return test_rgb, test_force, test_bin_state
@@ -214,3 +205,96 @@ class ForceEstimationDataLoader:
         if test_mode:
             test_rgb = self.load_real_data(self._test_real_ids)
             return test_rgb
+
+
+class ForceEstimationDataLoader(ForceEstimationDataLoaderBase):
+    def __init__(self,
+                 synthetic_data_path, real_data_path,
+                 image_height=360, image_width=512,
+                 start_seq=1, n_seqs=1500,
+                 start_frame=3, n_frames=3,
+                 real_start_frame=1, real_n_frames=294,
+                 crop=128,
+                 ):
+
+        super().__init__(image_height, image_width, synthetic_data_path, real_data_path, crop)
+
+        # configuration for synthetic data    
+        # self.__start_seq = start_seq
+        # self._n_seqs = n_seqs
+        # self._start_frame = start_frame
+        # self._n_frames = n_frames
+
+        # configuration for real data
+        self._real_start_frame = real_start_frame
+        self._real_n_frames = real_n_frames
+
+        x, y = np.mgrid[start_seq:start_seq + n_seqs, start_frame:start_frame + n_frames]
+        data_ids = list(zip(x.ravel(), y.ravel()))
+        self._train_ids, self._valid_ids, self._test_ids = np.split(data_ids, [int(len(data_ids)*.75), int(len(data_ids)*.875)])
+
+        np.random.seed(0)
+        self._train_real_ids, self._valid_real_ids, self._test_real_ids = np.split(np.random.permutation(range(self._real_start_frame, self._real_start_frame+self._real_n_frames)), [int(self._real_n_frames*.75), int(self._real_n_frames*.875)])
+
+    def rgb_path_from_id(self, data_id):
+        seqNo, frameNo = data_id
+        return os.path.join(self._dataset_path, str(seqNo), 'rgb{:05d}.jpg'.format(frameNo))
+
+    def depth_path_from_id(self, data_id):
+        seqNo, frameNo = data_id
+        return os.path.join(self._dataset_path, str(seqNo), 'depth_zip{:05d}.pkl'.format(frameNo))
+
+    def segmentation_mask_path_from_id(self, data_id):
+        seqNo, frameNo = data_id
+        return os.path.join(self._dataset_path, str(seqNo), 'seg{:05d}.png'.format(frameNo))            
+
+    def force_path_from_id(self, data_id):
+        seqNo, frameNo = data_id
+        return os.path.join(self._dataset_path, str(seqNo), 'force_zip{:05d}.pkl'.format(frameNo))
+
+    def bin_state_path_from_id(self, data_id):
+        seqNo, frameNo = data_id
+        return os.path.join(self._dataset_path, str(seqNo), 'bin_state{:05d}.pkl'.format(frameNo))
+
+
+class ForceEstimationDataLoaderNoSeq(ForceEstimationDataLoaderBase):
+    def __init__(self,
+                 synthetic_data_path, real_data_path,
+                 image_height=360, image_width=512,
+                 start_frame=0, n_frames=5000,
+                 real_start_frame=0, real_n_frames=40,
+                 crop=128,
+                 ):
+
+        super().__init__(image_height, image_width, synthetic_data_path, real_data_path, crop)
+
+        self._real_start_frame = real_start_frame
+        self._real_n_frames = real_n_frames
+
+        data_ids = range(start_frame, start_frame + n_frames)
+        self._train_ids, self._valid_ids, self._test_ids = np.split(data_ids,
+                                                                    [int(len(data_ids)*.75), int(len(data_ids)*.875)])
+
+        self._train_real_ids = []
+        self._valid_real_ids = []
+        self._test_real_ids = range(real_start_frame, real_start_frame + real_n_frames)
+
+    def rgb_path_from_id(self, data_id):
+        frameNo = data_id
+        return os.path.join(self._dataset_path, 'rgb{:05d}.jpg'.format(frameNo))
+
+    def depth_path_from_id(self, data_id):
+        frameNo = data_id
+        return os.path.join(self._dataset_path, 'depth_zip{:05d}.pkl'.format(frameNo))
+
+    def segmentation_mask_path_from_id(self, data_id):
+        frameNo = data_id
+        return os.path.join(self._dataset_path, 'seg{:05d}.png'.format(frameNo))            
+
+    def force_path_from_id(self, data_id):
+        frameNo = data_id
+        return os.path.join(self._dataset_path, 'force_zip{:05d}.pkl'.format(frameNo))
+
+    def bin_state_path_from_id(self, data_id):
+        frameNo = data_id
+        return os.path.join(self._dataset_path, 'bin_state{:05d}.pkl'.format(frameNo))

@@ -112,8 +112,8 @@ class GridForceMap:
     def get_scene(self):
         return self._scene_name
 
-def plot_force_map(force_map, title=''):
-    fmap = GridForceMap('seria_basket')
+def plot_force_map(force_map, env='seria_basket', title=''):
+    fmap = GridForceMap(env)
     fmap.set_values(force_map)
     fmap.set_title(title)
     fmap.visualize()
