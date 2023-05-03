@@ -176,7 +176,7 @@ class Tester:
         plt.show()
         return xs[0], ys[0], y_pred[0]
 
-    def predict_force_from_rgb(self, n, visualize=True):
+    def predict_force_from_rgb(self, n, visualize_bin_state=True):
         if type(self.test_data) is tuple:
             xs = self.test_data[0][n:n+1]
             force_label = self.test_data[1][n]
@@ -187,7 +187,7 @@ class Tester:
         y_pred_forces = y_preds
         # visualize_result(y_pred_forces[0], force_label, xs[0], 'result{:05d}.png'.format(n))
         fmap.set_values(y_pred_forces[0])
-        bin_state = self.test_data[2][n]
+        bin_state = self.test_data[2][n] if visualize_bin_state else None
         viewer.publish_bin_state(bin_state, fmap)
 
         return y_pred_forces[0], force_label, xs[0]
@@ -216,7 +216,7 @@ num_z_channels = 30
 
 parser = argparse.ArgumentParser(description='')
 parser.add_argument('-t', '--task', type=str, default='konbini-stacked')
-parser.add_argument('-w', '--weight', type=str, default='ae_cp.konbini-stacked.model_resnet_wide.20230502171152')
+parser.add_argument('-w', '--weight', type=str, default='ae_cp.konbini-stacked.model_resnet_wide.20230502194539')
 args = parser.parse_args()
 message('task = {}'.format(args.task))
 message('weight = {}'.format(args.weight))
@@ -236,5 +236,5 @@ elif args.task == 'test':
     tester = Tester(model, test_data, args.weight)
 elif args.task == 'test-real':
     model = fe.model_rgb_to_fmap_res50_wide()
-    test_data = dl.load_real_data_for_rgb2fmap(test_mode=True, num_z_channels=num_z_channels)
+    test_data = dl.load_real_data_for_rgb2fmap(test_mode=True)
     tester = Tester(model, test_data, args.weight)

@@ -7,35 +7,40 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import abc
+from core.utils import swap
 
 
 class ForceEstimationDataLoaderBase(object, metaclass=abc.ABCMeta):
-    def __init__(self, image_height, image_width, synthetic_data_path, real_data_path, crop=128):
+    def __init__(self, 
+                 image_height, 
+                 image_width, 
+                 synthetic_data_path, 
+                 real_data_path, 
+                 crop=128):
         self._image_height = image_height
         self._image_width = image_width
         self._dataset_path = synthetic_data_path
         self._real_dataset_path = real_data_path
-        self._crop = crop
 
-    def load_rgb(self, data_id, resize=True):
+    def load_rgb(self, data_id, crop=128, resize=True):
         rgb_path = self.rgb_path_from_id(data_id)
         rgb = cv2.cvtColor(cv2.imread(rgb_path), cv2.COLOR_BGR2RGB)
-        rgb = rgb[:,self._crop:-self._crop] # crop the right & left side
+        rgb = rgb[:, crop:-crop]  # crop the right & left side
         rgb = cv2.resize(rgb, (self._image_width, self._image_height))
         return rgb
 
-    def load_depth(self, data_id, resize=True):
+    def load_depth(self, data_id, crop=128, resize=True):
         depth_path = self.depth_path_from_id(data_id)
         depth = pd.read_pickle(depth_path, compression='zip')
-        depth = depth[:, self._crop:-self._crop]
+        depth = depth[:, crop:-crop]
         depth = cv2.resize(depth, (self._image_width, self._image_height))
         depth = np.expand_dims(depth, axis=-1)
         return depth
 
-    def load_segmentation_mask(self, data_id, resize=True):
+    def load_segmentation_mask(self, data_id, crop=128, resize=True):
         seg_path = self.segmentation_mask_path_from_id(data_id)
         seg = cv2.imread(seg_path, cv2.IMREAD_GRAYSCALE)    
-        seg = seg[:, self._crop:-self._crop]
+        seg = seg[:, crop:-crop]
         seg = seg[::2, ::2]  # resize
         return seg
 
@@ -175,18 +180,21 @@ class ForceEstimationDataLoaderBase(object, metaclass=abc.ABCMeta):
             test_force = self.load_ddta(self._test_ids, 'force')
             return (test_depth, test_seg), test_force
 
-    def load_real_data(self, ids):
+    def load_real_data(self, ids, image_center_offset=np.array([-40, 0]), scale=0.6):
         total_frames = len(ids)
-        # c = (-40, 25)
-        c = (-30, 80)
-        crop = 64
         X_rgb = np.empty((total_frames, self._image_height, self._image_width, 3))
+        resized_shape = (int(scale * 760), int(scale * 1280))
+        target_size = np.array([self._image_height, self._image_width])
+        crop = ((resized_shape - target_size) / 2).astype(np.int32)
 
         for i, id in enumerate(ids):
             print('\rloading RGB ... {}({:3.1f}%)'.format(i, i/total_frames*100.), end='')
             filepath = os.path.join(self._real_dataset_path, '{:05d}.png'.format(id))
-            img = plt.imread(filepath)
-            X_rgb[i] = img[180+c[0]:540+c[0], 320+c[1]+crop:960+c[1]-crop]
+            rgb = plt.imread(filepath)
+            resized_rgb = cv2.resize(rgb, swap(resized_shape), cv2.INTER_AREA)
+            top_left = crop + image_center_offset
+            bottom_right = crop + image_center_offset + target_size
+            X_rgb[i] = resized_rgb[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
 
         return X_rgb
 
@@ -214,10 +222,9 @@ class ForceEstimationDataLoader(ForceEstimationDataLoaderBase):
                  start_seq=1, n_seqs=1500,
                  start_frame=3, n_frames=3,
                  real_start_frame=1, real_n_frames=294,
-                 crop=128,
                  ):
 
-        super().__init__(image_height, image_width, synthetic_data_path, real_data_path, crop)
+        super().__init__(image_height, image_width, synthetic_data_path, real_data_path)
 
         # configuration for synthetic data    
         # self.__start_seq = start_seq
@@ -263,10 +270,9 @@ class ForceEstimationDataLoaderNoSeq(ForceEstimationDataLoaderBase):
                  image_height=360, image_width=512,
                  start_frame=0, n_frames=5000,
                  real_start_frame=0, real_n_frames=40,
-                 crop=128,
                  ):
 
-        super().__init__(image_height, image_width, synthetic_data_path, real_data_path, crop)
+        super().__init__(image_height, image_width, synthetic_data_path, real_data_path)
 
         self._real_start_frame = real_start_frame
         self._real_n_frames = real_n_frames
