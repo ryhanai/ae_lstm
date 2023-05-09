@@ -47,15 +47,15 @@ def reorder_joint_values(joint_names, joint_positions):
 
 
 def get_arm_joint_observation(episode):
-    return [reorder_joint_values(f[2].name, f[2].position) for f in episode]
+    return np.array([reorder_joint_values(f[2].name, f[2].position) for f in episode])
 
 
 def get_arm_joint_action(episode):
-    return [reorder_joint_values(f[1].joint_names, f[1].points[0].positions) for f in episode]
+    return np.array([reorder_joint_values(f[1].joint_names, f[1].points[0].positions) for f in episode])
 
 
 def get_gripper_joint_action(episode):  # observation = action in gripper
-    return [f[3].position for f in episode]
+    return np.array([f[3].position for f in episode])
 
 
 def get_action(episode):
@@ -64,18 +64,56 @@ def get_action(episode):
     return np.concatenate([ao, go], axis=1)
 
 
-def plot_action(episode):
+def plot_action(episode, normalize=True):
     tms = get_time_labels(episode)
     a = get_action(episode)
+    if normalize:
+        a = normalize_joint_values(a)
     fig, ax = plt.subplots(facecolor="w")
     for i in range(7):
         ax.plot(tms, a[:, i], label=f'joint{i}')
     ax.legend()
+    ax.set_xlabel('time[sec]')
+    ax.set_ylabel('joint angle[normalized]')
     plt.show()
 
 
-def compute_joint_range():
-    pass
+def plot_action_and_observation(episode, joint_number=0, normalize=True):
+    tms = get_time_labels(episode)
+    a = get_action(episode)
+    if normalize:
+        a = normalize_joint_values(a)
+    fig, ax = plt.subplots(facecolor="w")
+    ax.plot(tms, a[:, joint_number], label=f'action joint{joint_number}')
+    o = get_arm_joint_observation(episode)
+    if normalize:
+        o = normalize_joint_values(o)
+    ax.plot(tms, o[:, joint_number], label=f'observation joint{joint_number}')
+    ax.legend()
+    ax.set_xlabel('time[sec]')
+    ax.set_ylabel('joint angle[normalized]')
+    plt.show()
+
+
+def compute_joint_range(episodes):
+    maxs = []
+    mins = []
+    for e in episodes:
+        a = get_action(e)
+        maxs.append(np.max(a, axis=0))
+        mins.append(np.min(a, axis=0))
+    return np.min(np.array(mins), axis=0), np.max(np.array(maxs), axis=0)
+
+
+mins, maxs = compute_joint_range(episodes)
+
+def normalize_joint_values(joint_values):
+    if joint_values.shape[1] < 7:
+        l = joint_values.shape[1]
+        return (joint_values - mins[:l]) / (maxs[:l] - mins[:l])
+    else:
+        return (joint_values - mins) / (maxs - mins)
+
 
 # check synchronization accuracy
 
