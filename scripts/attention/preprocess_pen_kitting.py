@@ -164,8 +164,6 @@ def compute_joint_range(episodes):
         mins.append(np.min(a, axis=0))
     return np.min(np.array(mins), axis=0), np.max(np.array(maxs), axis=0)
 
-# mins, maxs = compute_joint_range(episodes)
-
 def normalize_joint_values(joint_values):
     if joint_values.shape[1] < 7:
         l = joint_values.shape[1]
