@@ -176,7 +176,8 @@ class AttentionLSTMCell(keras.layers.LSTMCell):
 
     def spatial_attention(self, in_img, h_in):
         h1 = self.dense_h1(h_in)
-        h1 = tf.reshape(h1, shape=[-1, in_img.get_shape()[1], in_img.get_shape()[2], 1])
+        # h1 = tf.reshape(h1, shape=[-1, in_img.get_shape()[1], in_img.get_shape()[2], 1])
+        h1 = tf.reshape(h1, shape=[-1, tf.shape(in_img)[1], tf.shape(in_img)[2], 1])
         avg_pool = tf.reduce_mean(in_img, axis=[3], keepdims=True)
         assert avg_pool.get_shape()[-1] == 1
         max_pool = tf.reduce_max(in_img, axis=[3], keepdims=True)
@@ -205,7 +206,8 @@ class AttentionLSTMCell(keras.layers.LSTMCell):
         x = self.attention_bn0(x)
         x = self.attention_conv1(x)
         x = self.attention_bn1(x)
-        shape = in_img.get_shape()
+        # shape = in_img.get_shape()
+        shape = tf.shape(in_img)
         x = tf.reshape(x, shape=[-1, int(shape[1] * shape[2] / 16 * self._n_filters[-1])])  # flatten
         x = self.dense_lv(x)
 

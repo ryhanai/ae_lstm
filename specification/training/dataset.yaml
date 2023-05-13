@@ -41,3 +41,9 @@ liquid-pouring:
   train_groups: range(1, 45)
   validation_groups: range(45, 61)
   joint_range_data: range(1, 61)
+
+pen-kitting-real:
+  directory: 'pen-kitting-real'
+  train_groups: range(0,40)
+  validation_groups: range(40,48)
+  joint_range_data: range(0,48)
