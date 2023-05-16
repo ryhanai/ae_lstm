@@ -104,8 +104,8 @@ for i, ky in enumerate(kys):
 def compute_score(attention_map, n_sigma=1.0, epsilon=1e-3):
     attention_map[:, 0] = 0.0
     attention_map[:, -1] = 0.0
+    attention_map[:, :, 0] = 0.0
     attention_map[:, :, -1] = 0.0
-    attention_map[:, :, :2] = 0.0
 
     N, H, W, C = attention_map.shape
     score = np.empty((YMAX-3, XMAX-3, N, H, W, C))
