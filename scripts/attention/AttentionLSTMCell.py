@@ -198,8 +198,10 @@ class AttentionLSTMCell(keras.layers.LSTMCell):
         in_jv = inputs[1]
 
         ch_at = self.channel_attention(in_img, h_in)
+        ch_at = ch_at * 0.8 + 0.2
         x = in_img * ch_at
         sp_at = self.spatial_attention(x, h_in)
+        sp_at = sp_at * 0.8 + 0.2
         x = x * sp_at
 
         x = self.attention_conv0(x)

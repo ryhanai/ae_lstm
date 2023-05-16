@@ -30,7 +30,7 @@ dof = 7
 class WeightedFeaturePredictorModel(tf.keras.Model):
     def __init__(self, image_encoder, *args, **kargs):
         super(WeightedFeaturePredictorModel, self).__init__(*args, **kargs)
-        tracker_names = ['image_loss', 'joint_loss', 'loss']
+        tracker_names = ['image_loss', 'joint_loss', 'ae_loss', 'loss']
         self.train_trackers = {}
         self.test_trackers = {}
         for n in tracker_names:
@@ -48,7 +48,7 @@ class WeightedFeaturePredictorModel(tf.keras.Model):
         # input_noise = tf.zeros(shape=(batch_size, 2))
 
         with tf.GradientTape() as tape:
-            image_loss, joint_loss, att_loss, loss = self.compute_loss(data, input_noise, training=True)
+            image_loss, joint_loss, ae_loss, loss = self.compute_loss(data, input_noise, training=True)
 
         trainable_vars = self.trainable_variables
         gradients = tape.gradient(loss, trainable_vars)
@@ -56,6 +56,7 @@ class WeightedFeaturePredictorModel(tf.keras.Model):
 
         self.train_trackers['image_loss'].update_state(image_loss)
         self.train_trackers['joint_loss'].update_state(joint_loss)
+        self.train_trackers['ae_loss'].update_state(ae_loss)
         self.train_trackers['loss'].update_state(loss)
         return dict([(trckr[0], trckr[1].result()) for trckr in self.train_trackers.items()])
 
@@ -65,10 +66,11 @@ class WeightedFeaturePredictorModel(tf.keras.Model):
         batch_size = tf.shape(x_image)[0]
         input_noise = tf.zeros(shape=(batch_size, 2))
 
-        image_loss, joint_loss, att_loss, loss = self.compute_loss(data, input_noise, training=False)
+        image_loss, joint_loss, ae_loss, loss = self.compute_loss(data, input_noise, training=False)
 
         self.test_trackers['image_loss'].update_state(image_loss)
         self.test_trackers['joint_loss'].update_state(joint_loss)
+        self.test_trackers['ae_loss'].update_state(ae_loss)
         self.test_trackers['loss'].update_state(loss)
         return dict([(trckr[0], trckr[1].result()) for trckr in self.test_trackers.items()])
 
@@ -83,7 +85,7 @@ class WeightedFeaturePredictorModel(tf.keras.Model):
         y_joints_tr = tf.transpose(y_joints, [1, 0, 2])
 
         for n in range(self.n_steps):
-            pred_image_feature, pred_joint, attention_map = self((x_image, x_joint, input_noise), training=training)  # Forward pass
+            pred_image_feature, pred_joint, attention_map, decoded_image = self((x_image, x_joint, input_noise), training=training)  # Forward pass
 
             if n < self.n_steps - 1:
                 pass
@@ -98,7 +100,6 @@ class WeightedFeaturePredictorModel(tf.keras.Model):
                 # x_joint_tr = tf.stack(x_joint_tr_list)
                 # x_joint = tf.transpose(x_joint_tr, [1, 0, 2])
             else:
-                # image_loss = tf.reduce_mean(tf.square(attention_map * (y_image_feature - pred_image)))
                 y_image_aug = translate_image(y_images_tr[n], input_noise)
                 y_image_aug = tf.expand_dims(y_image_aug, 0)
                 y_image_augs = tf.transpose(tf.tile(y_image_aug, [time_window_size, 1, 1, 1, 1]), [1, 0, 2, 3, 4])
@@ -108,9 +109,10 @@ class WeightedFeaturePredictorModel(tf.keras.Model):
                 # image_loss = tf.reduce_mean(tf.square(attention_map * y_image_feature - pred_image_feature))
                 image_loss = tf.reduce_mean(tf.square(y_image_feature - pred_image_feature))
                 joint_loss = tf.reduce_mean(tf.square(y_joints_tr[n] - pred_joint))
+                ae_loss = tf.reduce_mean(tf.square(y_image_aug - decoded_image))
 
-        loss = image_loss + joint_loss
-        return image_loss, joint_loss, loss
+        loss = joint_loss + ae_loss
+        return image_loss, joint_loss, ae_loss, loss
 
     @property
     def metrics(self):
@@ -149,7 +151,6 @@ def model_weighted_feature_prediction(input_image_shape, time_window_size, image
 
     x = image_input
 
-    # This should be changed to time-series version
     if use_color_augmentation:
         x = TimeDistributedColorAugmentation(time_window_size=time_window_size)(x)
     x = TimeDistributedGeometricalAugmentation(time_window_size=time_window_size)(x, noise_input)
@@ -178,15 +179,15 @@ def model_weighted_feature_prediction(input_image_shape, time_window_size, image
     x = deconv_block(x, channels*2)
     x = deconv_block(x, channels)
 
-    # decode to the next frame
-    # predicted_img = model_decoder((h*4, w*4, channels))(x)
-
     predicted_img_feature = x
 
+    # decode to the next frame
+    decoded_img = model_decoder((h*4, w*4, channels))(x)
+    
     m = WeightedFeaturePredictorModel(inputs=[image_input, joint_input, noise_input],
-                                      outputs=[predicted_img_feature, predicted_jvec, attention_map],
+                                      outputs=[predicted_img_feature, predicted_jvec, attention_map, decoded_img],
                                       image_encoder=image_encoder,
-                                      name='roi_cbam_v2')
+                                      name='roi_cbam_v3')
 
     m.summary()
     return m
@@ -326,7 +327,7 @@ class CustomCallback(tf.keras.callbacks.Callback):
         x, y = next(self._val_gen)
         noise = tf.zeros(shape=(x[0].shape[0], 2))
         y_pred = self.model.predict(x+(noise,))
-        predicted_images, predicted_joints, attention_map = y_pred
+        predicted_images, predicted_joints, attention_map, decoded_images = y_pred
 
         visualize_ds(x[0][:,-1,:,:,:])
         plt.savefig(self._save_dir + '/{:04d}_rgb.png'.format(epoch))

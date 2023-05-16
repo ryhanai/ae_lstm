@@ -413,17 +413,19 @@ class GeometricalAugmentation(tf.keras.layers.Layer):
 
 
 class TimeDistributedColorAugmentation(tf.keras.layers.Layer):
-    def __init__(self, brightness_max_delta=0.2,
+    def __init__(self, time_window_size=10, 
+                     brightness_max_delta=0.2,
                      contrast_lower=0.8, contrast_upper=1.2,
                      hue_max_delta=0.05):
         super().__init__()
+        self.time_window_size = time_window_size
         self.brightness_max_delta = brightness_max_delta
         self.contrast_lower = contrast_lower
         self.contrast_upper = contrast_upper
         self.hue_max_delta = hue_max_delta
 
     def call(self, images, training=None):
-        return K.in_train_phase(tf.map_fn(self.augment_per_seq, images, fn_output_signature=tf.TensorSpec(shape=[20,80,160,3],dtype=tf.float32)),
+        return K.in_train_phase(tf.map_fn(self.augment_per_seq, images, fn_output_signature=tf.TensorSpec(shape=[self.time_window_size,80,160,3],dtype=tf.float32)),
                                     images, training=training)
 
     def augment_per_seq(self, img):
@@ -444,11 +446,12 @@ class TimeDistributedColorAugmentation(tf.keras.layers.Layer):
 
 
 class TimeDistributedGeometricalAugmentation(tf.keras.layers.Layer):
-    def __init__(self):
+    def __init__(self, time_window_size):
         super().__init__()
+        self.time_window_size = time_window_size
 
     def call(self, images, noise, training=None):
-        return K.in_train_phase(tf.map_fn(self.augment_per_seq, (images, noise), fn_output_signature=tf.TensorSpec(shape=[20,80,160,3],dtype=tf.float32)),
+        return K.in_train_phase(tf.map_fn(self.augment_per_seq, (images, noise), fn_output_signature=tf.TensorSpec(shape=[self.time_window_size,80,160,3],dtype=tf.float32)),
                                     images, training=training)
 
     def augment_per_seq(self, args):
