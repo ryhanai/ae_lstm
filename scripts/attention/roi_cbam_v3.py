@@ -293,7 +293,7 @@ class Tester(trainer.Trainer):
             else:
                 y_pred = self.model.predict((batch_x_imgs, batch_x_jvs))
 
-            predicted_images, predicted_joints, attention_maps = y_pred
+            predicted_images, predicted_joints, attention_maps, decoded_images = y_pred
             # attention_maps = attention_maps[:, -1]
             input_img = batch_x_imgs[:, -1]
             b, rect = attention_map2roi.apply_filters(input_img, attention_maps, visualize_result=False, return_result=True, n_sigma=n_sigma, epsilon=epsilon)
@@ -303,7 +303,7 @@ class Tester(trainer.Trainer):
 
             cm = plt.get_cmap('viridis')
             a = tf.squeeze(attention_maps[0])
-            a = np.array(list(map(cm, a*3.)))[:, :, :3]
+            a = np.array(list(map(cm, a)))[:, :, :3]
             # a = np.array(list(map(cm, a*5.)))[:, :, :3]
             resized_attention_map = tf.image.resize(a, b[0].shape[:2])
 
@@ -355,41 +355,19 @@ def prepare(task, dataset):
         return tr
     elif task == 'test':
         if dataset == 'reaching-real' or dataset == 'reaching-real-destructor':
-            cp = 'ae_cp.reaching-real.weighted_feature_prediction.20221213011838'
-            cp_epoch = None
-            # cp_epoch = 192
+            pass
         elif dataset == 'kitting':
-            # cp = 'ae_cp.kitting.roi_cbam_v2.20230320143036'
-            # cp_epoch = 41
-            # cp = 'ae_cp.kitting.roi_cbam_v2.20230320184123'
-            # cp_epoch = 77
-            # cp = 'ae_cp.kitting.roi_cbam_v2.20230320212314'
-            # cp_epoch = 71
-            # cp = 'ae_cp.kitting.roi_cbam_v2.20230321001902'
-            # cp_epoch = 100
-            # cp = 'ae_cp.kitting.roi_cbam_v2.20230321092920'  # 2nd best
-            # cp_epoch = 72
-            cp = 'ae_cp.kitting.roi_cbam_v2.20230321162820'  # best
-            cp_epoch = 151
+            pass
         elif dataset == 'kitting2':
-            cp = 'ae_cp.kitting2.roi_cbam_v2.20230327190940'
-            cp_epoch = 200
+            pass
         elif dataset == 'kitting3':
-            # cp = 'ae_cp.kitting3.roi_cbam_v2.20230328145933'
-            # cp_epoch = 139
-            cp = 'ae_cp.kitting3.roi_cbam_v2.20230515134038'
-            cp_epoch = 117
+            cp = 'ae_cp.kitting3.roi_cbam_v3.20230516151303'
+            cp_epoch = 224
         elif dataset == 'pen-kitting-real':
-            # cp = 'ae_cp.pen-kitting-real.roi_cbam_v2.20230514230129'
-            # # cp_epoch = 135
-            # cp_epoch = 102
-            # cp = 'ae_cp.pen-kitting-real.roi_cbam_v2.20230515152021'
-            # cp_epoch = 150
-            cp = 'ae_cp.pen-kitting-real.roi_cbam_v2.20230515184342'
-            cp_epoch = 149
+            cp = 'ae_cp.pen-kitting-real.roi_cbam_v3.20230516173339'
+            cp_epoch = 272
         elif dataset == 'liquid-pouring':
-            cp = None
-            cp_epoch = None
+            pass
         val_ds = Dataset(dataset, mode='test')
         val_ds.load(image_size=input_image_size)
         tr = Tester(predictor, val_ds, checkpoint_file=cp, checkpoint_epoch=cp_epoch)
