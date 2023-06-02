@@ -6,10 +6,25 @@ from urllib.error import URLError
 import torch
 from torchvision import transforms
 from torch.utils.data import Dataset
-from eipl.utils import normalization
 
 import pandas as pd
 import cv2
+
+
+def normalization(data, indataRange, outdataRange):
+    """     
+    Function to normalize a numpy array within a specified range
+    Args:   
+        data (np.array): Data array
+        indataRange (float list):  List of maximum and minimum values of original data, e.g. ind    ataRange=[0.0, 255.0].
+        outdataRange (float list): List of maximum and minimum values of output data, e.g. indat    aRange=[0.0, 1.0].
+    Return: 
+        data (np.array): Normalized data array
+    """     
+    data = ( data - indataRange[0] ) / ( indataRange[1] - indataRange[0] )
+    data = data * ( outdataRange[1] - outdataRange[0] ) + outdataRange[0]
+    return data
+
 
 def curate_dataset(num_samples=100):
     input_dir = os.path.join(os.path.expanduser('~'), 'Dataset/dataset2/konbini-stacked/')
@@ -17,6 +32,8 @@ def curate_dataset(num_samples=100):
     all_ids = range(num_samples)
     train_ids, validation_ids, test_ids = np.split(all_ids, [int(len(all_ids)*0.75), int(len(all_ids)*0.875)])
 
+    height = 14 * 24
+    width = height * 2
     def f(ids, output_dir):
         fmaps = []
         rgbs = []
@@ -25,7 +42,7 @@ def curate_dataset(num_samples=100):
             fmap = pd.read_pickle(os.path.join(input_dir, f'force_zip{i:05}.pkl'), compression='zip')
             fmaps.append(fmap.astype('float32'))
             rgb = cv2.cvtColor(cv2.imread(os.path.join(input_dir, f'rgb{i:05}.jpg')), cv2.COLOR_BGR2RGB)
-            rgbs.append(cv2.resize(rgb, (640, 320)))
+            rgbs.append(cv2.resize(rgb, (width, height)))
         pd.to_pickle(np.array(fmaps), os.path.join(output_dir, f'force_bz2.pkl'), compression='bz2')
         pd.to_pickle(np.array(rgbs), os.path.join(output_dir, f'rgb_bz2.pkl'), compression='bz2')
 
@@ -91,7 +108,7 @@ class KonbiniRandomScene:
         return self.images_raw, self.forces_raw
 
 
-class KonbiniRandomImageDataset(Dataset, KonbiniRandomScene):
+class KonbiniRandomSceneDataset(Dataset, KonbiniRandomScene):
     """AIREC_sample dataset.
 
     Args:
@@ -107,51 +124,50 @@ class KonbiniRandomImageDataset(Dataset, KonbiniRandomScene):
                   minmax=[0.1, 0.9],
                   stdev=0.02,
                   img_format='CWH',
-                  root_dir=os.path.join( os.path.expanduser('~'), '.eipl/'),
-                  download=True):
+                  root_dir=os.path.join( os.path.expanduser('~'), 'Dataset/dataset2/'),
+                  ):
         KonbiniRandomScene.__init__(self,
                   data_type=data_type,
                   minmax=minmax,
                   stdev=stdev,
                   img_format=img_format,
-                  root_dir=root_dir,
-                  download=download)
-        
-        self.images_flatten = self.images.reshape( ((-1,) + self.images.shape[2:]) )
+                  root_dir=root_dir)
+
+        # self.images_flatten = self.images.reshape( ((-1,) + self.images.shape[2:]) )
 
         self.transform_affine = transforms.Compose([
-            transforms.RandomAffine( degrees=(0, 0), translate=(0.15, 0.15) ),
+            transforms.RandomAffine(degrees=(-3, 3), translate=(0.03, 0.03)),
             transforms.ColorJitter(hue=0.1, saturation=0.1),
             transforms.RandomAutocontrast(),
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomVerticalFlip()
+            # transforms.RandomHorizontalFlip(),
+            # transforms.RandomVerticalFlip()
             ])
         self.transform_noise  = transforms.Compose([
-            transforms.ColorJitter(contrast=0.5, brightness=0.5),
+            transforms.ColorJitter(contrast=0.1, brightness=0.1),
             ])
 
     def __len__(self):
-        return len(self.images_flatten)
+        return len(self.images)
 
     def __getitem__(self, idx):
         # normalization and convert numpy array to torch tensor
-        y_img = self.transform_affine( self.images_flatten[idx] )
-
+        y_img = self.transform_affine(self.images[idx])
         # apply base image transformations to image                                                                                     
-        x_img = self.transform_noise( y_img ) + torch.normal(mean=0, std=self.stdev, size=y_img.shape)
-        
-        return [ x_img, y_img ]
+        x_img = self.transform_noise(y_img) + torch.normal(mean=0, std=self.stdev, size=y_img.shape)
+
+        y_force = self.forces[idx]
+        return x_img, y_force
 
 
 if __name__ == '__main__':
-    import cv2
     import time
     import matplotlib.pylab as plt
-    from eipl.utils import deprocess_img, tensor2numpy
     
     # load data
-    data_loader = KonbiniRandomScene('train', minmax=[0.1, 0.9], img_format='CWH')
-    # x_data, y_data = data_loader[1]
+    data_loader = KonbiniRandomSceneDataset('train', minmax=[0.1, 0.9], img_format='CWH')
+    
+    # x_img, y_force = data_loader[1]
+
     # images = np.concatenate( (x_data[0], y_data[0]), axis=3 )
     # images = images.transpose(0,2,3,1)
 

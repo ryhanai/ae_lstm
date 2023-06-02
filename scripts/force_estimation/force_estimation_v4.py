@@ -11,11 +11,15 @@ import cv2
 
 
 class ForceEstimationDINOv2(nn.Module):
+    """
+        input: (3, 336, 672): width and height must be a multple of 14
+        output: (40, 120, 160)
+    """
     def __init__(self):
         super().__init__()
 
         # image -> torch.Size([1, 384])
-        self.encoder = dinov2_vits14 = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14')
+        self.encoder = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14')
 
         # self.decoder = nn.Sequential(
         #     nn.Linear(384, 50), nn.BatchNorm1d(50), nn.ReLU(True),
@@ -37,5 +41,5 @@ class ForceEstimationDINOv2(nn.Module):
         return self.decoder(self.encoder(x))
 
 
-model = ForceEstimationDINOv2()
-print(summary(model, input_size=(32, 3, 224, 224)))
+# model = ForceEstimationDINOv2()
+# print(summary(model, input_size=(32, 3, 224, 224)))
