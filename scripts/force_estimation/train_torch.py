@@ -176,7 +176,7 @@ test_loader = DataLoader(
     sampler=test_sampler)
 
 # define model
-model = ForceEstimationDINOv2()
+model = ForceEstimationDINOv2(device=args.device)
 
 
 # torch compile for pytorch 2.0

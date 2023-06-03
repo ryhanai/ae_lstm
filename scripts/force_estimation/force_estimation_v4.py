@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 from torchinfo import summary
 import cv2
+import torchvision.transforms as T
+
 
 # dinov2_vits14 = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14')
 # img = cv2.imread('/home/ryo/Dataset/dataset2/pen-kitting-real/1/image_frame00000.jpg')
@@ -15,11 +17,25 @@ class ForceEstimationDINOv2(nn.Module):
         input: (3, 336, 672): width and height must be a multple of 14
         output: (40, 120, 160)
     """
-    def __init__(self):
+    def __init__(self, device=0, fine_tune_encoder=True):
         super().__init__()
+
+        self.stdev = 0.02
+        self.device = device
+
+        self.augmenter = T.Compose([
+            # T.ToTensor(),
+            T.RandomAffine(degrees=(-3, 3), translate=(0.03, 0.03)),
+            T.ColorJitter(hue=0.1, saturation=0.1),
+            T.RandomAutocontrast(),
+            T.ColorJitter(contrast=0.1, brightness=0.1),
+        ])
 
         # image -> torch.Size([1, 384])
         self.encoder = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14')
+        if not fine_tune_encoder:
+            for p in self.encoder.parameters():
+                p.require_drad = False
 
         # self.decoder = nn.Sequential(
         #     nn.Linear(384, 50), nn.BatchNorm1d(50), nn.ReLU(True),
@@ -38,8 +54,17 @@ class ForceEstimationDINOv2(nn.Module):
         )
 
     def forward(self, x):
+        x = self.augmenter(x) + torch.normal(mean=0, std=self.stdev, size=x.shape).to(self.device)
         return self.decoder(self.encoder(x))
 
 
+class ForceEstimationResNet(nn.Module):
+    def __init__(self, fine_tune_encoder=True):
+        super().__init__()
+
+    def forward(self, x):
+        return self.decoder(self.encoder(self.augmenter(x)))
+
+# print(summary(self, input_size=(32, 3, 224, 224)))
 # model = ForceEstimationDINOv2()
-# print(summary(model, input_size=(32, 3, 224, 224)))
+
