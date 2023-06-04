@@ -50,7 +50,7 @@ class ForceEstimationDINOv2(nn.Module):
             nn.Linear(50, 8*30*40), nn.BatchNorm1d(8*30*40), nn.ReLU(True),
             nn.Unflatten(1, (8, 30, 40)),
             nn.ConvTranspose2d(8, 16, 3, 2, padding=1, output_padding=1), nn.BatchNorm2d(16), nn.ReLU(True),
-            nn.ConvTranspose2d(16, 30, 3, 2, padding=1, output_padding=1), nn.Tanh(),
+            nn.ConvTranspose2d(16, 30, 3, 2, padding=1, output_padding=1), nn.Sigmoid(),
         )
 
     def forward(self, x):
