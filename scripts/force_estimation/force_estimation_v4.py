@@ -1,7 +1,5 @@
 import torch
 import torch.nn as nn
-from torchinfo import summary
-import cv2
 import torchvision.transforms as T
 
 
@@ -17,7 +15,7 @@ class ForceEstimationDINOv2(nn.Module):
         input: (3, 336, 672): width and height must be a multple of 14
         output: (40, 120, 160)
     """
-    def __init__(self, device=0, fine_tune_encoder=True):
+    def __init__(self, device=0, fine_tune_encoder=False):
         super().__init__()
 
         self.stdev = 0.02
@@ -35,19 +33,41 @@ class ForceEstimationDINOv2(nn.Module):
         self.encoder = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14')
         if not fine_tune_encoder:
             for p in self.encoder.parameters():
-                p.require_drad = False
+                p.require_grad = False
 
+        # Head1: 
+        #   fine-tune: train/test=0.00237/0.00246
         # self.decoder = nn.Sequential(
         #     nn.Linear(384, 50), nn.BatchNorm1d(50), nn.ReLU(True),
-        #     nn.Linear(50, 30*40*8), nn.BatchNorm1d(30*40*8), nn.ReLU(True),
-        #     nn.Unflatten(1,(30,40,8)),
-        #     nn.ConvTranspose2d(8, 16, 3, 2, padding=1), nn.BatchNorm2d(16), nn.ReLU(True),
-        #     nn.ConvTranspose2d(16, 30, 3, 2, padding=1), nn.Tanh(),
+        #     nn.Linear(50, 8*30*40), nn.BatchNorm1d(8*30*40), nn.ReLU(True),
+        #     nn.Unflatten(1, (8, 30, 40)),
+        #     nn.ConvTranspose2d(8, 16, 3, 2, padding=1, output_padding=1), nn.BatchNorm2d(16), nn.ReLU(True),
+        #     nn.ConvTranspose2d(16, 30, 3, 2, padding=1, output_padding=1), nn.Sigmoid(),
         # )
 
+        # Head2:
+        #  fine-tune: train/test=
+        # self.decoder = nn.Sequential(
+        #     nn.Linear(384, 8*30*40), nn.BatchNorm1d(8*30*40), nn.ReLU(True),
+        #     nn.Unflatten(1, (8, 30, 40)),
+        #     nn.ConvTranspose2d(8, 16, 3, 2, padding=1, output_padding=1), nn.BatchNorm2d(16), nn.ReLU(True),
+        #     nn.ConvTranspose2d(16, 30, 3, 2, padding=1, output_padding=1), nn.Sigmoid(),
+        # )
+
+        # Head3:
+        #  fine-tune: train/test=
+        # self.decoder = nn.Sequential(
+        #     nn.Linear(384, 16*60*80), nn.BatchNorm1d(16*60*80), nn.ReLU(True),
+        #     nn.Unflatten(1, (16, 60, 80)),
+        #     nn.ConvTranspose2d(16, 30, 3, 2, padding=1, output_padding=1), nn.Sigmoid(),
+        # )
+
+        # Head4: 
+        #   fine-tune: train/test=
         self.decoder = nn.Sequential(
-            nn.Linear(384, 50), nn.BatchNorm1d(50), nn.ReLU(True),
-            nn.Linear(50, 8*30*40), nn.BatchNorm1d(8*30*40), nn.ReLU(True),
+            nn.Linear(384, 384), nn.BatchNorm1d(384), nn.ReLU(True),
+            nn.Linear(384, 384), nn.BatchNorm1d(384), nn.ReLU(True),
+            nn.Linear(384, 8*30*40), nn.BatchNorm1d(8*30*40), nn.ReLU(True),
             nn.Unflatten(1, (8, 30, 40)),
             nn.ConvTranspose2d(8, 16, 3, 2, padding=1, output_padding=1), nn.BatchNorm2d(16), nn.ReLU(True),
             nn.ConvTranspose2d(16, 30, 3, 2, padding=1, output_padding=1), nn.Sigmoid(),

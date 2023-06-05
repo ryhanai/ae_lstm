@@ -172,7 +172,7 @@ if __name__ == '__main__':
     import matplotlib.pylab as plt
     
     # load data
-    data_loader = KonbiniRandomSceneDataset('train', minmax=[0.1, 0.9], img_format='CWH')
+    # data_loader = KonbiniRandomSceneDataset('train', minmax=[0.1, 0.9], img_format='CWH')
     
     # x_img, y_force = data_loader[1]
 

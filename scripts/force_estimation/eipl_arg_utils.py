@@ -7,47 +7,8 @@
 
 import json
 import datetime
-import os
-# from .print_func import *
-# from .path_utils  import *
-
-
-OK = '\033[92m'
-WARN = '\033[93m'
-NG = '\033[91m'
-END_CODE = '\033[0m'
-
-def print_info(msg):
-    print( OK + "[INFO] " + END_CODE + msg )
-
-def print_warn(msg):
-    print( WARN + "[WARNING] " + END_CODE +  msg )
-
-def print_error(msg):
-    print( NG + "[ERROR] " + END_CODE + msg )
-
-
-
-def check_filename(filename):
-    if os.path.exists(filename):
-        raise ValueError("{} exists.".format(filename))
-    return filename
-
-def check_path(path, mkdir=False):
-    """
-    Checks that path is collect
-    """
-    if path[-1] == '/':
-        path = path[:-1]
-
-    if not os.path.exists(path):
-        if mkdir:
-            os.makedirs(path, exist_ok=True)             
-        else:
-            raise ValueError('%s does not exist' % path)
-    
-    return path
-
+from eipl_print_func import *
+from eipl_path_utils  import *
 
 
 def print_args(args):

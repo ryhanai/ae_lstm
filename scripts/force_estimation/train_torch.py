@@ -15,6 +15,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import BatchSampler, RandomSampler
 from torch.utils.tensorboard import SummaryWriter
+from torchinfo import summary
 # from eipl.model import BasicCAE, CAE, BasicCAEBN, CAEBN
 # from eipl.data import GraspBottleImageDataset
 from eipl_utils import set_logdir
@@ -148,7 +149,9 @@ else:
 
 # load dataset
 minmax = [args.vmin, args.vmax]
+print('loading train data ...')
 train_data = KonbiniRandomSceneDataset('train', minmax, stdev=args.stdev)
+print('loading test data ...')
 test_data  = KonbiniRandomSceneDataset('validation', minmax, stdev=args.stdev)
 
 train_sampler = BatchSampler(
@@ -177,7 +180,7 @@ test_loader = DataLoader(
 
 # define model
 model = ForceEstimationDINOv2(device=args.device)
-
+print(summary(model, input_size=(args.batch_size, 3, 336, 672)))
 
 # torch compile for pytorch 2.0
 if int(torch.__version__[0]) >= 2:
