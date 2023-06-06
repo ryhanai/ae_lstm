@@ -26,7 +26,7 @@ import torch
 import torch.nn as nn
 
 from KonbiniForceMapData import *
-from force_estimation_v4 import ForceEstimationDINOv2
+from force_estimation_v4 import ForceEstimationDINOv2, ForceEstimationResNet
 
 
 class EarlyStopping:
@@ -179,7 +179,8 @@ test_loader = DataLoader(
     sampler=test_sampler)
 
 # define model
-model = ForceEstimationDINOv2(device=args.device)
+# model = ForceEstimationDINOv2(device=args.device)
+model = ForceEstimationResNet(device=args.device)
 print(summary(model, input_size=(args.batch_size, 3, 336, 672)))
 
 # torch compile for pytorch 2.0

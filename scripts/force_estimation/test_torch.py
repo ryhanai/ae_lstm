@@ -12,13 +12,14 @@ from eipl_arg_utils import restore_args
 from KonbiniForceMapData import *
 from force_estimation_v4 import ForceEstimationDINOv2
 
-# import forcemap
-# from force_estimation import force_distribution_viewer
-# viewer = force_distribution_viewer.ForceDistributionViewer.get_instance()
-# fmap = forcemap.GridForceMap('konbini_shelf')
+import forcemap
+from force_estimation import force_distribution_viewer
+viewer = force_distribution_viewer.ForceDistributionViewer.get_instance()
+fmap = forcemap.GridForceMap('konbini_shelf')
 
 import torch._dynamo
 torch._dynamo.config.verbose = True
+torch._dynamo.config.suppress_errors = True
 
 # argument parser
 parser = argparse.ArgumentParser()
@@ -32,9 +33,8 @@ args = parser.parse_args()
 #     assert False, 'Please set filename or pretrained'
 
 print_info("load pretrained weight")
-# download_tar_file('https://dl.dropboxusercontent.com/s/o29j0kiqwtqlk9v/pretrained.tar')
-# args.filename = os.path.join( os.path.expanduser('~'), '.eipl/pretrained/CAEBN/model.pth' )
-args.filename = os.path.join('log', '20230605_1549_32', 'CAE.pth' )
+# args.filename = os.path.join('log', '20230606_1017_32', 'CAE.pth' ) # 1k
+args.filename = os.path.join('log', '20230606_1418_05', 'CAE.pth' ) # 4k
 
 # restore parameters
 dir_name = os.path.split(args.filename)[0]
@@ -51,28 +51,35 @@ images, _ = test_data.get_data()
 # T = images.shape[1]
 
 # define model
-model = ForceEstimationDINOv2()
+model = ForceEstimationDINOv2(device='cpu')
 print(summary(model, input_size=(32, 3, 336, 672)))
 
 # load weight and compile
 model = torch.compile(model)
+# ckpt = torch.load(args.filename, map_location=torch.device('cpu'))
 ckpt = torch.load(args.filename)
 model.load_state_dict(ckpt['model_state_dict'])
-model.to('cuda')
+model.to('cpu')
 model.eval()
 
 # prediction
 batch = images[0:4]
-batch.to('cuda')
 _yi = model(batch)
-# yi = tensor2numpy(_yi)
-# yi = yi.transpose(0,2,3,1)
+yi = tensor2numpy(_yi)
+yi = yi.transpose(0,2,3,1)
 
 # plot images
 
-def plot_forcemap(self, forces, visualize_bin_state=True):
+import pandas as pd
+
+def load_bin_state(i):
+    return pd.read_pickle(f'/home/ryo/Dataset/dataset2/konbini-stacked/bin_state{i+750:05}.pkl')
+
+
+def plot_forcemap(forces, bin_state=None):
     fmap.set_values(forces)
-    bin_state = self.test_data[2][n] if visualize_bin_state else None
+    # bin_state = self.test_data[2][n] if visualize_bin_state else None
+    # viewer.publish_bin_state(bin_state, fmap)
     viewer.publish_bin_state(bin_state, fmap)
 
 
