@@ -137,7 +137,8 @@ class ForceEstimationResNet(nn.Module):
         ])
 
         # resnet_classifier = resnet50(weights=ResNet50_Weights.DEFAULT)
-        resnet_classifier = resnet50()  # no pretrained weight
+        # resnet_classifier = resnet50()  # no pretrained weight
+        resnet_classifier = torch.hub.load('facebookresearch/dino:main', 'dino_resnet50')
         self.encoder = torch.nn.Sequential(*(list(resnet_classifier.children())[:-2]))
 
         if not fine_tune_encoder:
