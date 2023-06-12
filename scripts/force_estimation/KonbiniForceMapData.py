@@ -73,6 +73,7 @@ class KonbiniRandomScene:
                   stdev=0.02,
                   img_format='CWH',
                   root_dir=os.path.join( os.path.expanduser('~'), 'Dataset/dataset2/'),
+                  datasize='1k',
                   ):
         
         self.data_type  = data_type
@@ -81,6 +82,7 @@ class KonbiniRandomScene:
         self.img_format = img_format
         self.task_name  = 'konbini-stacked-c'
         self.root_dir   = root_dir
+        self.datasize   = datasize
         self.mirror_url = ''
 
         self.images_raw, self.forces_raw, self.force_bounds = self._load_data()
@@ -95,9 +97,9 @@ class KonbiniRandomScene:
         self.forces = torch.from_numpy(_forces).float()
 
     def _load_data(self):
-        images = pd.read_pickle( os.path.join(self.root_dir, self.task_name, self.data_type, 'rgb_bz2.pkl'), compression='bz2' )
-        forces = pd.read_pickle( os.path.join(self.root_dir, self.task_name, self.data_type, 'force_bz2.pkl'), compression='bz2' )
-        force_bounds = np.load( os.path.join(self.root_dir, self.task_name, 'force_bounds.npy') )
+        images = pd.read_pickle( os.path.join(self.root_dir, self.task_name+'-'+self.datasize, self.data_type, 'rgb_bz2.pkl'), compression='bz2' )
+        forces = pd.read_pickle( os.path.join(self.root_dir, self.task_name+'-'+self.datasize, self.data_type, 'force_bz2.pkl'), compression='bz2' )
+        force_bounds = np.load( os.path.join(self.root_dir, self.task_name+'-'+self.datasize, 'force_bounds.npy') )
         
         if self.img_format == 'CWH':
             images = images.transpose(0,3,1,2)
@@ -132,13 +134,15 @@ class KonbiniRandomSceneDataset(Dataset, KonbiniRandomScene):
                   stdev=0.02,
                   img_format='CWH',
                   root_dir=os.path.join( os.path.expanduser('~'), 'Dataset/dataset2/'),
+                  datasize='1k',
                   ):
         KonbiniRandomScene.__init__(self,
                   data_type=data_type,
                   minmax=minmax,
                   stdev=stdev,
                   img_format=img_format,
-                  root_dir=root_dir)
+                  root_dir=root_dir,
+                  datasize=datasize)
 
         # self.images_flatten = self.images.reshape( ((-1,) + self.images.shape[2:]) )
 

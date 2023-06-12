@@ -10,7 +10,7 @@ from eipl_utils import tensor2numpy
 from eipl_print_func import print_info
 from eipl_arg_utils import restore_args
 from KonbiniForceMapData import *
-from force_estimation_v4 import ForceEstimationDINOv2
+from force_estimation_v4 import ForceEstimationDINOv2, ForceEstimationResNet
 
 import forcemap
 from force_estimation import force_distribution_viewer
@@ -26,6 +26,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--filename', type=str, default=None)
 parser.add_argument('--idx',      type=str, default='0' )
 parser.add_argument('--pretrained', action='store_true')
+parser.add_argument('--datasize', type=str, default='1k')
 args = parser.parse_args()
 
 # check args
@@ -34,7 +35,8 @@ args = parser.parse_args()
 
 print_info("load pretrained weight")
 # args.filename = os.path.join('log', '20230606_1017_32', 'CAE.pth' ) # 1k
-args.filename = os.path.join('log', '20230606_1418_05', 'CAE.pth' ) # 4k
+# args.filename = os.path.join('log', '20230606_1854_41', 'CAE.pth' ) # 4k resenc + resdec, compiled
+args.filename = os.path.join('log', '20230612_1057_39', 'CAE.pth' ) # 1k resenc + resdec
 
 # restore parameters
 dir_name = os.path.split(args.filename)[0]
@@ -44,18 +46,20 @@ idx    = int(args.idx)
 # load dataset
 minmax = [params['vmin'], params['vmax']]
 print('loading test data ...')
-test_data  = KonbiniRandomSceneDataset('validation', minmax)
+test_data  = KonbiniRandomSceneDataset('validation', minmax, datasize=args.datasize)
 images, _ = test_data.get_data()
 # images_raw, _ = test_data.get_raw_data()
 # images_raw = images_raw.transpose(0,2,3,1)
 # T = images.shape[1]
 
+
 # define model
-model = ForceEstimationDINOv2(device='cpu')
+# model = ForceEstimationDINOv2(device='cpu')
+model = ForceEstimationResNet(device='cpu')
 print(summary(model, input_size=(32, 3, 336, 672)))
 
 # load weight and compile
-model = torch.compile(model)
+# model = torch.compile(model)
 # ckpt = torch.load(args.filename, map_location=torch.device('cpu'))
 ckpt = torch.load(args.filename)
 model.load_state_dict(ckpt['model_state_dict'])
@@ -63,23 +67,29 @@ model.to('cpu')
 model.eval()
 
 # prediction
-batch = images[0:4]
+batch = images[0:8]
 _yi = model(batch)
 yi = tensor2numpy(_yi)
 yi = yi.transpose(0,2,3,1)
 
-# plot images
 
 import pandas as pd
 
 def load_bin_state(i):
-    return pd.read_pickle(f'/home/ryo/Dataset/dataset2/konbini-stacked/bin_state{i+750:05}.pkl')
+    if test_data.datasize == '1k':
+        start_index = 750
+    elif test_data.datasize == '4k':
+        start_index = 3000
+    else:
+        assert False, 'Unknowk dataset'
+    return pd.read_pickle(f'/home/ryo/Dataset/dataset2/konbini-stacked/bin_state{i+start_index:05}.pkl')
 
 
-def plot_forcemap(forces, bin_state=None):
-    fmap.set_values(forces)
+def plot_forcemap(i):
+    fmap.set_values(yi[i])
     # bin_state = self.test_data[2][n] if visualize_bin_state else None
     # viewer.publish_bin_state(bin_state, fmap)
+    bin_state = load_bin_state(i)
     viewer.publish_bin_state(bin_state, fmap)
 
 

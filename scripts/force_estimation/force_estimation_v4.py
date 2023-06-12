@@ -33,7 +33,7 @@ class ForceEstimationDINOv2(nn.Module):
         self.encoder = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14')
         if not fine_tune_encoder:
             for p in self.encoder.parameters():
-                p.require_grad = False
+                p.requires_grad = False
 
         # Head1: 
         #   fine-tune: train/test=0.00237/0.00246
@@ -138,6 +138,11 @@ class ForceEstimationResNet(nn.Module):
 
         resnet_classifier = resnet50(weights=ResNet50_Weights.DEFAULT)
         self.encoder = torch.nn.Sequential(*(list(resnet_classifier.children())[:-2]))
+
+        if not fine_tune_encoder:
+            for p in self.encoder.parameters():
+                p.requires_grad = False
+
         self.decoder = nn.Sequential(
             ResBlock(2048, [1024, 512], 3, strides=[1, 1]),
             UpSample([24, 32]),
@@ -156,7 +161,54 @@ class ForceEstimationResNet(nn.Module):
         return self.decoder(self.encoder(x))
 
 
+class ForceEstimationDinoRes(nn.Module):
+    def __init__(self, device=0, fine_tune_encoder=True):
+        super().__init__()
+
+        self.stdev = 0.02
+        self.device = device
+
+        self.augmenter = T.Compose([
+            # T.ToTensor(),
+            T.Resize([336, 672], antialias=True),
+            T.RandomAffine(degrees=(-3, 3), translate=(0.03, 0.03)),
+            T.ColorJitter(hue=0.1, saturation=0.1),
+            T.RandomAutocontrast(),
+            T.ColorJitter(contrast=0.1, brightness=0.1),
+        ])
+
+        self.encoder = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14')
+        if not fine_tune_encoder:
+            for p in self.encoder.parameters():
+                p.requires_grad = False
+
+        self.bridge = nn.Sequential(
+            nn.Linear(384, 128*12*16), nn.BatchNorm1d(128*12*16), nn.ReLU(True),
+            nn.Unflatten(1, (128, 12, 16)),
+            nn.Conv2d(128, 2048, 1, stride=1, padding=0),  # 1x1 convolution
+            nn.BatchNorm2d(2048), nn.ReLU(True),
+        )
+
+        # input: [2048,12,16]
+        self.decoder = nn.Sequential(
+            ResBlock(2048, [1024, 512], 3, strides=[1, 1]),
+            UpSample([24, 32]),
+            ResBlock(512, [256, 128], 3, strides=[1, 1]),
+            UpSample([48, 64]),
+            ResBlock(128, [64, 64], 3, strides=[1, 1]),
+            UpSample([96, 128]),
+            ResBlock(64, [32, 32], 3, strides=[1, 1]),
+            nn.ConvTranspose2d(32, 30, kernel_size=3, stride=1, padding=1),
+            nn.Sigmoid(),
+            T.Resize([120, 160], antialias=True),
+        )
+
+    def forward(self, x):
+        x = self.augmenter(x) + torch.normal(mean=0, std=self.stdev, size=[336,672]).to(self.device)
+        return self.decoder(self.bridge(self.encoder(x)))
+
+
 # from torchinfo import summary
-# model = ForceEstimationResNet()
+# model = ForceEstimationDinoRes(fine_tune_encoder=False)
 # print(summary(model, input_size=(32, 3, 336, 672)))
 

@@ -7,6 +7,7 @@
 
 import os
 import sys
+import time
 import torch
 import argparse
 from tqdm import tqdm
@@ -26,7 +27,7 @@ import torch
 import torch.nn as nn
 
 from KonbiniForceMapData import *
-from force_estimation_v4 import ForceEstimationDINOv2, ForceEstimationResNet
+from force_estimation_v4 import *
 
 
 class EarlyStopping:
@@ -130,7 +131,7 @@ parser.add_argument('--batch_size',  type=int, default=32       )
 parser.add_argument('--feat_dim',    type=int, default=10       )
 parser.add_argument('--stdev',       type=float, default=0.02   )
 parser.add_argument('--lr',          type=float, default=1e-3   )
-parser.add_argument('--optimizer',   type=str,   default='adam' )
+parser.add_argument('--optimizer',   type=str, default='adamax' )
 parser.add_argument('--log_dir',     default='log/'             )
 parser.add_argument('--vmin',        type=float, default=0.1    )
 parser.add_argument('--vmax',        type=float, default=0.9    )
@@ -149,10 +150,15 @@ else:
 
 # load dataset
 minmax = [args.vmin, args.vmax]
-print('loading train data ...')
+print('loading train data ... ', end='')
+t_start = time.time()
 train_data = KonbiniRandomSceneDataset('train', minmax, stdev=args.stdev)
-print('loading test data ...')
+print(f'{time.time() - t_start} [sec]')
+
+print('loading test data ... ', end='')
+t_start = time.time()
 test_data  = KonbiniRandomSceneDataset('validation', minmax, stdev=args.stdev)
+print(f'{time.time() - t_start} [sec]')
 
 train_sampler = BatchSampler(
     RandomSampler(train_data),
@@ -180,20 +186,23 @@ test_loader = DataLoader(
 
 # define model
 # model = ForceEstimationDINOv2(device=args.device)
-model = ForceEstimationResNet(device=args.device)
+model = ForceEstimationResNet(fine_tune_encoder=False, device=args.device)
+# model = ForceEstimationDinoRes(device=args.device)
 print(summary(model, input_size=(args.batch_size, 3, 336, 672)))
 
 # torch compile for pytorch 2.0
-if int(torch.__version__[0]) >= 2:
-    model = torch.compile(model)
+# if int(torch.__version__[0]) >= 2:
+#    model = torch.compile(model)
 
 # set optimizer
 if args.optimizer.casefold() == 'adam':
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 elif args.optimizer.casefold() == 'radam':
     optimizer = optim.RAdam(model.parameters(), lr=args.lr)
+elif args.optimizer.casefold() == 'adamax':
+    optimizer = optim.RAdam(model.parameters(), lr=args.lr, eps=1e-3)
 else:
-    assert False, 'Unknown optimizer name {}. please set Adam or RAdam.'.format(args.optimizer)
+    assert False, 'Unknown optimizer name {}. please set Adam or RAdam or Adamax.'.format(args.optimizer)
 
 # load trainer/tester class
 trainer = Trainer( model, optimizer, device=device )
@@ -219,5 +228,7 @@ with tqdm(range(args.epoch)) as pbar_epoch:
             trainer.save(epoch, [train_loss, test_loss], save_name )
 
         # print process bar
-        pbar_epoch.set_postfix(OrderedDict(train_loss=train_loss,
-                                            test_loss=test_loss))
+        postfix = f'train_loss={train_loss:.5e}, test_loss={test_loss:.5e}'
+        pbar_epoch.set_postfix_str(postfix)
+        # pbar_epoch.set_postfix(OrderedDict(train_loss=train_loss,
+        #                                    test_loss=test_loss))
