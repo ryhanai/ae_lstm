@@ -186,8 +186,8 @@ test_loader = DataLoader(
 
 # define model
 # model = ForceEstimationDINOv2(device=args.device)
-model = ForceEstimationResNet(fine_tune_encoder=False, device=args.device)
-# model = ForceEstimationDinoRes(device=args.device)
+model = ForceEstimationResNet(fine_tune_encoder=True, device=args.device)
+# model = ForceEstimationDinoRes(fine_tune_encoder=True, device=args.device)
 print(summary(model, input_size=(args.batch_size, 3, 336, 672)))
 
 # torch compile for pytorch 2.0
@@ -200,7 +200,7 @@ if args.optimizer.casefold() == 'adam':
 elif args.optimizer.casefold() == 'radam':
     optimizer = optim.RAdam(model.parameters(), lr=args.lr)
 elif args.optimizer.casefold() == 'adamax':
-    optimizer = optim.RAdam(model.parameters(), lr=args.lr, eps=1e-3)
+    optimizer = optim.RAdam(model.parameters(), lr=args.lr, eps=1e-4)
 else:
     assert False, 'Unknown optimizer name {}. please set Adam or RAdam or Adamax.'.format(args.optimizer)
 

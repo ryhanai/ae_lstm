@@ -35,8 +35,8 @@ args = parser.parse_args()
 
 print_info("load pretrained weight")
 # args.filename = os.path.join('log', '20230606_1017_32', 'CAE.pth' ) # 1k
-# args.filename = os.path.join('log', '20230606_1854_41', 'CAE.pth' ) # 4k resenc + resdec, compiled
-args.filename = os.path.join('log', '20230612_1057_39', 'CAE.pth' ) # 1k resenc + resdec
+args.filename = os.path.join('log', '20230606_1854_41', 'CAE.pth' ) # 4k resenc + resdec, compiled
+# args.filename = os.path.join('log', '20230612_1057_39', 'CAE.pth' ) # 1k resenc + resdec
 
 # restore parameters
 dir_name = os.path.split(args.filename)[0]
@@ -47,7 +47,7 @@ idx    = int(args.idx)
 minmax = [params['vmin'], params['vmax']]
 print('loading test data ...')
 test_data  = KonbiniRandomSceneDataset('validation', minmax, datasize=args.datasize)
-images, _ = test_data.get_data()
+images, labels = test_data.get_data()
 # images_raw, _ = test_data.get_raw_data()
 # images_raw = images_raw.transpose(0,2,3,1)
 # T = images.shape[1]
@@ -59,7 +59,7 @@ model = ForceEstimationResNet(device='cpu')
 print(summary(model, input_size=(32, 3, 336, 672)))
 
 # load weight and compile
-# model = torch.compile(model)
+model = torch.compile(model)
 # ckpt = torch.load(args.filename, map_location=torch.device('cpu'))
 ckpt = torch.load(args.filename)
 model.load_state_dict(ckpt['model_state_dict'])
@@ -71,6 +71,8 @@ batch = images[0:8]
 _yi = model(batch)
 yi = tensor2numpy(_yi)
 yi = yi.transpose(0,2,3,1)
+
+force_labels = tensor2numpy(labels[0:8]).transpose(0,2,3,1)
 
 
 import pandas as pd
@@ -89,6 +91,12 @@ def plot_forcemap(i):
     fmap.set_values(yi[i])
     # bin_state = self.test_data[2][n] if visualize_bin_state else None
     # viewer.publish_bin_state(bin_state, fmap)
+    bin_state = load_bin_state(i)
+    viewer.publish_bin_state(bin_state, fmap)
+
+
+def plot_forcelabel(i):
+    fmap.set_values(force_labels[i])
     bin_state = load_bin_state(i)
     viewer.publish_bin_state(bin_state, fmap)
 
