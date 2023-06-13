@@ -35,8 +35,10 @@ args = parser.parse_args()
 
 print_info("load pretrained weight")
 # args.filename = os.path.join('log', '20230606_1017_32', 'CAE.pth' ) # 1k
-args.filename = os.path.join('log', '20230606_1854_41', 'CAE.pth' ) # 4k resenc + resdec, compiled
+# args.filename = os.path.join('log', '20230606_1854_41', 'CAE.pth' ) # 4k resenc + resdec, compiled
 # args.filename = os.path.join('log', '20230612_1057_39', 'CAE.pth' ) # 1k resenc + resdec
+# args.filename = os.path.join('log', '20230612_1914_05', 'CAE.pth' ) # 1k resenc + resdec, dino fine-tune
+args.filename = os.path.join('log', '20230612_1601_40', 'CAE.pth' ) # 1k resenc + resdec, no fine-tune
 
 # restore parameters
 dir_name = os.path.split(args.filename)[0]
@@ -59,7 +61,7 @@ model = ForceEstimationResNet(device='cpu')
 print(summary(model, input_size=(32, 3, 336, 672)))
 
 # load weight and compile
-model = torch.compile(model)
+# model = torch.compile(model)
 # ckpt = torch.load(args.filename, map_location=torch.device('cpu'))
 ckpt = torch.load(args.filename)
 model.load_state_dict(ckpt['model_state_dict'])
@@ -84,7 +86,7 @@ def load_bin_state(i):
         start_index = 3000
     else:
         assert False, 'Unknowk dataset'
-    return pd.read_pickle(f'/home/ryo/Dataset/dataset2/konbini-stacked/bin_state{i+start_index:05}.pkl')
+    return pd.read_pickle(os.path.join(os.environ['HOME'], f'Dataset/dataset2/konbini-stacked/bin_state{i+start_index:05}.pkl'))
 
 
 def plot_forcemap(i):
