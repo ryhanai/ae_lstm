@@ -37,7 +37,7 @@ world = World(stage_units_in_meters=1.0)
 # world.scene.add_default_ground_plane()
 
 asset_path = os.environ["HOME"] + "/Downloads/Collected_ycb_piled_scene/simple_shelf_scene.usd"
-usd_files = glob.glob('/home/ryo/Dataset/Konbini/VER002/Seamless/vt2048/*/*/*.usd')
+usd_files = glob.glob(os.path.join(os.environ['HOME'], 'Dataset/Konbini/VER002/Seamless/vt2048/*/*/*.usd'))
 
 
 simulation_context = SimulationContext()
@@ -215,9 +215,9 @@ def place_objects(n):
         used_objects.append(o)
 
 
-def wait_for_stability():
+def wait_for_stability(count=100):
     stable = True
-    for n in range(100):
+    for n in range(count):
         world.step(render=True)
         # for i in range(10):
         #     o = world.scene.get_object(f'object{i}')
@@ -374,8 +374,39 @@ def convert_to_force_distribution(contact_positions, impulse_values, bin_state, 
 # sr = world.scene._scene_registry
 # print(sr._rigid_objects, sr._geometry_objects)
 
-create_objects()
-reset_object_positions()
+# create_objects()
+# reset_object_positions()
+
+def create_toppos(n=20):
+    global loaded_objects
+    loaded_objects = []
+    usd_file = os.path.join(os.environ['HOME'], 'Dataset/Konbini/VER002/Seamless/vt2048/15_TOPPO-ART-vt2048SA/15_TOPPO-ART-pl2048SA/15_TOPPO-ART-pl2048SA.usd')
+    for i in range(n):
+        loaded_objects.append(Object(usd_file, i))
+
+
+def create_toppo_scene(n=20):
+    global used_objects
+    used_objects = []
+    
+    world.reset()        
+    for i, o in enumerate(loaded_objects):
+        prim = o.get_primitive()
+        pos_xy = np.array([0.0, -0.1]) + np.array([0.0, 0.025]) * i
+        pos_z = 0.73
+
+        axis = [1, 0, 0]
+        angle = 90
+        set_pose(prim, ([pos_xy[0], pos_xy[1], pos_z], (axis, angle)))
+        used_objects.append(o)
+
+    randomize_lights()
+    randomize_camera_parameters()
+    randomize_object_colors()
+    wait_for_stability(count=1000)
+
+
+create_toppos()
 
 
 # need to initialize physics getting any articulation..etc
@@ -393,59 +424,75 @@ def save(frameNo, rgb, bin_state, contact_raw_data, force_distribution, camera_p
     pd.to_pickle(camera_pose, os.path.join(data_dir, 'camera_info{:05d}.pkl'.format(frameNo)))
 
 
-def main(number_of_scenes, out_distribution=False):
+def create_random_scene():
+    world.reset()
+    place_objects(10)
+    randomize_lights()
+    randomize_camera_parameters()
+    randomize_object_colors()
+    wait_for_stability()
+
+
+def record_scene(frameNo, output_distribution=False):
+    rgb = camera.get_current_frame()['rgba'][:, :, :3]
+
+    contact_positions = []
+    impulse_values = []
+    bin_state = []
+
+    for o in used_objects:
+        contact_sensor = o.get_contact_sensor()
+        contacts = read_contact_sensor(contact_sensor)
+        # print(contact_sensor.get_current_frame())
+        # print(contact_sensor_contact_sensor_interface.get_contact_sensor_raw_data(contact_sensor.prim_path))
+
+        for contact in contacts:
+            if scipy.linalg.norm(contact['impulse']) > 1e-8:
+                contact_positions.append(contact['position'])
+                impulse_values.append(scipy.linalg.norm(contact['impulse']))
+
+        prim = o.get_primitive()
+        pose = omni.usd.utils.get_world_transform_matrix(prim)
+        trans = pose.ExtractTranslation()
+        trans = np.array(trans)
+        quat = pose.ExtractRotation().GetQuaternion()
+        quat = np.array(list(quat.imaginary) + [quat.real])
+        bin_state.append((o.get_name(), (trans, quat)))
+        print(f'SCENE[{frameNo},{o.get_name()}]:', trans, quat)
+
+    if output_distribution:
+        force_dist = convert_to_force_distribution(contact_positions, impulse_values, bin_state)
+    else:
+        force_dist = None
+    save(frameNo, rgb, bin_state, (contact_positions, impulse_values), force_dist, camera.get_world_pose())
+
+
+def create_random_dataset(number_of_scenes):
     for frameNo in range(number_of_scenes):
-        world.reset()
-        place_objects(10)
-        randomize_lights()
-        randomize_camera_parameters()
-        randomize_object_colors()
-
-        # if world.is_playing():
-        wait_for_stability()
-
-        rgb = camera.get_current_frame()['rgba'][:, :, :3]
-
-        contact_positions = []
-        impulse_values = []
-        bin_state = []
-
-        for o in used_objects:
-            contact_sensor = o.get_contact_sensor()
-            contacts = read_contact_sensor(contact_sensor)
-            # print(contact_sensor.get_current_frame())
-            # print(contact_sensor_contact_sensor_interface.get_contact_sensor_raw_data(contact_sensor.prim_path))
-
-            for contact in contacts:
-                if scipy.linalg.norm(contact['impulse']) > 1e-8:
-                    contact_positions.append(contact['position'])
-                    impulse_values.append(scipy.linalg.norm(contact['impulse']))
-
-            prim = o.get_primitive()
-            pose = omni.usd.utils.get_world_transform_matrix(prim)
-            trans = pose.ExtractTranslation()
-            trans = np.array(trans)
-            quat = pose.ExtractRotation().GetQuaternion()
-            quat = np.array(list(quat.imaginary) + [quat.real])
-            bin_state.append((o.get_name(), (trans, quat)))
-            print(f'SCENE[{frameNo},{o.get_name()}]:', trans, quat)
-
-        if out_distribution:
-            force_dist = convert_to_force_distribution(contact_positions, impulse_values, bin_state)
-        else:
-            force_dist = None
-        save(frameNo, rgb, bin_state, (contact_positions, impulse_values), force_dist, camera.get_world_pose())
-
+        create_random_scene()
+        record_scene(frameNo)
         # simulation_context.stop()
         # if world.current_time_step_index == 0:
-
 
     while simulation_app.is_running():
         world.step(render=True)
 
-#     simulation_context.step(render=True)
+    # simulation_context.step(render=True)
     simulation_context.stop()
     simulation_app.close()
 
 
-main(number_of_scenes=5000)
+def create_toppo_data():
+    create_toppo_scene()
+    record_scene(0)
+
+    while simulation_app.is_running():
+        world.step(render=True)
+
+    # simulation_context.step(render=True)
+    simulation_context.stop()
+    simulation_app.close()
+
+
+# create_random_dataset(number_of_scenes=5)
+create_toppo_data()
