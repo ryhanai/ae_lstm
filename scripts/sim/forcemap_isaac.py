@@ -357,25 +357,9 @@ def read_contact_sensor(contact_sensor):
     return current_frame
 
 
-def get_bin_state():
-    prim_path = "/World/_09_gelatin_box/contact_sensor"
-    obj = world.scene.get_object(prim_path)
-    return obj.get_world_pose()
-
-
-def convert_to_force_distribution(contact_positions, impulse_values, bin_state, log_scale=True):
-    fmap = forcemap.GridForceMap('konbini_shelf')
-    d = fmap.getDensity(contact_positions, impulse_values)
-    if log_scale:
-        d = np.log(1 + d)
-    return d
-
-
 # sr = world.scene._scene_registry
 # print(sr._rigid_objects, sr._geometry_objects)
 
-# create_objects()
-# reset_object_positions()
 
 def create_toppos(n=20):
     global loaded_objects
@@ -406,24 +390,6 @@ def create_toppo_scene(n=20):
     wait_for_stability(count=1000)
 
 
-create_toppos()
-
-
-# need to initialize physics getting any articulation..etc
-simulation_context.initialize_physics()
-simulation_context.play()
-
-
-def save(frameNo, rgb, bin_state, contact_raw_data, force_distribution, camera_pose):
-    data_dir = 'data/'
-    cv2.imwrite(os.path.join(data_dir, 'rgb{:05d}.jpg'.format(frameNo)), cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
-    pd.to_pickle(bin_state, os.path.join(data_dir, 'bin_state{:05d}.pkl'.format(frameNo)))
-    pd.to_pickle(contact_raw_data, os.path.join(data_dir, 'contact_raw_data{:05d}.pkl'.format(frameNo)))
-    if force_distribution != None:
-        pd.to_pickle(force_distribution, os.path.join(data_dir, 'force_zip{:05d}.pkl'.format(frameNo)))
-    pd.to_pickle(camera_pose, os.path.join(data_dir, 'camera_info{:05d}.pkl'.format(frameNo)))
-
-
 def create_random_scene():
     world.reset()
     place_objects(10)
@@ -433,44 +399,79 @@ def create_random_scene():
     wait_for_stability()
 
 
-def record_scene(frameNo, output_distribution=False):
-    rgb = camera.get_current_frame()['rgba'][:, :, :3]
+class Recorder:
+    def __init__(self, camera, output_force=False):
+        self.__output_force = output_force
+        self._frameNo = 0
+        self._camera = camera
+        self._data_dir = 'data'
 
-    contact_positions = []
-    impulse_values = []
-    bin_state = []
+    def save(self, rgb, bin_state, contact_raw_data, force_distribution, camera_pose):
+        cv2.imwrite(os.path.join(self._data_dir, 'rgb{:05d}.jpg'.format(self._frameNo)), cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
+        pd.to_pickle(bin_state, os.path.join(self._data_dir, 'bin_state{:05d}.pkl'.format(self._frameNo)))
+        pd.to_pickle(contact_raw_data, os.path.join(self._data_dir, 'contact_raw_data{:05d}.pkl'.format(self._frameNo)))
+        if force_distribution is not None:
+            pd.to_pickle(force_distribution, os.path.join(self._data_dir, 'force_zip{:05d}.pkl'.format(self._frameNo)))
+        pd.to_pickle(camera_pose, os.path.join(self._data_dir, 'camera_info{:05d}.pkl'.format(self._frameNo)))
 
-    for o in used_objects:
-        contact_sensor = o.get_contact_sensor()
-        contacts = read_contact_sensor(contact_sensor)
-        # print(contact_sensor.get_current_frame())
-        # print(contact_sensor_contact_sensor_interface.get_contact_sensor_raw_data(contact_sensor.prim_path))
+    def record_scene(self, objects_to_monitor):
+        rgb = self._camera.get_current_frame()['rgba'][:, :, :3]
 
-        for contact in contacts:
-            if scipy.linalg.norm(contact['impulse']) > 1e-8:
-                contact_positions.append(contact['position'])
-                impulse_values.append(scipy.linalg.norm(contact['impulse']))
+        contact_positions = []
+        impulse_values = []
+        bin_state = []
 
-        prim = o.get_primitive()
-        pose = omni.usd.utils.get_world_transform_matrix(prim)
-        trans = pose.ExtractTranslation()
-        trans = np.array(trans)
-        quat = pose.ExtractRotation().GetQuaternion()
-        quat = np.array(list(quat.imaginary) + [quat.real])
-        bin_state.append((o.get_name(), (trans, quat)))
-        print(f'SCENE[{frameNo},{o.get_name()}]:', trans, quat)
+        for o in objects_to_monitor:
+            contact_sensor = o.get_contact_sensor()
+            contacts = read_contact_sensor(contact_sensor)
+            # print(contact_sensor.get_current_frame())
+            # print(contact_sensor_contact_sensor_interface.get_contact_sensor_raw_data(contact_sensor.prim_path))
 
-    if output_distribution:
-        force_dist = convert_to_force_distribution(contact_positions, impulse_values, bin_state)
-    else:
-        force_dist = None
-    save(frameNo, rgb, bin_state, (contact_positions, impulse_values), force_dist, camera.get_world_pose())
+            for contact in contacts:
+                if scipy.linalg.norm(contact['impulse']) > 1e-8:
+                    contact_positions.append(contact['position'])
+                    impulse_values.append(scipy.linalg.norm(contact['impulse']))
+
+            prim = o.get_primitive()
+            pose = omni.usd.utils.get_world_transform_matrix(prim)
+            trans = pose.ExtractTranslation()
+            trans = np.array(trans)
+            quat = pose.ExtractRotation().GetQuaternion()
+            quat = np.array(list(quat.imaginary) + [quat.real])
+            bin_state.append((o.get_name(), (trans, quat)))
+            print(f'SCENE[{self._frameNo},{o.get_name()}]:', trans, quat)
+
+        if self.__output_force:
+            force_dist = self.convert_to_force_distribution(contact_positions, impulse_values)
+        else:
+            force_dist = None
+
+        self.save(rgb, bin_state, (contact_positions, impulse_values), force_dist, self._camera.get_world_pose())
+        self._frameNo += 1
+
+    # def get_bin_state(self):
+    #     prim_path = "/World/_09_gelatin_box/contact_sensor"
+    #     obj = world.scene.get_object(prim_path)
+    #     return obj.get_world_pose()
+
+    def convert_to_force_distribution(self, contact_positions, impulse_values, log_scale=True):
+        fmap = forcemap.GridForceMap('konbini_shelf')
+        d = fmap.getDensity(contact_positions, impulse_values)
+        if log_scale:
+            d = np.log(1 + d)
+        return d
 
 
-def create_random_dataset(number_of_scenes):
+def create_random_dataset(recorder, number_of_scenes):
+    create_objects()
+    reset_object_positions()
+
+    simulation_context.initialize_physics()
+    simulation_context.play()
+
     for frameNo in range(number_of_scenes):
         create_random_scene()
-        record_scene(frameNo)
+        recorder.record_scene(used_objects)
         # simulation_context.stop()
         # if world.current_time_step_index == 0:
 
@@ -482,17 +483,20 @@ def create_random_dataset(number_of_scenes):
     simulation_app.close()
 
 
-def create_toppo_data():
+def create_toppo_data(recorder):
+    create_toppos()
+    simulation_context.initialize_physics()
+    simulation_context.play()
+
     create_toppo_scene()
-    record_scene(0)
+    recorder.record_scene()
 
     while simulation_app.is_running():
         world.step(render=True)
 
-    # simulation_context.step(render=True)
     simulation_context.stop()
     simulation_app.close()
 
 
-# create_random_dataset(number_of_scenes=5)
-create_toppo_data()
+create_random_dataset(Recorder(camera, output_force=True), 2)
+# create_toppo_data(Recorder(camera))
