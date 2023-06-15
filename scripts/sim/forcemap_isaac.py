@@ -390,15 +390,6 @@ def create_toppo_scene(n=20):
     wait_for_stability(count=1000)
 
 
-def create_random_scene():
-    world.reset()
-    place_objects(10)
-    randomize_lights()
-    randomize_camera_parameters()
-    randomize_object_colors()
-    wait_for_stability()
-
-
 class Recorder:
     def __init__(self, camera, output_force=False):
         self.__output_force = output_force
@@ -461,42 +452,63 @@ class Recorder:
             d = np.log(1 + d)
         return d
 
+from abc import ABCMeta, abstractmethod
 
-def create_random_dataset(recorder, number_of_scenes):
-    create_objects()
-    reset_object_positions()
+class Dataset(metaclass=ABCMeta):
+    def __init__(self, world, camera, output_force=True):
+        self._world = world
+        self._recorder = Recorder(camera, output_force=output_force)
 
-    simulation_context.initialize_physics()
-    simulation_context.play()
+    def create(self, number_of_scenes):
+        self.initialize_scene()
+        simulation_context.initialize_physics()
+        simulation_context.play()
+        self.setup_scene_and_record(number_of_scenes)
+        while simulation_app.is_running():
+            world.step(render=True)
+        # simulation_context.step(render=True)
+        simulation_context.stop()
+        simulation_app.close()
 
-    for frameNo in range(number_of_scenes):
-        create_random_scene()
-        recorder.record_scene(used_objects)
-        # simulation_context.stop()
-        # if world.current_time_step_index == 0:
+    @abstractmethod
+    def initialize_scene(self):
+        pass
 
-    while simulation_app.is_running():
-        world.step(render=True)
-
-    # simulation_context.step(render=True)
-    simulation_context.stop()
-    simulation_app.close()
-
-
-def create_toppo_data(recorder):
-    create_toppos()
-    simulation_context.initialize_physics()
-    simulation_context.play()
-
-    create_toppo_scene()
-    recorder.record_scene()
-
-    while simulation_app.is_running():
-        world.step(render=True)
-
-    simulation_context.stop()
-    simulation_app.close()
+    @abstractmethod
+    def setup_scene_and_record(self, number_of_scenes):
+        pass
 
 
-create_random_dataset(Recorder(camera, output_force=True), 2)
-# create_toppo_data(Recorder(camera))
+class RandomSceneDataset(Dataset):
+    def initialize_scene(self):
+        create_objects()
+        reset_object_positions()
+
+    def setup_scene_and_record(self, number_of_scenes):
+        for frameNo in range(number_of_scenes):
+            objects = self.create_random_scene()
+            self._recorder.record_scene(objects)
+            # simulation_context.stop()
+            # if world.current_time_step_index == 0:
+
+    def create_random_scene(self):
+        self._world.reset()
+        place_objects(10)
+        randomize_lights()
+        randomize_camera_parameters()
+        randomize_object_colors()
+        wait_for_stability()
+        return used_objects
+
+
+class AlignedToppoDataset(Dataset):
+    def initialize_scene(self):
+        create_toppos()    
+
+    def setup_scene_and_record(self, number_of_scenes):
+        create_toppo_scene()
+
+
+dataset = RandomSceneDataset(world, camera, output_force=True)
+# dataset = AlignedToppoDataset(world, camera, output_force=True)
+dataset.create(2)
