@@ -199,6 +199,13 @@ class Scene:
         """
         pass
 
+    @abstractmethod
+    def renew_scene(self):
+        """
+        Create a new scene
+        """
+        pass
+
     def get_active_objects(self):
         return self._used_objects
 
@@ -295,6 +302,15 @@ class RandomScene(Scene):
             prim = o.get_primitive()
             set_translate(prim, Gf.Vec3d(0.1*i, 0, 0))
         self._used_objects = []
+
+    def change_scene(self):
+        self._world.reset()
+        self.place_objects(10)
+
+    def change_observation_condition(self):
+        self.randomize_lights()
+        self.randomize_camera_parameters()
+        # self.randomize_object_colors()
 
 
 # def delete_objects():
@@ -400,17 +416,10 @@ class Recorder:
         self._camera = camera
         self._data_dir = 'data'
 
-    def save(self, rgb, bin_state, contact_raw_data, force_distribution, camera_pose):
-        cv2.imwrite(os.path.join(self._data_dir, 'rgb{:05d}.jpg'.format(self._frameNo)), cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
-        pd.to_pickle(bin_state, os.path.join(self._data_dir, 'bin_state{:05d}.pkl'.format(self._frameNo)))
-        pd.to_pickle(contact_raw_data, os.path.join(self._data_dir, 'contact_raw_data{:05d}.pkl'.format(self._frameNo)))
-        if force_distribution is not None:
-            pd.to_pickle(force_distribution, os.path.join(self._data_dir, 'force_zip{:05d}.pkl'.format(self._frameNo)))
-        pd.to_pickle(camera_pose, os.path.join(self._data_dir, 'camera_info{:05d}.pkl'.format(self._frameNo)))
-
-    def record_scene(self, objects_to_monitor):
-        rgb = self._camera.get_current_frame()['rgba'][:, :, :3]
-
+    def save_state(self, objects_to_monitor):
+        """
+            Record bin-state and force
+        """
         contact_positions = []
         impulse_values = []
         bin_state = []
@@ -435,12 +444,19 @@ class Recorder:
             bin_state.append((o.get_name(), (trans, quat)))
             print(f'SCENE[{self._frameNo},{o.get_name()}]:', trans, quat)
 
+        pd.to_pickle(bin_state, os.path.join(self._data_dir, 'bin_state{:05d}.pkl'.format(self._frameNo)))
+        pd.to_pickle((contact_positions, impulse_values), os.path.join(self._data_dir, 'contact_raw_data{:05d}.pkl'.format(self._frameNo)))
+
         if self.__output_force:
             force_dist = self.convert_to_force_distribution(contact_positions, impulse_values)
-        else:
-            force_dist = None
+            pd.to_pickle(force_dist, os.path.join(self._data_dir, 'force_zip{:05d}.pkl'.format(self._frameNo)))
 
-        self.save(rgb, bin_state, (contact_positions, impulse_values), force_dist, self._camera.get_world_pose())
+    def save_image(self, viewNum=None):
+        rgb = self._camera.get_current_frame()['rgba'][:, :, :3]
+        cv2.imwrite(os.path.join(self._data_dir, f'rgb{self._frameNo:05}_{viewNum:05}.jpg'), cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
+        pd.to_pickle(self._camera.get_world_pose(), os.path.join(self._data_dir, f'camera_info{self._frameNo:05}_{viewNum:05}.pkl'))
+
+    def incrementFrameNumber(self):
         self._frameNo += 1
 
     # def get_bin_state(self):
@@ -464,36 +480,28 @@ class DatasetGenerator(metaclass=ABCMeta):
     def create(self, number_of_scenes):
         simulation_context.initialize_physics()
         simulation_context.play()
-        self.setup_scene_and_record(number_of_scenes)
+
+        for frameNum in range(number_of_scenes):
+            self._scene.change_scene()
+            self._scene.wait_for_stability()
+
+            for viewNum in range(2):
+                self._scene.change_observation_condition()
+                self._scene.wait_for_stability(count=10)
+                self._recorder.save_image(viewNum)
+            self._recorder.save_state(self._scene.get_active_objects())
+
+        self._recorder.incrementFrameNumber()
+        # simulation_context.stop()
+        # if world.current_time_step_index == 0:
+
         while simulation_app.is_running():
             self._scene._world.step(render=True)
         # simulation_context.step(render=True)
         simulation_context.stop()
         simulation_app.close()
 
-    @abstractmethod
-    def setup_scene_and_record(self, number_of_scenes):
-        pass
-
-
-class RandomDatasetGenerator(DatasetGenerator):
-    def setup_scene_and_record(self, number_of_scenes):
-        for frameNo in range(number_of_scenes):
-            self.renew_scene()
-            self._recorder.record_scene(self._scene.get_active_objects())
-            # simulation_context.stop()
-            # if world.current_time_step_index == 0:
-
-    def renew_scene(self):
-        self._scene._world.reset()
-        self._scene.place_objects(10)
-        self._scene.randomize_lights()
-        self._scene.randomize_camera_parameters()
-        # self._scene.randomize_object_colors()
-        self._scene.wait_for_stability()
-
 
 scene = RandomScene(world)
-dataset = RandomDatasetGenerator(scene, output_force=False)
-# dataset = AlignedToppoDataset(world, camera, output_force=False)
+dataset = DatasetGenerator(scene, output_force=False)
 dataset.create(2)
