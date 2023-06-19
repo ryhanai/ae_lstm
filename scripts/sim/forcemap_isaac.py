@@ -15,7 +15,7 @@ from pxr import UsdPhysics
 from omni.physx.scripts import utils
 import omni.isaac.core.utils.prims as prim_utils
 
-from pxr import Gf, Usd, UsdGeom
+from pxr import Gf, Usd, UsdGeom, UsdShade, Sdf
 import omni.usd
 
 import numpy as np
@@ -212,15 +212,32 @@ class Scene:
     def place_objects(self, n):
         self._used_objects = []
         for i, o in enumerate(np.random.choice(self._loaded_objects, n, replace=False)):
+            print(f'placing {o.get_name()}')
             prim = o.get_primitive()
-            pos_xy = np.array([-0.10, 0.0]) + np.array([0.2, 0.3]) * (np.random.random(2) - 0.5)
-            pos_z = 0.75 + 0.03 * i
+            contact_sensor = o.get_contact_sensor()
 
-            theta = 180 * np.random.random()
-            phi = 360 * np.random.random()
-            axis = [np.cos(theta)*np.cos(phi), np.cos(theta)*np.sin(phi), np.sin(theta)]
-            angle = 360 * np.random.random()
-            set_pose(prim, ([pos_xy[0], pos_xy[1], pos_z], (axis, angle)))
+            while True:
+                pos_xy = np.array([-0.10, 0.0]) + np.array([0.2, 0.3]) * (np.random.random(2) - 0.5)
+                pos_z = 0.76 + 0.3 * np.random.random()
+
+                theta = 180 * np.random.random()
+                phi = 360 * np.random.random()
+                axis = [np.cos(theta)*np.cos(phi), np.cos(theta)*np.sin(phi), np.sin(theta)]
+                angle = 360 * np.random.random()
+                set_pose(prim, ([pos_xy[0], pos_xy[1], pos_z], (axis, angle)))
+
+                no_collision = True
+                for j in range(3):
+                    self.wait_for_stability(count=1)
+                    contacts = read_contact_sensor(contact_sensor)
+                    if len(contacts) > 0:
+                        # if c['body1'] != '/World/env/simple_shelf':
+                        # print(f"initial collision with {c['body1']}. replace ...")
+                        no_collision = False
+                if no_collision:
+                    break
+
+            print(f'{o.get_name()} placed')
             self._used_objects.append(o)
 
     def wait_for_stability(self, count=100):
@@ -277,14 +294,36 @@ class Scene:
             # prim.GetAttribute("scale").Set(Gf.Vec3f(*(np.array([0.2, 0.2, 0.2]) + 0.6 * np.random.random(3))))        
 
     def randomize_camera_parameters(self):
-        position = np.array([0.5, 0.0, 1.25]) + 0.04 * (np.random.random(3) - 0.5)
-        # position = np.array([1.2, 0.0, 2.0]) + 0.04 * (np.random.random(3) - 0.5)
-        orientation = rot_utils.euler_angles_to_quats(np.array([0, 40, 180] + 6 * (np.random.random(3) - 0.5)), degrees=True)
+        d = 0.7 + 0.2 * (np.random.random() - 0.5)
+        theta = 20 + 50 * np.random.random()
+        phi = -50 + 100 * np.random.random()
+        th = np.deg2rad(theta)
+        ph = np.deg2rad(phi)
+        position = np.array([0, 0, 0.75]) + d * np.array([np.cos(th)*np.cos(ph), np.cos(th)*np.sin(ph), np.sin(th)])
+        theta2 = theta + 6 * (np.random.random() - 0.5)
+        phi2 = phi + 6 * (np.random.random() - 0.5)
+        orientation = rot_utils.euler_angles_to_quats(np.array([0, theta2, 180+phi2]), degrees=True)
+        print(f'position={position}, orientation={orientation}')
         self._camera.set_world_pose(position, orientation)
+
+        # position = np.array([0.5, 0.0, 1.25]) + 0.04 * (np.random.random(3) - 0.5)
+        # # position = np.array([1.2, 0.0, 2.0]) + 0.04 * (np.random.random(3) - 0.5)
+        # orientation = rot_utils.euler_angles_to_quats(np.array([0, 40, 180] + 6 * (np.random.random(3) - 0.5)), degrees=True)
+        # self._camera.set_world_pose(position, orientation)
         # camera.set_focal_length(1.88)
         # camera.set_focus_distance(40)
         # camera.set_horizontal_aperture(2.7288)
         # camera.set_vertical_aperture(1.5498)
+
+    def randomize_object_colors(self):
+        for o in self._used_objects:
+            object_id = o.get_ID()
+            mtl_prim = world.stage.GetPrimAtPath(f'/World/object{object_id}/Looks/material_0')
+            # mtl_prim.GetAttribute("color tint").Set()
+            omni.usd.create_material_input(mtl_prim, "diffuse_tint", Gf.Vec3f(*(0.5 + 0.5*np.random.random(3))), Sdf.ValueTypeNames.Color3f)
+            mtl_shade = UsdShade.Material(mtl_prim)
+            obj_prim = world.stage.GetPrimAtPath(f'/World/object{object_id}')
+            UsdShade.MaterialBindingAPI(obj_prim).Bind(mtl_shade, UsdShade.Tokens.strongerThanDescendants)
 
 
 class RandomScene(Scene):
@@ -310,7 +349,7 @@ class RandomScene(Scene):
     def change_observation_condition(self):
         self.randomize_lights()
         self.randomize_camera_parameters()
-        # self.randomize_object_colors()
+        self.randomize_object_colors()
 
 
 # def delete_objects():
@@ -321,14 +360,6 @@ class RandomScene(Scene):
 #         prims.delete_prim(f'/World/object{i}')
 #     loaded_objects = []
 #     contact_sensors = []
-
-
-def randomize_object_colors():
-    # for o in used_objects:
-    #     object_id = o.get_ID()
-    #     prim = world.stage.GetPrimAtPath(f'/World/object{object_id}/Looks/material_0')
-    #     prim.GetAttribute("color tint").Set()
-    omni.usd.create_material_input(ground_mat_prim, "diffuse_tint", Gf.Vec3f(1, 1, 1), Sdf.ValueTypeNames.Color3f)
 
 
 def read_contact_sensor(contact_sensor):
@@ -485,13 +516,13 @@ class DatasetGenerator(metaclass=ABCMeta):
             self._scene.change_scene()
             self._scene.wait_for_stability()
 
-            for viewNum in range(2):
+            for viewNum in range(5):
                 self._scene.change_observation_condition()
                 self._scene.wait_for_stability(count=10)
                 self._recorder.save_image(viewNum)
             self._recorder.save_state(self._scene.get_active_objects())
+            self._recorder.incrementFrameNumber()
 
-        self._recorder.incrementFrameNumber()
         # simulation_context.stop()
         # if world.current_time_step_index == 0:
 
@@ -504,4 +535,4 @@ class DatasetGenerator(metaclass=ABCMeta):
 
 scene = RandomScene(world)
 dataset = DatasetGenerator(scene, output_force=False)
-dataset.create(2)
+dataset.create(2000)
