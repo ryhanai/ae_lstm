@@ -34,8 +34,40 @@ from abc import ABCMeta, abstractmethod
 # asset_path = assets_root_path + "/Isaac/Robots/Franka/franka_alt_fingers.usd"
 # world.scene.add_default_ground_plane()
 
-asset_path = os.environ["HOME"] + "/Downloads/Collected_ycb_piled_scene/simple_shelf_scene.usd"
-usd_files = glob.glob(os.path.join(os.environ['HOME'], 'Dataset/Konbini/VER002/Seamless/vt2048/*/*/*.usd'))
+
+# YCB objects
+usd_files = glob.glob('/home/ryo/Program/moonshot/ae_lstm/specification/meshes/objects/ycb/usd/*/*.usd')
+conf = {
+    'asset_path' : os.environ["HOME"] + "/Downloads/Collected_ycb_piled_scene/ycb_piled_scene.usd",
+    'names' : [usd_file.split('/')[-2] for usd_file in usd_files],
+    'usd_files' : usd_files,
+    'masses' : {
+        '004_sugar_box': 0.514,
+        '005_tomato_soup_can': 0.349,
+        # '006_mustard_bottle': 0.603,
+        '007_tuna_fish_can': 0.171,
+        '008_pudding_box': 0.187,
+        '009_gelatin_box': 0.097,
+        '010_potted_meat_can': 0.370,
+        '011_banana': 0.066,
+        '012_strawberry': 0.018,
+        '013_apple': 0.068,
+        '014_lemon': 0.029,
+        '016_pear': 0.049,
+        '017_orange': 0.047,
+        # '023_wine_glass': 0.133, # no 3D model
+        '026_sponge': 0.0062,
+        '040_large_marker': 0.0158,
+        # '041_small_marker': 0.0082,
+        '055_baseball': 0.148,
+        '056_tennis_ball': 0.056,
+        '061_foam_brick': 0.059,
+    }
+}
+
+
+# asset_path = os.environ["HOME"] + "/Downloads/Collected_ycb_piled_scene/simple_shelf_scene.usd"
+
 
 # add_reference_to_stage(usd_path=asset_path, prim_path="/World")
 # prim = world.stage.GetPrimAtPath('/World')
@@ -46,29 +78,29 @@ usd_files = glob.glob(os.path.join(os.environ['HOME'], 'Dataset/Konbini/VER002/S
 world = World(stage_units_in_meters=1.0)
 simulation_context = SimulationContext()
 
-masses = {
-    '15_TOPPO-ART-pl2048SA': 0.072,
-    '05_JIF-ART-pl2048SA': 0.358,
-    # 'akaikitsune_mini-ART-pl2048SA': 0.136, # mesh is too bad
-    '21_MT-KINOKO-ART-pl2048SA': 0.074,
-    '20_MELTYKISS-ART-pl2048SA': 0.050, # not found in csv
-    '07_GREEN-TEA-ART-pl2048SA': 0.040,
-    '14_SHAMPOO-ART-pl2048SA': 0.633,
-    'face_tawel-ART-pl2048SA': 0.179,
-    '18_WAKAME-SOUP-ART-pl2048SA': 0.050,
-    '16_CHOCO-RUSK-ART-pl2048SA': 0.090,
-    '17_BUTTER-COOKIE-ART-pl2048SA': 0.120,
-    '16cha_660-ART-pl2048SA': 0.656,
-    '7i_barley_tea-ART-pl2048SA': 1.508,
-    '2nd_cupnoodle_origin-ART-pl2048SA': 0.077,
-    '11_XYLITOL-ART-pl2048SA': 0.143,
-    '28_KOALAS-MARCH-ART-pl2048SA': 0.050,
-    '19_POCKY-ART-pl2048SA': 0.072,
-    '7i_edamamearare-ART-pl2048SA': 0.040,
-    '13_CLORETS-ART-pl2048SA': 0.140,
-    'vc_3000_dozen-ART-pl2048SA': 0.090,
-    'Ayataka_pet1l-ART-pl2048SA': 1.006,
-}
+# masses = {
+#     '15_TOPPO-ART-pl2048SA': 0.072,
+#     '05_JIF-ART-pl2048SA': 0.358,
+#     # 'akaikitsune_mini-ART-pl2048SA': 0.136, # mesh is too bad
+#     '21_MT-KINOKO-ART-pl2048SA': 0.074,
+#     '20_MELTYKISS-ART-pl2048SA': 0.050, # not found in csv
+#     '07_GREEN-TEA-ART-pl2048SA': 0.040,
+#     '14_SHAMPOO-ART-pl2048SA': 0.633,
+#     'face_tawel-ART-pl2048SA': 0.179,
+#     '18_WAKAME-SOUP-ART-pl2048SA': 0.050,
+#     '16_CHOCO-RUSK-ART-pl2048SA': 0.090,
+#     '17_BUTTER-COOKIE-ART-pl2048SA': 0.120,
+#     '16cha_660-ART-pl2048SA': 0.656,
+#     '7i_barley_tea-ART-pl2048SA': 1.508,
+#     '2nd_cupnoodle_origin-ART-pl2048SA': 0.077,
+#     '11_XYLITOL-ART-pl2048SA': 0.143,
+#     '28_KOALAS-MARCH-ART-pl2048SA': 0.050,
+#     '19_POCKY-ART-pl2048SA': 0.072,
+#     '7i_edamamearare-ART-pl2048SA': 0.040,
+#     '13_CLORETS-ART-pl2048SA': 0.140,
+#     'vc_3000_dozen-ART-pl2048SA': 0.090,
+#     'Ayataka_pet1l-ART-pl2048SA': 1.006,
+# }
 
 
 def set_pose(prim, pose):
@@ -143,16 +175,16 @@ def create_prim_from_usd(stage, prim_env_path, prim_usd_path, location=[0, 0, 0.
 
 
 class Object:
-    def __init__(self, usd_file, object_id, world):
+    def __init__(self, name, usd_file, object_id, mass, world):
         self._usd_file = usd_file
         self._prim = create_prim_from_usd(world.stage, f'/World/object{object_id}', usd_file)
         self._id = object_id
-        self._name = os.path.splitext(usd_file.split("/")[-1])[0]
+        self._name = name
         utils.setRigidBody(self._prim, "convexDecomposition", False)
         for node_prim in Usd.PrimRange(self._prim):
             for prim in Usd.PrimRange(node_prim):
                 if prim.IsA(UsdGeom.Mesh):
-                    print('SET_MASS: ', self._name, set_mass(prim, kg=masses[self._name]))  # why is this called 3 times?
+                    print('SET_MASS: ', self._name, set_mass(prim, kg=mass))  # why is this called 3 times?
         self.attach_contact_sensor(world)
 
     def get_primitive(self):
@@ -209,6 +241,15 @@ class Scene:
     def get_active_objects(self):
         return self._used_objects
 
+    def sample_object_pose(self):
+        pos_xy = np.array([-0.10, 0.0]) + np.array([0.2, 0.3]) * (np.random.random(2) - 0.5)
+        pos_z = 0.76 + 0.3 * np.random.random()
+        theta = 180 * np.random.random()
+        phi = 360 * np.random.random()
+        axis = [np.cos(theta)*np.cos(phi), np.cos(theta)*np.sin(phi), np.sin(theta)]
+        angle = 360 * np.random.random()
+        return [pos_xy[0], pos_xy[1], pos_z], (axis, angle)
+
     def place_objects(self, n):
         self._used_objects = []
         for i, o in enumerate(np.random.choice(self._loaded_objects, n, replace=False)):
@@ -217,14 +258,8 @@ class Scene:
             contact_sensor = o.get_contact_sensor()
 
             while True:
-                pos_xy = np.array([-0.10, 0.0]) + np.array([0.2, 0.3]) * (np.random.random(2) - 0.5)
-                pos_z = 0.76 + 0.3 * np.random.random()
-
-                theta = 180 * np.random.random()
-                phi = 360 * np.random.random()
-                axis = [np.cos(theta)*np.cos(phi), np.cos(theta)*np.sin(phi), np.sin(theta)]
-                angle = 360 * np.random.random()
-                set_pose(prim, ([pos_xy[0], pos_xy[1], pos_z], (axis, angle)))
+                pose = self.sample_object_pose()
+                set_pose(prim, pose)
 
                 no_collision = True
                 for j in range(3):
@@ -258,7 +293,7 @@ class Scene:
         return False
 
     def create_env(self):
-        create_prim_from_usd(self._world.stage, '/World/env', asset_path, Gf.Vec3d([0, 0, 0.0]))
+        create_prim_from_usd(self._world.stage, '/World/env', conf['asset_path'], Gf.Vec3d([0, 0, 0.0]))
 
     def create_camera_D415(self):
         camera = Camera(
@@ -306,14 +341,10 @@ class Scene:
         print(f'position={position}, orientation={orientation}')
         self._camera.set_world_pose(position, orientation)
 
-        # position = np.array([0.5, 0.0, 1.25]) + 0.04 * (np.random.random(3) - 0.5)
-        # # position = np.array([1.2, 0.0, 2.0]) + 0.04 * (np.random.random(3) - 0.5)
-        # orientation = rot_utils.euler_angles_to_quats(np.array([0, 40, 180] + 6 * (np.random.random(3) - 0.5)), degrees=True)
-        # self._camera.set_world_pose(position, orientation)
-        # camera.set_focal_length(1.88)
-        # camera.set_focus_distance(40)
-        # camera.set_horizontal_aperture(2.7288)
-        # camera.set_vertical_aperture(1.5498)
+        self._camera.set_focal_length(1.88 + 0.1128 * (np.random.random() - 0.5))  # 3% of the spec
+        self._camera.set_focus_distance(50)
+        self._camera.set_horizontal_aperture(2.6034 + 0.1562 * (np.random.random() - 0.5))
+        self._camera.set_vertical_aperture(1.4621 + 0.0877 * (np.random.random() - 0.5))
 
     def randomize_object_colors(self):
         for o in self._used_objects:
@@ -326,14 +357,16 @@ class Scene:
             UsdShade.MaterialBindingAPI(obj_prim).Bind(mtl_shade, UsdShade.Tokens.strongerThanDescendants)
 
 
+
 class RandomScene(Scene):
-    def __init__(self, world, number_of_samples=30):
-        self._number_of_samples = number_of_samples
+    def __init__(self, world, conf):
+        self._names = conf['names']
+        self._usd_files = conf['usd_files']
         super().__init__(world)
 
     def create_objects(self):
-        for i, usd_file in enumerate(usd_files[:self._number_of_samples]):
-            self._loaded_objects.append(Object(usd_file, i, self._world))
+        for i, (name, usd_file) in enumerate(zip(self._names, self._usd_files)):
+            self._loaded_objects.append(Object(name, usd_file, i, conf['masses'][name], self._world))
         self.reset_object_positions()
 
     def reset_object_positions(self):
@@ -350,6 +383,33 @@ class RandomScene(Scene):
         self.randomize_lights()
         self.randomize_camera_parameters()
         self.randomize_object_colors()
+
+
+class RandomSeriaBasketScene(RandomScene):
+    def __init__(self, world, conf):
+        self._names = conf['names']
+        self._usd_files = conf['usd_files']
+        super().__init__(world, conf)
+
+    def change_scene(self):
+        self._world.reset()
+        number_of_objects = np.clip(np.random.poisson(5), 1, 10)
+        self.place_objects(number_of_objects)
+
+    def sample_object_pose(self):
+        xy = np.array([0.17, 0.10]) * (np.array([-0.5, -0.5]) + np.random.random(2))
+        z = 0.75 + 0.25 * np.random.random()
+        theta = 180 * np.random.random()
+        phi = 360 * np.random.random()
+        axis = [np.cos(theta)*np.cos(phi), np.cos(theta)*np.sin(phi), np.sin(theta)]
+        angle = 360 * np.random.random()
+        return [xy[0], xy[1], z], (axis, angle)
+
+    def randomize_camera_parameters(self):
+        position = np.array([0, 0, 1.358]) + 0.02 * (np.random.random(3) - 0.5)
+        orientation = rot_utils.euler_angles_to_quats(np.array([0, 90, 180] + 6 * (np.random.random(3) - 0.5)), degrees=True)
+        self._camera.set_world_pose(position, orientation)
+
 
 
 # def delete_objects():
@@ -533,6 +593,10 @@ class DatasetGenerator(metaclass=ABCMeta):
         simulation_app.close()
 
 
-scene = RandomScene(world)
+# Konbini objects
+# usd_files = glob.glob(os.path.join(os.environ['HOME'], '/Program/moonshot/ae_lstm/specification/meshes/objects/ycb/usd/*/*.usd'))
+# names = [os.path.splitext(usd_file.split("/")[-1])[0] for usd_file in usd_files]
+
+scene = RandomSeriaBasketScene(world, conf)
 dataset = DatasetGenerator(scene, output_force=False)
 dataset.create(2000)
