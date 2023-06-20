@@ -64,18 +64,31 @@ class ForceEstimationDINOv2(nn.Module):
 
         # Head4: 
         #   fine-tune: train/test=
+        # self.decoder = nn.Sequential(
+        #     nn.Linear(384, 384), nn.BatchNorm1d(384), nn.ReLU(True),
+        #     nn.Linear(384, 384), nn.BatchNorm1d(384), nn.ReLU(True),
+        #     nn.Linear(384, 8*30*40), nn.BatchNorm1d(8*30*40), nn.ReLU(True),
+        #     nn.Unflatten(1, (8, 30, 40)),
+        #     nn.ConvTranspose2d(8, 16, 3, 2, padding=1, output_padding=1), nn.BatchNorm2d(16), nn.ReLU(True),
+        #     nn.ConvTranspose2d(16, 30, 3, 2, padding=1, output_padding=1), nn.Sigmoid(),
+        # )
+
+        # Head5:
+        #  fine-tune: train/test=
         self.decoder = nn.Sequential(
-            nn.Linear(384, 384), nn.BatchNorm1d(384), nn.ReLU(True),
-            nn.Linear(384, 384), nn.BatchNorm1d(384), nn.ReLU(True),
-            nn.Linear(384, 8*30*40), nn.BatchNorm1d(8*30*40), nn.ReLU(True),
-            nn.Unflatten(1, (8, 30, 40)),
-            nn.ConvTranspose2d(8, 16, 3, 2, padding=1, output_padding=1), nn.BatchNorm2d(16), nn.ReLU(True),
-            nn.ConvTranspose2d(16, 30, 3, 2, padding=1, output_padding=1), nn.Sigmoid(),
+            nn.Flatten(), 
+            nn.Unflatten(1, (768, 24, 24)), 
+            nn.ConvTranspose2d(768, 192, 3, 2, padding=1, output_padding=1), nn.BatchNorm2d(192), nn.ReLU(True),  # [192, 48, 48]
+            nn.ConvTranspose2d(192, 48, 3, 2, padding=1, output_padding=1), nn.BatchNorm2d(48), nn.ReLU(True),  # [48, 96, 96]
+            nn.ConvTranspose2d(48, 30, 3, 2, padding=1, output_padding=1), nn.Sigmoid(),
+            T.Resize([120, 160], antialias=True),
         )
 
     def forward(self, x):
-        # x = self.augmenter(x) + torch.normal(mean=0, std=self.stdev, size=x.shape).to(self.device)
-        return self.decoder(self.encoder(x))
+        x = self.augmenter(x) + torch.normal(mean=0, std=self.stdev, size=x.shape).to(self.device)
+        features_dict = self.encoder.forward_features(x)
+        features = features_dict['x_norm_patchtokens']  # [N, 1152, 384]
+        return self.decoder(features)
 
 
 from torchvision.models import resnet50, ResNet50_Weights
