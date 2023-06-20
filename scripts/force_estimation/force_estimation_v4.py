@@ -136,9 +136,9 @@ class ForceEstimationResNet(nn.Module):
             T.ColorJitter(contrast=0.1, brightness=0.1),
         ])
 
-        # resnet_classifier = resnet50(weights=ResNet50_Weights.DEFAULT)
+        resnet_classifier = resnet50(weights=ResNet50_Weights.DEFAULT)  # This is the best among three options.
         # resnet_classifier = resnet50()  # no pretrained weight
-        resnet_classifier = torch.hub.load('facebookresearch/dino:main', 'dino_resnet50')
+        # resnet_classifier = torch.hub.load('facebookresearch/dino:main', 'dino_resnet50')
         self.encoder = torch.nn.Sequential(*(list(resnet_classifier.children())[:-2]))
 
         if not fine_tune_encoder:
@@ -161,6 +161,58 @@ class ForceEstimationResNet(nn.Module):
     def forward(self, x):
         x = self.augmenter(x) + torch.normal(mean=0, std=self.stdev, size=[360,512]).to(self.device)
         return self.decoder(self.encoder(x))
+
+
+class ForceEstimationResNetMVE(nn.Module):
+    def __init__(self, device=0, fine_tune_encoder=True):
+        super().__init__()
+
+        self.stdev = 0.02
+        self.device = device
+
+        self.augmenter = T.Compose([
+            # T.ToTensor(),
+            T.Resize([360, 512], antialias=True),
+            T.RandomAffine(degrees=(-3, 3), translate=(0.03, 0.03)),
+            T.ColorJitter(hue=0.1, saturation=0.1),
+            T.RandomAutocontrast(),
+            T.ColorJitter(contrast=0.1, brightness=0.1),
+        ])
+
+        resnet_classifier = resnet50(weights=ResNet50_Weights.DEFAULT)
+        self.encoder = torch.nn.Sequential(*(list(resnet_classifier.children())[:-2]))
+
+        if not fine_tune_encoder:
+            for p in self.encoder.parameters():
+                p.requires_grad = False
+
+        self.shared_decoder = nn.Sequential(
+            ResBlock(2048, [1024, 512], 3, strides=[1, 1]),
+            UpSample([24, 32]),
+            ResBlock(512, [256, 128], 3, strides=[1, 1]),
+            UpSample([48, 64]),
+            ResBlock(128, [64, 64], 3, strides=[1, 1]),
+            UpSample([96, 128]),
+        )
+
+        self.mean_head = nn.Sequential(
+            ResBlock(64, [32, 32], 3, strides=[1, 1]),
+            nn.ConvTranspose2d(32, 30, kernel_size=3, stride=1, padding=1),
+            nn.Sigmoid(),
+            T.Resize([120, 160], antialias=True),
+        )
+
+        self.variance_head = nn.Sequential(
+            ResBlock(64, [32, 32], 3, strides=[1, 1]),
+            nn.ConvTranspose2d(32, 30, kernel_size=3, stride=1, padding=1),
+            nn.Sigmoid(),
+            T.Resize([120, 160], antialias=True),
+        )
+
+    def forward(self, x):
+        x = self.augmenter(x) + torch.normal(mean=0, std=self.stdev, size=[360,512]).to(self.device)
+        x = self.shared_decoder(self.encoder(x))
+        return self.mean_head(x), self.variance_head(x)
 
 
 class ForceEstimationDinoRes(nn.Module):

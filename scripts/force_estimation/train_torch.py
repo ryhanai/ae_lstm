@@ -119,6 +119,53 @@ class Trainer:
         return total_loss / n_batch
 
 
+class MVELoss(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self._eps = 1e-7
+
+    # def forward(self, y_hat, y):
+    #     mu_hat, sigma_hat = y_hat
+    #     loss1 = torch.log(sigma_hat + self._eps).mean()
+    #     loss2 = ((mu_hat - y) ** 2 / (sigma_hat + self._eps)).mean()
+    #     return loss1 + loss2
+
+    def forward(self, y_hat, y):
+        mu_hat, sigma_hat = y_hat
+        return ((mu_hat - y) ** 2).mean()
+        
+
+class TrainerMVE(Trainer):
+    def __init__(self,
+                model,
+                optimizer,
+                device='cpu'):
+
+        super().__init__(model, optimizer, device=device)
+
+    def process_epoch(self, data, training=True):
+        
+        if not training:
+            self.model.eval()
+
+        total_loss = 0.0
+        for n_batch, (xi, yi) in enumerate(data):
+            xi = xi.to(self.device)
+            yi = yi.to(self.device)
+
+            y_hat = self.model(xi)
+            loss = MVELoss()(y_hat, yi)
+            total_loss += loss.item()
+
+            if training:
+                self.optimizer.zero_grad(set_to_none=True)
+                loss.backward()
+                self.optimizer.step()
+
+        return total_loss / n_batch
+
+
+
 # GPU optimizes and accelerates the network calculations.
 torch.set_float32_matmul_precision('high')
 torch.backends.cudnn.benchmark = True
@@ -185,8 +232,11 @@ test_loader = DataLoader(
     sampler=test_sampler)
 
 # define model
+
+# model = ForceEstimationResNet(fine_tune_encoder=True, device=args.device)
+model = ForceEstimationResNetMVE(fine_tune_encoder=True, device=args.device)
+
 # model = ForceEstimationDINOv2(device=args.device)
-model = ForceEstimationResNet(fine_tune_encoder=True, device=args.device)
 # model = ForceEstimationDinoRes(fine_tune_encoder=True, device=args.device)
 print(summary(model, input_size=(args.batch_size, 3, 336, 672)))
 
@@ -205,7 +255,8 @@ else:
     assert False, 'Unknown optimizer name {}. please set Adam or RAdam or Adamax.'.format(args.optimizer)
 
 # load trainer/tester class
-trainer = Trainer( model, optimizer, device=device )
+# trainer = Trainer( model, optimizer, device=device )
+trainer = TrainerMVE( model, optimizer, device=device )
 
 ### training main
 log_dir_path = set_logdir('./'+args.log_dir, args.tag)
