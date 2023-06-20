@@ -46,6 +46,7 @@ class EarlyStopping:
         
     def __call__(self, val_loss):
 
+        print('EARLY STOPPING: ', val_loss)
         if np.isnan(val_loss) or np.isinf(val_loss):
             raise RuntimeError("Invalid loss, terminating training") 
         
@@ -122,17 +123,20 @@ class Trainer:
 class MVELoss(nn.Module):
     def __init__(self):
         super().__init__()
-        self._eps = 1e-7
-
-    # def forward(self, y_hat, y):
-    #     mu_hat, sigma_hat = y_hat
-    #     loss1 = torch.log(sigma_hat + self._eps).mean()
-    #     loss2 = ((mu_hat - y) ** 2 / (sigma_hat + self._eps)).mean()
-    #     return loss1 + loss2
+        self._eps = 1e-12
 
     def forward(self, y_hat, y):
         mu_hat, sigma_hat = y_hat
-        return ((mu_hat - y) ** 2).mean()
+        loss1 = torch.log(sigma_hat + self._eps)
+        loss2 = (mu_hat - y) ** 2 / (sigma_hat + self._eps)
+        return (loss1 + loss2).mean(), loss1.mean()
+
+    # def forward(self, y_hat, y):
+    #     """
+    #     This works
+    #     """
+    #     mu_hat, sigma_hat = y_hat
+    #     return ((mu_hat - y) ** 2).mean()
         
 
 class TrainerMVE(Trainer):
@@ -149,20 +153,22 @@ class TrainerMVE(Trainer):
             self.model.eval()
 
         total_loss = 0.0
+        log_term_loss = 0.0
         for n_batch, (xi, yi) in enumerate(data):
             xi = xi.to(self.device)
             yi = yi.to(self.device)
 
             y_hat = self.model(xi)
-            loss = MVELoss()(y_hat, yi)
+            loss, log_term = MVELoss()(y_hat, yi)
             total_loss += loss.item()
+            log_term_loss += log_term.item()
 
             if training:
                 self.optimizer.zero_grad(set_to_none=True)
                 loss.backward()
                 self.optimizer.step()
 
-        return total_loss / n_batch
+        return total_loss / n_batch, log_term_loss / n_batch
 
 
 
@@ -267,8 +273,8 @@ early_stop = EarlyStopping(patience=100000)
 with tqdm(range(args.epoch)) as pbar_epoch:
     for epoch in pbar_epoch:
         # train and test
-        train_loss = trainer.process_epoch(train_loader)
-        test_loss  = trainer.process_epoch(test_loader, training=False)
+        train_loss, train_log_loss = trainer.process_epoch(train_loader)
+        test_loss, test_log_loss  = trainer.process_epoch(test_loader, training=False)
         writer.add_scalar('Loss/train_loss', train_loss, epoch)
         writer.add_scalar('Loss/test_loss',  test_loss,  epoch)
 
@@ -279,7 +285,7 @@ with tqdm(range(args.epoch)) as pbar_epoch:
             trainer.save(epoch, [train_loss, test_loss], save_name )
 
         # print process bar
-        postfix = f'train_loss={train_loss:.5e}, test_loss={test_loss:.5e}'
+        postfix = f'train_loss={train_loss:.5e}, test_loss={test_loss:.5e}, train_log_loss={train_log_loss:.5e}, test_log_loss={test_log_loss:.5e}'
         pbar_epoch.set_postfix_str(postfix)
         # pbar_epoch.set_postfix(OrderedDict(train_loss=train_loss,
         #                                    test_loss=test_loss))
