@@ -45,24 +45,26 @@ from force_estimation import forcemap
 from force_estimation import force_distribution_viewer
 
 
-fmap = forcemap.GridForceMap('konbini_shelf')
+# data_dir = '../sim/data'
+data_dir = f"{os.environ['HOME']}/Dataset/dataset2/basket-filling3"
+scene = 'seria_basket'
+
+# fmap = forcemap.GridForceMap(scene)
+fmap = forcemap.GridForceMap(scene)
 viewer = force_distribution_viewer.ForceDistributionViewer.get_instance()
 # a = load_contact_data()
 # d = fmap.getDensity(a[0], a[1])
 
 def load_data(frameNo=0, scale=1):
-    d = pd.read_pickle('../sim/data/force_zip{:05d}.pkl'.format(frameNo))
-    bin_state = pd.read_pickle('../sim/data/bin_state{:05d}.pkl'.format(frameNo))
+    d = pd.read_pickle(f'{data_dir}/force_zip{frameNo:05}.pkl'.format(frameNo))
+    bin_state = pd.read_pickle(f'{data_dir}/bin_state{frameNo:05}.pkl'.format(frameNo))
     fmap.set_values(d*scale)
     viewer.publish_bin_state(bin_state, fmap)
     return d, bin_state
 
 
-data_dir = '../sim/data'
-
-
 def compute_force_distribution(contact_raw_data_file, log_scale=True, overwrite=False):
-    local_fmap = forcemap.GridForceMap('konbini_shelf')
+    local_fmap = forcemap.GridForceMap(scene)
     frameNo = int(re.search('\d+', os.path.basename(contact_raw_data_file)).group())
     out_file = os.path.join(data_dir, 'force_zip{:05d}.pkl'.format(frameNo))
     if (not overwrite) and os.path.exists(out_file):

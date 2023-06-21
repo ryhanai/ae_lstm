@@ -41,7 +41,7 @@ class ForceDistributionViewer:
         fvals = fmap.get_values()
 
         if bin_state is not None:
-            self.draw_objects(bin_state)
+            self.draw_objects(bin_state, fmap)
         if draw_fmap:
             self.draw_force_distribution(positions, fvals)
         if draw_force_gradient:
@@ -67,15 +67,18 @@ class ForceDistributionViewer:
                                    rgba=(0.5, 0.5, 0.5, 0.2),
                                    scale=scale)
 
-    def draw_objects(self, bin_state):
+    def draw_objects(self, bin_state, fmap):
         for object_state in bin_state:
             name, pose = object_state
-            # self.rviz_client.draw_mesh("package://force_estimation/meshes/{}/google_16k/textured.dae".format(name),
-            #                            pose,
-            #                            (0.5, 0.5, 0.5, 0.3))
-            self.rviz_client.draw_mesh("package://force_estimation/meshes/konbini/{}.obj".format(name),
-                                       pose,
-                                       (0.5, 0.5, 0.5, 0.3))
+            scene = fmap.get_scene()
+            if scene == 'seria_basket':
+                self.rviz_client.draw_mesh("package://force_estimation/meshes/{}/google_16k/textured.dae".format(name),
+                                        pose,
+                                        (0.5, 0.5, 0.5, 0.3))
+            elif scene == 'konbini_shelf':
+                self.rviz_client.draw_mesh("package://force_estimation/meshes/konbini/{}.obj".format(name),
+                                        pose,
+                                        (0.5, 0.5, 0.5, 0.3))
 
     def draw_force_distribution(self, positions, fvals):
         fvals = fvals.flatten()
@@ -84,8 +87,8 @@ class ForceDistributionViewer:
         points = []
         rgbas = []
         if fmax - fmin > 1e-3:
-            # std_fvals = (fvals - fmin) / (fmax - fmin)
-            std_fvals = fvals
+            std_fvals = (fvals - fmin) / (fmax - fmin)
+            # std_fvals = fvals
             for (x, y, z), f in zip(positions, std_fvals):
                 # if f > 0.08:
                 if f > 0.14:

@@ -393,7 +393,7 @@ class RandomSeriaBasketScene(RandomScene):
 
     def change_scene(self):
         self._world.reset()
-        number_of_objects = np.clip(np.random.poisson(5), 1, 10)
+        number_of_objects = np.clip(np.random.poisson(5), 1, 8)
         self.place_objects(number_of_objects)
 
     def sample_object_pose(self):

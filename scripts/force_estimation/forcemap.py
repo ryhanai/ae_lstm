@@ -50,7 +50,7 @@ class GridForceMap:
     def getDensity(self,
                    sample_positions,
                    sample_weights,
-                   moving_average=True,
+                   moving_average=False,
                    reshape_result=False):
 
         if len(sample_weights) > 0:
@@ -66,9 +66,8 @@ class GridForceMap:
         else:
             V = np.zeros(self.positions.shape[0])
 
-        self.V = self.alpha * self.V + (1 - self.alpha) * V
-
         if moving_average:
+            self.V = self.alpha * self.V + (1 - self.alpha) * V
             return self.V
         else:
             return V
