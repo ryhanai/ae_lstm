@@ -60,6 +60,7 @@ def load_data(frameNo=0, scale=1):
     bin_state = pd.read_pickle(f'{data_dir}/bin_state{frameNo:05}.pkl'.format(frameNo))
     fmap.set_values(d*scale)
     viewer.publish_bin_state(bin_state, fmap)
+    print(bin_state)
     return d, bin_state
 
 

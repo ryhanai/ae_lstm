@@ -46,8 +46,8 @@ def curate_dataset(num_samples=1000, views=range(2)):
             fmaps.append(fmap.astype('float32'))
             for j in views:
                 rgb = cv2.cvtColor(cv2.imread(os.path.join(input_dir, f'rgb{i:05}_{j:05}.jpg')), cv2.COLOR_BGR2RGB)
-                rgb_cropped = rgb[100:640, 240:1040]
-                rgbs[j].append(cv2.resize(rgb_cropped, (width, height)))
+                rgb_cropped = rgb[(720-height)/2:(720-height)/2+height, (1280-width)/2:(1280-width)/2+width]
+                rgbs[j].append(rgb_cropped)
         fmaps = np.array(fmaps)
         for j in views:
             rgbs[j] = np.array(rgbs[j])

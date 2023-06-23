@@ -36,10 +36,10 @@ from abc import ABCMeta, abstractmethod
 
 
 # YCB objects
-usd_files = glob.glob('/home/ryo/Program/moonshot/ae_lstm/specification/meshes/objects/ycb/usd/*/*.usd')
+usd_files = glob.glob('/home/ryo/Program/moonshot/ae_lstm/specification/meshes/objects/ycb/*/google_16k/textured/*.usd')
 conf = {
     'asset_path' : os.environ["HOME"] + "/Downloads/Collected_ycb_piled_scene/ycb_piled_scene.usd",
-    'names' : [usd_file.split('/')[-2] for usd_file in usd_files],
+    'names' : [usd_file.split('/')[-4] for usd_file in usd_files],
     'usd_files' : usd_files,
     'masses' : {
         '004_sugar_box': 0.514,
@@ -62,6 +62,25 @@ conf = {
         '055_baseball': 0.148,
         '056_tennis_ball': 0.056,
         '061_foam_brick': 0.059,
+    },
+    'center_of_objects' : {
+        '004_sugar_box': [-0.01, -0.018, 0.09],
+        '005_tomato_soup_can': [-0.01, 0.085, 0.054],
+        '007_tuna_fish_can': [-0.026, -0.021, 0.015],
+        '008_pudding_box': [0.004, 0.02, 0.02],
+        '009_gelatin_box': [-0.022, -0.007, 0.014],
+        '010_potted_meat_can': [-0.035, -0.026, 0.04],
+        '011_banana': [-0.013, 0.013, 0.019],
+        '012_strawberry': [-0.001, 0.017, 0.022],
+        '013_apple': [0.001, -0.001, 0.04],
+        '014_lemon': [-0.011, 0.024, 0.027],
+        '016_pear': [-0.015, 0.009, 0.03],
+        '017_orange': [-0.007, -0.015, 0.038],
+        '026_sponge': [-0.015, 0.019, 0.01],
+        '040_large_marker': [-0.036, -0.002, 0.01],
+        '055_baseball': [-0.01, -0.045, 0.04],
+        '056_tennis_ball': [0.008, -0.041, 0.035],
+        '061_foam_brick': [-0.018, 0.019, 0.025],
     }
 }
 
@@ -242,7 +261,7 @@ class Scene:
         return self._used_objects
 
     def sample_object_pose(self):
-        pos_xy = np.array([-0.10, 0.0]) + np.array([0.2, 0.3]) * (np.random.random(2) - 0.5)
+        pos_xy = np.array([0.10, 0.0]) + np.array([0.2, 0.3]) * (np.random.random(2) - 0.5)
         pos_z = 0.76 + 0.3 * np.random.random()
         theta = 180 * np.random.random()
         phi = 360 * np.random.random()
@@ -397,7 +416,7 @@ class RandomSeriaBasketScene(RandomScene):
         self.place_objects(number_of_objects)
 
     def sample_object_pose(self):
-        xy = np.array([0.17, 0.10]) * (np.array([-0.5, -0.5]) + np.random.random(2))
+        xy = np.array([0.15, 0.08]) * (np.random.random(2) - 0.5)
         z = 0.75 + 0.25 * np.random.random()
         theta = 180 * np.random.random()
         phi = 360 * np.random.random()
@@ -497,7 +516,7 @@ class AlignedToppoScene(Scene):
         randomize_lights()
         randomize_camera_parameters()
         # randomize_object_colors()
-        wait_for_stability(count=1000)
+        wait_for_stability(count=1200)
 
 
 class Recorder:

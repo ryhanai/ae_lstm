@@ -29,7 +29,7 @@ class GridForceMap:
             self.dV = 0.19 * 0.26 * 0.20 / (40**3)
             positions = np.vstack([X.ravel(), Y.ravel(), Z.ravel()])
             self.positions = positions.T  # [number of points, 3]
-            self.bandwidth = 0.012
+            self.bandwidth = 0.010
         elif name == 'konbini_shelf':
             self.grid = np.mgrid[-0.3:0.3:120j, -0.4:0.4:160j, 0.73:0.93:40j]
             X, Y, Z = self.grid

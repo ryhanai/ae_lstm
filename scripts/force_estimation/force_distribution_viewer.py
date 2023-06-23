@@ -72,7 +72,7 @@ class ForceDistributionViewer:
             name, pose = object_state
             scene = fmap.get_scene()
             if scene == 'seria_basket':
-                self.rviz_client.draw_mesh("package://force_estimation/meshes/{}/google_16k/textured.dae".format(name),
+                self.rviz_client.draw_mesh("package://force_estimation/meshes/ycb/{}/google_16k/textured.dae".format(name),
                                         pose,
                                         (0.5, 0.5, 0.5, 0.3))
             elif scene == 'konbini_shelf':
@@ -87,13 +87,13 @@ class ForceDistributionViewer:
         points = []
         rgbas = []
         if fmax - fmin > 1e-3:
-            std_fvals = (fvals - fmin) / (fmax - fmin)
-            # std_fvals = fvals
+            # std_fvals = (fvals - fmin) / (fmax - fmin)
+            std_fvals = fvals / 10.0
             for (x, y, z), f in zip(positions, std_fvals):
                 # if f > 0.08:
-                if f > 0.14:
+                if f > 0.2:
                     points.append([x, y, z])
-                    r, g, b = colorsys.hsv_to_rgb(1./3 * (1-f), 1, 1)
+                    r, g, b = colorsys.hsv_to_rgb(1./2 * (1-f), 1, 1)
                     rgbas.append([r, g, b, 1])
         self.rviz_client.draw_points(points, rgbas)
 
