@@ -133,6 +133,45 @@ class ResBlock(nn.Module):
         return x
 
 
+class ForceEstimationResNetSeriaBasket(nn.Module):
+    def __init__(self, device=0, fine_tune_encoder=True):
+        super().__init__()
+
+        self.stdev = 0.02
+        self.device = device
+
+        self.augmenter = T.Compose([
+            # T.ToTensor(),
+            T.Resize([360, 512], antialias=True),
+            T.RandomAffine(degrees=(-3, 3), translate=(0.03, 0.03)),
+            T.ColorJitter(hue=0.1, saturation=0.1),
+            T.RandomAutocontrast(),
+            T.ColorJitter(contrast=0.1, brightness=0.1),
+        ])
+
+        resnet_classifier = resnet50(weights=ResNet50_Weights.DEFAULT)
+        self.encoder = torch.nn.Sequential(*(list(resnet_classifier.children())[:-2]))
+
+        if not fine_tune_encoder:
+            for p in self.encoder.parameters():
+                p.requires_grad = False
+
+        self.decoder = nn.Sequential(
+            ResBlock(2048, [1024, 512], 3, strides=[1, 1]),
+            ResBlock(512, [256, 128], 3, strides=[1, 1]),
+            UpSample([24, 32]),
+            ResBlock(128, [64, 64], 3, strides=[1, 1]),
+            ResBlock(64, [32, 32], 3, strides=[1, 1]),
+            nn.ConvTranspose2d(32, 30, kernel_size=3, stride=1, padding=1),
+            nn.Sigmoid(),
+            T.Resize([40, 40], antialias=True),
+        )
+
+    def forward(self, x):
+        x = self.augmenter(x) + torch.normal(mean=0, std=self.stdev, size=[360,512]).to(self.device)
+        return self.decoder(self.encoder(x))
+
+
 class ForceEstimationResNet(nn.Module):
     def __init__(self, device=0, fine_tune_encoder=True):
         super().__init__()

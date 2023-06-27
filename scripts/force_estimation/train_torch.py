@@ -26,7 +26,8 @@ from eipl_arg_utils import check_args
 import torch
 import torch.nn as nn
 
-from KonbiniForceMapData import *
+# from KonbiniForceMapData import *
+from SeriaBasketForceMapData import *
 from force_estimation_v4 import *
 
 
@@ -205,12 +206,14 @@ else:
 minmax = [args.vmin, args.vmax]
 print('loading train data ... ', end='')
 t_start = time.time()
-train_data = KonbiniRandomSceneDataset('train', minmax, stdev=args.stdev)
+# train_data = KonbiniRandomSceneDataset('train', minmax, stdev=args.stdev)
+train_data = SeriaBasketRandomSceneDataset('train', minmax, stdev=args.stdev)
 print(f'{time.time() - t_start} [sec]')
 
 print('loading test data ... ', end='')
 t_start = time.time()
-test_data  = KonbiniRandomSceneDataset('validation', minmax, stdev=args.stdev)
+# test_data  = KonbiniRandomSceneDataset('validation', minmax, stdev=args.stdev)
+test_data  = SeriaBasketRandomSceneDataset('validation', minmax, stdev=args.stdev)
 print(f'{time.time() - t_start} [sec]')
 
 train_sampler = BatchSampler(
@@ -239,10 +242,11 @@ test_loader = DataLoader(
 
 # define model
 
+model = ForceEstimationResNetSeriaBasket(fine_tune_encoder=True, device=args.device)
 # model = ForceEstimationResNet(fine_tune_encoder=True, device=args.device)
-#model = ForceEstimationResNetMVE(fine_tune_encoder=True, device=args.device)
+# model = ForceEstimationResNetMVE(fine_tune_encoder=True, device=args.device)
 
-model = ForceEstimationDINOv2(device=args.device)
+# model = ForceEstimationDINOv2(device=args.device)
 # model = ForceEstimationDinoRes(fine_tune_encoder=True, device=args.device)
 print(summary(model, input_size=(args.batch_size, 3, 336, 672)))
 

@@ -73,7 +73,7 @@ def compute_force_distribution(contact_raw_data_file, log_scale=True, overwrite=
     else:
         print(f'process [{frameNo}]')
         contact_positions, impulse_values = pd.read_pickle(contact_raw_data_file)
-        d = local_fmap.getDensity(contact_positions, impulse_values)
+        d = local_fmap.getDensity(contact_positions, impulse_values, return_3d=True)
         if log_scale:
             d = np.log(1 + d)
         pd.to_pickle(d, out_file)

@@ -51,7 +51,7 @@ class GridForceMap:
                    sample_positions,
                    sample_weights,
                    moving_average=False,
-                   reshape_result=False):
+                   return_3d=False):
 
         if len(sample_weights) > 0:
             # V = kde_scipy(sample_positions, self.positions, bandwidth=0.3)
@@ -68,9 +68,14 @@ class GridForceMap:
 
         if moving_average:
             self.V = self.alpha * self.V + (1 - self.alpha) * V
-            return self.V
+            result = self.V
         else:
-            return V
+            result = V
+
+        if return_3d:
+            return result.reshape(self.grid[0].shape)
+        else:
+            return result
 
     def set_values(self, values):
         if values.ndim == 3:

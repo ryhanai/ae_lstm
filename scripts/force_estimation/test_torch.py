@@ -10,12 +10,12 @@ from eipl_utils import tensor2numpy
 from eipl_print_func import print_info
 from eipl_arg_utils import restore_args
 from KonbiniForceMapData import *
+from SeriaBasketForceMapData import *
 from force_estimation_v4 import ForceEstimationDINOv2, ForceEstimationResNet
 
 import forcemap
 from force_estimation import force_distribution_viewer
 viewer = force_distribution_viewer.ForceDistributionViewer.get_instance()
-fmap = forcemap.GridForceMap('konbini_shelf')
 
 import torch._dynamo
 torch._dynamo.config.verbose = True
@@ -24,9 +24,8 @@ torch._dynamo.config.suppress_errors = True
 # argument parser
 parser = argparse.ArgumentParser()
 parser.add_argument('--filename', type=str, default=None)
-parser.add_argument('--idx',      type=str, default='0' )
-parser.add_argument('--pretrained', action='store_true')
-parser.add_argument('--datasize', type=str, default='1k')
+# parser.add_argument('--idx',      type=str, default='0' )
+parser.add_argument('--dataset', type=str, default='basket-filling3-c-1k')
 args = parser.parse_args()
 
 # check args
@@ -43,36 +42,56 @@ args.filename = os.path.join('log', '20230612_1601_40', 'CAE.pth' ) # 1k resenc 
 # restore parameters
 dir_name = os.path.split(args.filename)[0]
 params = restore_args( os.path.join(dir_name, 'args.json') )
-idx    = int(args.idx)
+# idx    = int(args.idx)
 
-# load dataset
 minmax = [params['vmin'], params['vmax']]
-print('loading test data ...')
-test_data  = KonbiniRandomSceneDataset('validation', minmax, datasize=args.datasize)
-images, labels = test_data.get_data()
-# images_raw, _ = test_data.get_raw_data()
-# images_raw = images_raw.transpose(0,2,3,1)
-# T = images.shape[1]
 
 
-# define model
-# model = ForceEstimationDINOv2(device='cpu')
-model = ForceEstimationResNet(device='cpu')
-print(summary(model, input_size=(32, 3, 336, 672)))
-
-# load weight and compile
-# model = torch.compile(model)
-# ckpt = torch.load(args.filename, map_location=torch.device('cpu'))
 ckpt = torch.load(args.filename)
-model.load_state_dict(ckpt['model_state_dict'])
-model.to('cpu')
-model.eval()
 
-# prediction
-batch = images[0:8]
-_yi = model(batch)
-yi = tensor2numpy(_yi)
-yi = yi.transpose(0,2,3,1)
+dataset_dir = args.dataset
+dataset_class = 'SeriaBasketRandomSceneDataset'  # this name is given by 'param.pkl' in dataset directory
+print('loading test data ...')
+test_data = globals()[dataset_class]('validation')
+print('build model and load weights ...')
+model_class = 'ForceEstimationResNetSeriaBasket'  # this name is given by 'args.json'
+model = globals()[model_class](device='cpu')  # for fast inference, use GPU
+model.load_state_dict(ckpt['model_state_dict'])
+
+
+class Tester:
+    def __init__(self, test_data, model, params):
+        self.test_data = test_data
+        self._model = model
+        self._model.to('cpu')
+        self._model.eval()
+        print(summary(self._model, input_size=(32, 3, 336, 672)))
+        # load weight and compile
+        # self._model = torch.compile(self._model)
+        # ckpt = torch.load(args.filename, map_location=torch.device('cpu'))
+
+        forcemap_scene = 'seria_basket'  # this is identified by dataset
+        self._fmap = forcemap.GridForceMap(forcemap_scene)
+
+    def predict_by_index(self, idx):
+                
+        batch = images[idx:idx+1]
+        _yi = self._model(batch)
+        yi = tensor2numpy(_yi)
+        yi = yi.transpose(0,2,3,1)
+        return yi[0]
+
+
+tester = Tester(test_data, model)
+
+# tester.predict(idx)
+# tester.show_labels(idx)
+
+
+# model = ForceEstimationDINOv2(device='cpu')
+# model = ForceEstimationResNet(device='cpu')
+
+
 
 force_labels = tensor2numpy(labels[0:8]).transpose(0,2,3,1)
 
