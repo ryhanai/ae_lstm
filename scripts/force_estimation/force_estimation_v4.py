@@ -168,7 +168,7 @@ class ForceEstimationResNetSeriaBasket(nn.Module):
         )
 
     def forward(self, x):
-        x = self.augmenter(x) + torch.normal(mean=0, std=self.stdev, size=[360,512]).to(self.device)
+        # x = self.augmenter(x) + torch.normal(mean=0, std=self.stdev, size=[360,512]).to(self.device)
         return self.decoder(self.encoder(x))
 
 
