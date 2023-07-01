@@ -172,6 +172,33 @@ class ForceEstimationResNetSeriaBasket(nn.Module):
         return self.decoder(self.encoder(x))
 
 
+class ForceEstimationResNetSeriaBasketMVE(nn.Module):
+    def __init__(self, mean_network_weights, device=0):
+        super().__init__()
+        self.mean_network = ForceEstimationResNetSeriaBasket(device=device)
+        self.mean_network.load_state_dict(mean_network_weights)
+        for p in self.mean_network.parameters():
+            p.requires_grad = False
+
+        self.variance_decoder = nn.Sequential(
+            ResBlock(2048, [1024, 512], 3, strides=[1, 1]),
+            ResBlock(512, [256, 128], 3, strides=[1, 1]),
+            UpSample([24, 32]),
+            ResBlock(128, [64, 64], 3, strides=[1, 1]),
+            ResBlock(64, [32, 32], 3, strides=[1, 1]),
+            nn.ConvTranspose2d(32, 30, kernel_size=3, stride=1, padding=1),
+            nn.Sigmoid(),
+            T.Resize([40, 40], antialias=True),
+        )
+
+    def forward(self, x):
+        x = self.mean_network.augmenter(x) + torch.normal(mean=0, std=self.mean_network.stdev, size=[360,512]).to(self.mean_network.device)
+        z = self.mean_network.encoder(x)
+        mean = self.mean_network.decoder(z)
+        variance = self.variance_decoder(z)
+        return mean, variance
+
+
 class ForceEstimationResNet(nn.Module):
     def __init__(self, device=0, fine_tune_encoder=True):
         super().__init__()

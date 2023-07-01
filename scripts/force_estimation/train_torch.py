@@ -46,8 +46,6 @@ class EarlyStopping:
         self.val_loss_min = np.Inf
         
     def __call__(self, val_loss):
-
-        print('EARLY STOPPING: ', val_loss)
         if np.isnan(val_loss) or np.isinf(val_loss):
             raise RuntimeError("Invalid loss, terminating training") 
         
@@ -242,7 +240,12 @@ test_loader = DataLoader(
 
 # define model
 
-model = ForceEstimationResNetSeriaBasket(fine_tune_encoder=True, device=args.device)
+# model = ForceEstimationResNetSeriaBasket(fine_tune_encoder=True, device=args.device)
+
+
+mean_network_weights = torch.load('log/20230627_1730_52/CAE.pth')['model_state_dict']
+model = ForceEstimationResNetSeriaBasketMVE(mean_network_weights, device=args.device)
+
 # model = ForceEstimationResNet(fine_tune_encoder=True, device=args.device)
 # model = ForceEstimationResNetMVE(fine_tune_encoder=True, device=args.device)
 
@@ -265,8 +268,8 @@ else:
     assert False, 'Unknown optimizer name {}. please set Adam or RAdam or Adamax.'.format(args.optimizer)
 
 # load trainer/tester class
-trainer = Trainer( model, optimizer, device=device )
-# trainer = TrainerMVE( model, optimizer, device=device )
+# trainer = Trainer(model, optimizer, device=device)
+trainer = TrainerMVE( model, optimizer, device=device )
 
 ### training main
 log_dir_path = set_logdir('./'+args.log_dir, args.tag)
@@ -277,10 +280,10 @@ early_stop = EarlyStopping(patience=100000)
 with tqdm(range(args.epoch)) as pbar_epoch:
     for epoch in pbar_epoch:
         # train and test
-        #train_loss, train_log_loss = trainer.process_epoch(train_loader)
-        #test_loss, test_log_loss  = trainer.process_epoch(test_loader, training=False)
-        train_loss = trainer.process_epoch(train_loader)
-        test_loss = trainer.process_epoch(test_loader, training=False)
+        train_loss, train_log_loss = trainer.process_epoch(train_loader)
+        test_loss, test_log_loss  = trainer.process_epoch(test_loader, training=False)
+        # train_loss = trainer.process_epoch(train_loader)
+        # test_loss = trainer.process_epoch(test_loader, training=False)
         writer.add_scalar('Loss/train_loss', train_loss, epoch)
         writer.add_scalar('Loss/test_loss',  test_loss,  epoch)
 
@@ -291,8 +294,8 @@ with tqdm(range(args.epoch)) as pbar_epoch:
             trainer.save(epoch, [train_loss, test_loss], save_name )
 
         # print process bar
-        #postfix = f'train_loss={train_loss:.5e}, test_loss={test_loss:.5e}, train_log_loss={train_log_loss:.5e}, test_log_loss={test_log_loss:.5e}'
-        postfix = f'train_loss={train_loss:.5e}, test_loss={test_loss:.5e}'
+        postfix = f'train_loss={train_loss:.5e}, test_loss={test_loss:.5e}, train_log_loss={train_log_loss:.5e}, test_log_loss={test_log_loss:.5e}'
+        # postfix = f'train_loss={train_loss:.5e}, test_loss={test_loss:.5e}'
         pbar_epoch.set_postfix_str(postfix)
         # pbar_epoch.set_postfix(OrderedDict(train_loss=train_loss,
         #                                    test_loss=test_loss))
