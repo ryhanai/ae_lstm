@@ -176,7 +176,9 @@ class ForceEstimationResNetSeriaBasketMVE(nn.Module):
     def __init__(self, mean_network_weights, device=0):
         super().__init__()
         self.mean_network = ForceEstimationResNetSeriaBasket(device=device)
+
         self.mean_network.load_state_dict(mean_network_weights)
+
         for p in self.mean_network.parameters():
             p.requires_grad = False
 
@@ -187,8 +189,9 @@ class ForceEstimationResNetSeriaBasketMVE(nn.Module):
             ResBlock(128, [64, 64], 3, strides=[1, 1]),
             ResBlock(64, [32, 32], 3, strides=[1, 1]),
             nn.ConvTranspose2d(32, 30, kernel_size=3, stride=1, padding=1),
-            nn.Sigmoid(),
+            # nn.Sigmoid(),
             T.Resize([40, 40], antialias=True),
+            nn.ReLU(),
         )
 
     def forward(self, x):
