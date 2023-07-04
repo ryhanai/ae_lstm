@@ -168,7 +168,7 @@ class ForceEstimationResNetSeriaBasket(nn.Module):
         )
 
     def forward(self, x):
-        # x = self.augmenter(x) + torch.normal(mean=0, std=self.stdev, size=[360,512]).to(self.device)
+        x = self.augmenter(x) + torch.normal(mean=0, std=self.stdev, size=[360,512]).to(self.device)
         return self.decoder(self.encoder(x))
 
 
@@ -189,9 +189,9 @@ class ForceEstimationResNetSeriaBasketMVE(nn.Module):
             ResBlock(128, [64, 64], 3, strides=[1, 1]),
             ResBlock(64, [32, 32], 3, strides=[1, 1]),
             nn.ConvTranspose2d(32, 30, kernel_size=3, stride=1, padding=1),
-            # nn.Sigmoid(),
             T.Resize([40, 40], antialias=True),
-            nn.ReLU(),
+            nn.Sigmoid(),
+            # nn.ReLU(),
         )
 
     def forward(self, x):

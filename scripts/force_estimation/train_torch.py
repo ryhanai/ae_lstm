@@ -99,7 +99,7 @@ class Trainer:
                     }, savename)
 
     def process_epoch(self, data, training=True):
-        
+
         if not training:
             self.model.eval()
 
@@ -123,16 +123,19 @@ class Trainer:
 class MVELoss(nn.Module):
     def __init__(self):
         super().__init__()
-        self._eps = 1e-12
+        # self._eps = 1e-12
+        self._eps = 1e-6
 
     def forward(self, y_hat, y):
         mu_hat, sigma_hat = y_hat
         loss1 = torch.log(sigma_hat + self._eps)
         loss2 = (mu_hat - y) ** 2 / (sigma_hat + self._eps)
+        loss3 = (mu_hat - y) ** 2
         l1m = loss1.mean()
         l2m = loss2.mean()
-        return l1m + l2m, l1m, l2m
-        
+        l3m = loss3.mean()
+        return l1m + l2m, l1m, l3m
+
         # loss1 = torch.log(sigma_hat + self._eps)
         # loss2 = (mu_hat - y) ** 2 / (sigma_hat + self._eps)
         # return loss2.mean(), loss1.mean()
@@ -151,7 +154,7 @@ class TrainerMVE(Trainer):
         super().__init__(model, optimizer, device=device)
 
     def process_epoch(self, data, training=True):
-        
+
         if not training:
             self.model.eval()
 
@@ -173,7 +176,7 @@ class TrainerMVE(Trainer):
                 loss.backward()
                 self.optimizer.step()
 
-        return total_loss / n_batch, sig_term_loss / n_batch, mu_term_loss / n_batch
+        return total_loss / (n_batch+1), sig_term_loss / (n_batch+1), mu_term_loss / (n_batch+1)
 
 
 

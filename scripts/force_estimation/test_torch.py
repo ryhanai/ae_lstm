@@ -84,6 +84,17 @@ class Tester:
             self.show_forcemap(yi, bs)
         return yi
 
+    def show_prediction_error(self, idx):
+        force_label = tensor2numpy(self.test_data[idx][1]).transpose(1, 2, 0)
+        batch = torch.unsqueeze(self.test_data[idx][0], 0).to(self._device)
+        yi = self._model(batch)[0]
+        yi = tensor2numpy(yi)
+        yi = yi.transpose(1, 2, 0)
+        bs = self.load_bin_state(idx)
+        error = force_label - yi
+        self.show_forcemap(np.abs(error), bs)
+        return error
+
     def show_label_by_index(self, idx, log_scale=True):
         force_label = tensor2numpy(self.test_data[idx][1]).transpose(1, 2, 0)
         if not log_scale:
