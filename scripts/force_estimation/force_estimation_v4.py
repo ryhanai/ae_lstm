@@ -173,11 +173,12 @@ class ForceEstimationResNetSeriaBasket(nn.Module):
 
 
 class ForceEstimationResNetSeriaBasketMVE(nn.Module):
-    def __init__(self, mean_network_weights, device=0):
+    def __init__(self, mean_network_weights=None, device=0):
         super().__init__()
         self.mean_network = ForceEstimationResNetSeriaBasket(device=device)
 
-        self.mean_network.load_state_dict(mean_network_weights)
+        if mean_network_weights is not None:
+            self.mean_network.load_state_dict(mean_network_weights)
 
         for p in self.mean_network.parameters():
             p.requires_grad = False

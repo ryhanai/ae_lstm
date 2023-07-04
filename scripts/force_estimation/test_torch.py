@@ -84,6 +84,20 @@ class Tester:
             self.show_forcemap(yi, bs)
         return yi
 
+    def predict_variance_by_index(self, idx, show_result=True, show_bin_state=True, ratio=2):
+        batch = torch.unsqueeze(self.test_data[idx][0], 0).to(self._device)
+        means, vars = self._model(batch)
+        yi = vars[0]
+        yi = tensor2numpy(yi)
+        yi = yi.transpose(1, 2, 0)
+        if show_result:
+            if show_bin_state:
+                bs = self.load_bin_state(idx)
+            else:
+                bs = None
+            self.show_forcemap(yi/ np.max(yi) * ratio, bs)
+        return yi
+
     def show_prediction_error(self, idx):
         force_label = tensor2numpy(self.test_data[idx][1]).transpose(1, 2, 0)
         batch = torch.unsqueeze(self.test_data[idx][0], 0).to(self._device)
