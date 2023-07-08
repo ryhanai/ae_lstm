@@ -1,31 +1,23 @@
 #
-# Copyright (c) 2023 Ogata Laboratory, Waseda University
-#
-# Released under the AGPL license.
-# see https://www.gnu.org/licenses/agpl-3.0.txt
+# Copyright (c) 2023 Ryo Hanai
 # 
 
 import os
-import sys
 import time
-import torch
 import argparse
+import numpy as np
 from tqdm import tqdm
-from collections import OrderedDict
+# from collections import OrderedDict
+import torch
+import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import BatchSampler, RandomSampler
 from torch.utils.tensorboard import SummaryWriter
 from torchinfo import summary
-# from eipl.model import BasicCAE, CAE, BasicCAEBN, CAEBN
-# from eipl.data import GraspBottleImageDataset
 from eipl_utils import set_logdir
 from eipl_print_func import print_info
 from eipl_arg_utils import check_args
-
-
-import torch
-import torch.nn as nn
 
 # from KonbiniForceMapData import *
 from SeriaBasketForceMapData import *
@@ -45,11 +37,11 @@ class EarlyStopping:
         self.save_ckpt = False
         self.stop_flag = False
         self.val_loss_min = np.Inf
-        
+
     def __call__(self, val_loss):
         if np.isnan(val_loss) or np.isinf(val_loss):
-            raise RuntimeError("Invalid loss, terminating training") 
-        
+            raise RuntimeError("Invalid loss, terminating training")
+
         score = -val_loss
 
         if self.best_score is None:
@@ -76,14 +68,12 @@ class Trainer:
         traindata (np.array): list of np.array. First diemension should be time steps
         model (torch.nn.Module): rnn model
         optimizer (torch.optim): optimizer
-        batch_size (int): 
-        stdev (float): 
-        device (str): 
+        device (str):
     """
     def __init__(self,
-                model,
-                optimizer,
-                device='cpu'):
+                 model,
+                 optimizer,
+                 device='cpu'):
 
         self.device = device
         self.optimizer = optimizer        
@@ -93,7 +83,7 @@ class Trainer:
         torch.save({
                     'epoch': epoch,
                     'model_state_dict': self.model.state_dict(),
-                    #'optimizer_state_dict': self.optimizer.state_dict(),
+                    # 'optimizer_state_dict': self.optimizer.state_dict(),
                     'train_loss': loss[0],
                     'test_loss': loss[1],
                     }, savename)
@@ -147,9 +137,9 @@ class MVELoss(nn.Module):
 
 class TrainerMVE(Trainer):
     def __init__(self,
-                model,
-                optimizer,
-                device='cpu'):
+                 model,
+                 optimizer,
+                 device='cpu'):
 
         super().__init__(model, optimizer, device=device)
 
@@ -177,7 +167,6 @@ class TrainerMVE(Trainer):
                 self.optimizer.step()
 
         return total_loss / (n_batch+1), sig_term_loss / (n_batch+1), mu_term_loss / (n_batch+1)
-
 
 
 # GPU optimizes and accelerates the network calculations.
@@ -277,9 +266,9 @@ else:
 
 # load trainer/tester class
 # trainer = Trainer(model, optimizer, device=device)
-trainer = TrainerMVE( model, optimizer, device=device )
+trainer = TrainerMVE(model, optimizer, device=device)
 
-### training main
+# training main
 log_dir_path = set_logdir('./'+args.log_dir, args.tag)
 save_name = os.path.join(log_dir_path, '{}.pth'.format(args.model) )
 writer = SummaryWriter(log_dir=log_dir_path, flush_secs=30)
