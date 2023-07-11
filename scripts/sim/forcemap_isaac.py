@@ -38,7 +38,8 @@ from abc import ABCMeta, abstractmethod
 # YCB objects
 usd_files = glob.glob('/home/ryo/Program/moonshot/ae_lstm/specification/meshes/objects/ycb/*/google_16k/textured/*.usd')
 conf = {
-    'asset_path' : os.environ["HOME"] + "/Downloads/Collected_ycb_piled_scene/ycb_piled_scene.usd",
+    # 'asset_path' : os.environ["HOME"] + "/Downloads/Collected_ycb_piled_scene/ycb_piled_scene.usd",
+    'asset_path' : os.environ["HOME"] + "/Downloads/green_table_scene.usd",    
     'names' : [usd_file.split('/')[-4] for usd_file in usd_files],
     'usd_files' : usd_files,
     'masses' : {
@@ -62,6 +63,38 @@ conf = {
         '055_baseball': 0.148,
         '056_tennis_ball': 0.056,
         '061_foam_brick': 0.059,
+        # additional objects
+        # '001_chips_can' : 0.205,
+        '002_master_chef_can' : 0.414,
+        '015_peach' : 0.033,
+        '018_plum' : 0.025,
+        '021_bleach_cleanser' : 1.131,
+        # '022_windex_bottle' : 1.022,
+        '023_wine_glass' : 0.133,
+        '024_bowl' : 0.147,
+        '025_mug' : 0.118,
+        '029_plate' : 0.279,
+        '030_fork' : 0.034,
+        '031_spoon' : 0.030,
+        '032_knife' : 0.031,
+        '033_spatula' : 0.0515,
+        '035_power_drill' : 0.895,
+        '036_wood_block' : 0.729,
+        '037_scissors' : 0.082,
+        # '041_small_marker' : 0.0082,
+        '042_adjustable_wrench' : 0.252,
+        '043_phillips_screwdriver' : 0.097,
+        '044_flat_screwdriver' : 0.0984,
+        '048_hammer' : 0.665,
+        # '049_small_clamp' : 0.0192,
+        '050_medium_clamp' : 0.059,
+        '051_large_clamp' : 0.125,
+        '052_extra_large_clamp' : 0.202,
+        '053_mini_soccer_ball' : 0.123,
+        '054_softball' : 0.191,
+        '057_racquetball' : 0.041,
+        '058_golf_ball' : 0.665,
+        '077_rubiks_cube' : 0.252,
     },
     'center_of_objects' : {
         '004_sugar_box': [-0.01, -0.018, 0.09],
@@ -430,6 +463,44 @@ class RandomSeriaBasketScene(RandomScene):
         self._camera.set_world_pose(position, orientation)
 
 
+class RandomTableScene(RandomScene):
+    def __init__(self, world, conf):
+        self._names = conf['names']
+        self._usd_files = conf['usd_files']
+        super().__init__(world, conf)
+
+    def change_scene(self):
+        self._world.reset()
+        number_of_objects = np.clip(np.random.poisson(7), 1, 10)
+        self.place_objects(number_of_objects)
+
+    def sample_object_pose(self):
+        xy = np.array([0.15, 0.15]) * (np.random.random(2) - 0.5)
+        z = 0.75 + 0.25 * np.random.random()
+        theta = 180 * np.random.random()
+        phi = 360 * np.random.random()
+        axis = [np.cos(theta)*np.cos(phi), np.cos(theta)*np.sin(phi), np.sin(theta)]
+        angle = 360 * np.random.random()
+        return [xy[0], xy[1], z], (axis, angle)
+
+    def randomize_camera_parameters(self):
+        d = 0.7 + 0.2 * (np.random.random() - 0.5)
+        theta = 50 + 35 * np.random.random()
+        phi = 360 * np.random.random()
+        th = np.deg2rad(theta)
+        ph = np.deg2rad(phi)
+        position = np.array([0, 0, 0.75]) + d * np.array([np.cos(th)*np.cos(ph), np.cos(th)*np.sin(ph), np.sin(th)])
+        theta2 = theta + 6 * (np.random.random() - 0.5)
+        phi2 = phi + 6 * (np.random.random() - 0.5)
+        orientation = rot_utils.euler_angles_to_quats(np.array([0, theta2, 180+phi2]), degrees=True)
+        print(f'position={position}, orientation={orientation}')
+        self._camera.set_world_pose(position, orientation)
+
+        self._camera.set_focal_length(1.88 + 0.1128 * (np.random.random() - 0.5))  # 3% of the spec
+        self._camera.set_focus_distance(50)
+        self._camera.set_horizontal_aperture(2.6034 + 0.1562 * (np.random.random() - 0.5))
+        self._camera.set_vertical_aperture(1.4621 + 0.0877 * (np.random.random() - 0.5))
+
 
 # def delete_objects():
 #     global loaded_objects, contact_sensors
@@ -616,6 +687,9 @@ class DatasetGenerator(metaclass=ABCMeta):
 # usd_files = glob.glob(os.path.join(os.environ['HOME'], '/Program/moonshot/ae_lstm/specification/meshes/objects/ycb/usd/*/*.usd'))
 # names = [os.path.splitext(usd_file.split("/")[-1])[0] for usd_file in usd_files]
 
-scene = RandomSeriaBasketScene(world, conf)
+# Seria basket scene (IROS2023, moonshot interim demo.)
+# scene = RandomSeriaBasketScene(world, conf)
+
+scene = RandomTableScene(world, conf)
 dataset = DatasetGenerator(scene, output_force=False)
-dataset.create(2000)
+dataset.create(10)
