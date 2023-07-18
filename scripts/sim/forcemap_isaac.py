@@ -38,8 +38,8 @@ from abc import ABCMeta, abstractmethod
 # YCB objects
 usd_files = glob.glob('/home/ryo/Program/moonshot/ae_lstm/specification/meshes/objects/ycb/*/google_16k/textured/*.usd')
 conf = {
-    # 'asset_path' : os.environ["HOME"] + "/Downloads/Collected_ycb_piled_scene/ycb_piled_scene.usd",
-    'asset_path' : os.environ["HOME"] + "/Downloads/green_table_scene.usd",    
+    'asset_path' : os.environ["HOME"] + "/Downloads/Collected_ycb_piled_scene/ycb_piled_scene.usd",
+    # 'asset_path' : os.environ["HOME"] + "/Downloads/green_table_scene.usd",    
     'names' : [usd_file.split('/')[-4] for usd_file in usd_files],
     'usd_files' : usd_files,
     'masses' : {
@@ -485,12 +485,14 @@ class RandomTableScene(RandomScene):
 
     def randomize_camera_parameters(self):
         d = 0.7 + 0.2 * (np.random.random() - 0.5)
-        theta = 50 + 35 * np.random.random()
+        theta0 = np.radians(20)
+        theta1 = np.radians(60)
+        z = np.random.random()
+        th = np.arcsin(z * (np.sin(theta1) - np.sin(theta0)) + np.sin(theta0))
         phi = 360 * np.random.random()
-        th = np.deg2rad(theta)
         ph = np.deg2rad(phi)
         position = np.array([0, 0, 0.75]) + d * np.array([np.cos(th)*np.cos(ph), np.cos(th)*np.sin(ph), np.sin(th)])
-        theta2 = theta + 6 * (np.random.random() - 0.5)
+        theta2 = np.degrees(th) + 6 * (np.random.random() - 0.5)
         phi2 = phi + 6 * (np.random.random() - 0.5)
         orientation = rot_utils.euler_angles_to_quats(np.array([0, theta2, 180+phi2]), degrees=True)
         print(f'position={position}, orientation={orientation}')
