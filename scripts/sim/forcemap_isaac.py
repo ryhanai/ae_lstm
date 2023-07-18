@@ -38,11 +38,11 @@ from abc import ABCMeta, abstractmethod
 # YCB objects
 usd_files = glob.glob('/home/ryo/Program/moonshot/ae_lstm/specification/meshes/objects/ycb/*/google_16k/textured/*.usd')
 conf = {
-    'asset_path' : os.environ["HOME"] + "/Downloads/Collected_ycb_piled_scene/ycb_piled_scene.usd",
-    # 'asset_path' : os.environ["HOME"] + "/Downloads/green_table_scene.usd",    
-    'names' : [usd_file.split('/')[-4] for usd_file in usd_files],
-    'usd_files' : usd_files,
-    'masses' : {
+    # 'asset_path' : os.environ["HOME"] + "/Downloads/Collected_ycb_piled_scene/ycb_piled_scene.usd",
+    'asset_path': os.environ["HOME"] + "/Downloads/green_table_scene.usd",
+    'names': [usd_file.split('/')[-4] for usd_file in usd_files],
+    'usd_files': usd_files,
+    'masses': {
         '004_sugar_box': 0.514,
         '005_tomato_soup_can': 0.349,
         # '006_mustard_bottle': 0.603,
@@ -66,37 +66,37 @@ conf = {
         # additional objects
         # '001_chips_can' : 0.205,
         '002_master_chef_can' : 0.414,
-        '015_peach' : 0.033,
-        '018_plum' : 0.025,
-        '021_bleach_cleanser' : 1.131,
+        '015_peach': 0.033,
+        '018_plum': 0.025,
+        '021_bleach_cleanser': 1.131,
         # '022_windex_bottle' : 1.022,
-        '023_wine_glass' : 0.133,
-        '024_bowl' : 0.147,
-        '025_mug' : 0.118,
-        '029_plate' : 0.279,
-        '030_fork' : 0.034,
-        '031_spoon' : 0.030,
-        '032_knife' : 0.031,
-        '033_spatula' : 0.0515,
-        '035_power_drill' : 0.895,
-        '036_wood_block' : 0.729,
-        '037_scissors' : 0.082,
+        '023_wine_glass': 0.133,
+        '024_bowl': 0.147,
+        '025_mug': 0.118,
+        '029_plate': 0.279,
+        '030_fork': 0.034,
+        '031_spoon': 0.030,
+        '032_knife': 0.031,
+        '033_spatula': 0.0515,
+        '035_power_drill': 0.895,
+        '036_wood_block': 0.729,
+        '037_scissors': 0.082,
         # '041_small_marker' : 0.0082,
-        '042_adjustable_wrench' : 0.252,
-        '043_phillips_screwdriver' : 0.097,
-        '044_flat_screwdriver' : 0.0984,
-        '048_hammer' : 0.665,
-        # '049_small_clamp' : 0.0192,
-        '050_medium_clamp' : 0.059,
-        '051_large_clamp' : 0.125,
-        '052_extra_large_clamp' : 0.202,
-        '053_mini_soccer_ball' : 0.123,
-        '054_softball' : 0.191,
-        '057_racquetball' : 0.041,
-        '058_golf_ball' : 0.665,
-        '077_rubiks_cube' : 0.252,
+        '042_adjustable_wrench': 0.252,
+        '043_phillips_screwdriver': 0.097,
+        '044_flat_screwdriver': 0.0984,
+        '048_hammer': 0.665,
+        # '049_small_clamp': 0.0192,
+        '050_medium_clamp': 0.059,
+        '051_large_clamp': 0.125,
+        '052_extra_large_clamp': 0.202,
+        '053_mini_soccer_ball': 0.123,
+        '054_softball': 0.191,
+        '057_racquetball': 0.041,
+        '058_golf_ball': 0.665,
+        '077_rubiks_cube': 0.252,
     },
-    'center_of_objects' : {
+    'center_of_objects': {
         '004_sugar_box': [-0.01, -0.018, 0.09],
         '005_tomato_soup_can': [-0.01, 0.085, 0.054],
         '007_tuna_fish_can': [-0.026, -0.021, 0.015],
@@ -275,7 +275,7 @@ class Scene:
         self._camera = self.create_camera_D415()
         self._camera.initialize()
         self.create_objects()
-    
+
     @abstractmethod
     def create_objects(self):
         """
@@ -328,7 +328,7 @@ class Scene:
             self._used_objects.append(o)
 
     def wait_for_stability(self, count=100):
-        stable = True
+        # stable = True
         for n in range(count):
             self._world.step(render=True)
             # for i in range(10):
@@ -407,7 +407,6 @@ class Scene:
             mtl_shade = UsdShade.Material(mtl_prim)
             obj_prim = world.stage.GetPrimAtPath(f'/World/object{object_id}')
             UsdShade.MaterialBindingAPI(obj_prim).Bind(mtl_shade, UsdShade.Tokens.strongerThanDescendants)
-
 
 
 class RandomScene(Scene):
@@ -574,7 +573,7 @@ class AlignedToppoScene(Scene):
     def create_toppo_scene(self, n):
         global used_objects
         used_objects = []
-        
+
         world.reset()        
         for i, o in enumerate(loaded_objects):
             prim = o.get_primitive()
@@ -586,10 +585,10 @@ class AlignedToppoScene(Scene):
             set_pose(prim, ([pos_xy[0], pos_xy[1], pos_z], (axis, angle)))
             used_objects.append(o)
 
-        randomize_lights()
-        randomize_camera_parameters()
+        # randomize_lights()
+        # randomize_camera_parameters()
         # randomize_object_colors()
-        wait_for_stability(count=1200)
+        # wait_for_stability(count=1200)
 
 
 class Recorder:
