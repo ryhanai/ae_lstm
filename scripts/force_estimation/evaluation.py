@@ -9,6 +9,7 @@ from force_estimation_data_loader import ForceEstimationDataLoader
 import force_estimation_v2_1 as fe
 import force_distribution_viewer
 
+import torch
 
 dataset = 'basket-filling2'
 image_height = 360
@@ -167,3 +168,19 @@ def plot_precision_curve():
     ax.set_ylim(0.5, 1)
     ax.set_xticks([6e-3, 7e-3, 8e-3, 9e-3, 1e-2])
     plt.show()
+
+
+def f(n):
+    y_pred = model.predict(test_data[0][n:n+1])[0]
+    f_label = test_data[1][n]
+    return y_pred, f_label, np.sum(np.abs(y_pred - f_label)) / np.sum(f_label)
+
+
+def KL(p, q):
+    if type(p) != torch.Tensor:
+        p = torch.Tensor(p) 
+    if type(q) != torch.Tensor:
+        q = torch.Tensor(q)
+    p = p / p.sum()
+    q = q / q.sum()
+    return (p * (p / q).log()).sum()
