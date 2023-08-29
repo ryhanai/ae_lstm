@@ -238,10 +238,10 @@ test_loader = DataLoader(
 
 # define model
 
-mean_network_weights = torch.load('log/20230627_1730_52/CAE.pth')['model_state_dict']
-model = ForceEstimationResNetSeriaBasketMVE(mean_network_weights, device=args.device)
+# mean_network_weights = torch.load('log/20230627_1730_52/CAE.pth')['model_state_dict']
+# model = ForceEstimationResNetSeriaBasketMVE(mean_network_weights, device=args.device)
 
-# model = ForceEstimationResNetSeriaBasket(fine_tune_encoder=True, device=args.device)
+model = ForceEstimationResNetSeriaBasket(fine_tune_encoder=True, device=args.device)
 # model.load_state_dict(mean_network_weights)
 
 
@@ -265,8 +265,8 @@ else:
     assert False, 'Unknown optimizer name {}. please set Adam or RAdam or Adamax.'.format(args.optimizer)
 
 # load trainer/tester class
-# trainer = Trainer(model, optimizer, device=device)
-trainer = TrainerMVE(model, optimizer, device=device)
+trainer = Trainer(model, optimizer, device=device)
+# trainer = TrainerMVE(model, optimizer, device=device)
 
 # training main
 log_dir_path = set_logdir('./'+args.log_dir, args.tag)
@@ -274,8 +274,8 @@ save_name = os.path.join(log_dir_path, '{}.pth'.format(args.model) )
 writer = SummaryWriter(log_dir=log_dir_path, flush_secs=30)
 early_stop = EarlyStopping(patience=100000)
 
-loss, sig_term, mu_term = trainer.process_epoch(test_loader, training=False)
-print_info(f'Initialized model performance (test_loss): {loss}/{sig_term}/{mu_term}')
+# loss, sig_term, mu_term = trainer.process_epoch(test_loader, training=False)
+# print_info(f'Initialized model performance (test_loss): {loss}/{sig_term}/{mu_term}')
 
 
 def initialization_test(n_times, mve=True):
@@ -298,10 +298,10 @@ def do_train():
     with tqdm(range(args.epoch)) as pbar_epoch:
         for epoch in pbar_epoch:
             # train and test
-            train_loss, train_sig_loss, train_mu_loss = trainer.process_epoch(train_loader)
-            test_loss, test_sig_loss, test_mu_loss  = trainer.process_epoch(test_loader, training=False)
-            # train_loss = trainer.process_epoch(train_loader)
-            # test_loss = trainer.process_epoch(test_loader, training=False)
+            # train_loss, train_sig_loss, train_mu_loss = trainer.process_epoch(train_loader)
+            # test_loss, test_sig_loss, test_mu_loss  = trainer.process_epoch(test_loader, training=False)
+            train_loss = trainer.process_epoch(train_loader)
+            test_loss = trainer.process_epoch(test_loader, training=False)
             writer.add_scalar('Loss/train_loss', train_loss, epoch)
             writer.add_scalar('Loss/test_loss',  test_loss,  epoch)
 
@@ -312,7 +312,7 @@ def do_train():
                 trainer.save(epoch, [train_loss, test_loss], save_name )
 
             # print process bar
-            postfix = f'train_loss={train_loss:.4e}, test_loss={test_loss:.4e}, train_sig={train_sig_loss:.4e}, test_sig={test_sig_loss:.4e}, train_mu={train_mu_loss:.4e}, test_mu={test_mu_loss:.4e}'
-            # postfix = f'train_loss={train_loss:.5e}, test_loss={test_loss:.5e}'
+            # postfix = f'train_loss={train_loss:.4e}, test_loss={test_loss:.4e}, train_sig={train_sig_loss:.4e}, test_sig={test_sig_loss:.4e}, train_mu={train_mu_loss:.4e}, test_mu={test_mu_loss:.4e}'
+            postfix = f'train_loss={train_loss:.5e}, test_loss={test_loss:.5e}'
             pbar_epoch.set_postfix_str(postfix)
             # pbar_epoch.set_postfix(OrderedDict(train_loss=train_loss, test_loss=test_loss))

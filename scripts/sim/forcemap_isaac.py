@@ -28,97 +28,44 @@ import matplotlib.pyplot as plt
 
 from force_estimation import forcemap
 from abc import ABCMeta, abstractmethod
-
+import yaml
 
 # assets_root_path = get_assets_root_path()
 # asset_path = assets_root_path + "/Isaac/Robots/Franka/franka_alt_fingers.usd"
 # world.scene.add_default_ground_plane()
 
 
-# YCB objects
-usd_files = glob.glob('/home/ryo/Program/moonshot/ae_lstm/specification/meshes/objects/ycb/*/google_16k/textured/*.usd')
-conf = {
-    # 'asset_path' : os.environ["HOME"] + "/Downloads/Collected_ycb_piled_scene/ycb_piled_scene.usd",
-    'asset_path': os.environ["HOME"] + "/Downloads/green_table_scene.usd",
-    'names': [usd_file.split('/')[-4] for usd_file in usd_files],
-    'usd_files': usd_files,
-    'masses': {
-        '004_sugar_box': 0.514,
-        '005_tomato_soup_can': 0.349,
-        # '006_mustard_bottle': 0.603,
-        '007_tuna_fish_can': 0.171,
-        '008_pudding_box': 0.187,
-        '009_gelatin_box': 0.097,
-        '010_potted_meat_can': 0.370,
-        '011_banana': 0.066,
-        '012_strawberry': 0.018,
-        '013_apple': 0.068,
-        '014_lemon': 0.029,
-        '016_pear': 0.049,
-        '017_orange': 0.047,
-        # '023_wine_glass': 0.133, # no 3D model
-        '026_sponge': 0.0062,
-        '040_large_marker': 0.0158,
-        # '041_small_marker': 0.0082,
-        '055_baseball': 0.148,
-        '056_tennis_ball': 0.056,
-        '061_foam_brick': 0.059,
-        # additional objects
-        # '001_chips_can' : 0.205,
-        '002_master_chef_can' : 0.414,
-        '015_peach': 0.033,
-        '018_plum': 0.025,
-        '021_bleach_cleanser': 1.131,
-        # '022_windex_bottle' : 1.022,
-        '023_wine_glass': 0.133,
-        '024_bowl': 0.147,
-        '025_mug': 0.118,
-        '029_plate': 0.279,
-        '030_fork': 0.034,
-        '031_spoon': 0.030,
-        '032_knife': 0.031,
-        '033_spatula': 0.0515,
-        '035_power_drill': 0.895,
-        '036_wood_block': 0.729,
-        '037_scissors': 0.082,
-        # '041_small_marker' : 0.0082,
-        '042_adjustable_wrench': 0.252,
-        '043_phillips_screwdriver': 0.097,
-        '044_flat_screwdriver': 0.0984,
-        '048_hammer': 0.665,
-        # '049_small_clamp': 0.0192,
-        '050_medium_clamp': 0.059,
-        '051_large_clamp': 0.125,
-        '052_extra_large_clamp': 0.202,
-        '053_mini_soccer_ball': 0.123,
-        '054_softball': 0.191,
-        '057_racquetball': 0.041,
-        '058_golf_ball': 0.665,
-        '077_rubiks_cube': 0.252,
-    },
-    'center_of_objects': {
-        '004_sugar_box': [-0.01, -0.018, 0.09],
-        '005_tomato_soup_can': [-0.01, 0.085, 0.054],
-        '007_tuna_fish_can': [-0.026, -0.021, 0.015],
-        '008_pudding_box': [0.004, 0.02, 0.02],
-        '009_gelatin_box': [-0.022, -0.007, 0.014],
-        '010_potted_meat_can': [-0.035, -0.026, 0.04],
-        '011_banana': [-0.013, 0.013, 0.019],
-        '012_strawberry': [-0.001, 0.017, 0.022],
-        '013_apple': [0.001, -0.001, 0.04],
-        '014_lemon': [-0.011, 0.024, 0.027],
-        '016_pear': [-0.015, 0.009, 0.03],
-        '017_orange': [-0.007, -0.015, 0.038],
-        '026_sponge': [-0.015, 0.019, 0.01],
-        '040_large_marker': [-0.036, -0.002, 0.01],
-        '055_baseball': [-0.01, -0.045, 0.04],
-        '056_tennis_ball': [0.008, -0.041, 0.035],
-        '061_foam_brick': [-0.018, 0.019, 0.025],
-    }
-}
+class ObjectsInfo:
+    def __init__(self, conf_file):
+        self.load_config(conf_file)
+
+    def load_config(self, conf_file):
+        with open(conf_file) as f:
+            self._yaml_config = yaml.safe_load(f)
+        self._names = self._yaml_config['ycb_iros23']
+
+    def usd_file(self, name):
+        return f'{os.environ["HOME"]}/Program/moonshot/ae_lstm/specification/meshes/objects/ycb/{name}/google_16k/textured/textured.usd'
+
+    def mass(self, name):
+        return self._yaml_config['ycb_property'][name]['mass']
+
+    def __iter__(self):
+        self._i = 0
+        return self
+
+    def __next__(self):
+        if self._i >= len(self._names):
+            raise StopIteration
+        name = self._names[self._i]
+        self._i += 1
+        return name, self.usd_file(name), self.mass(name)
 
 
 # asset_path = os.environ["HOME"] + "/Downloads/Collected_ycb_piled_scene/simple_shelf_scene.usd"
+
+
+conf = ObjectsInfo(os.environ['HOME'] + '/Program/moonshot/ae_lstm/specification/config/objects.yaml')
 
 
 # add_reference_to_stage(usd_path=asset_path, prim_path="/World")
@@ -229,7 +176,8 @@ def create_prim_from_usd(stage, prim_env_path, prim_usd_path, location=[0, 0, 0.
 class Object:
     def __init__(self, name, usd_file, object_id, mass, world):
         self._usd_file = usd_file
-        self._prim = create_prim_from_usd(world.stage, f'/World/object{object_id}', usd_file)
+        self._primitive_name = f'/World/object{object_id}'
+        self._prim = create_prim_from_usd(world.stage, self._primitive_name, usd_file)
         self._id = object_id
         self._name = name
         utils.setRigidBody(self._prim, "convexDecomposition", False)
@@ -241,6 +189,9 @@ class Object:
 
     def get_primitive(self):
         return self._prim
+
+    def get_primitive_name(self):
+        return self._primitive_name
 
     def get_name(self):
         return self._name
@@ -264,8 +215,9 @@ class Object:
 
 
 class Scene:
-    def __init__(self, world):
+    def __init__(self, world, conf):
         self._world = world
+        self._conf = conf
         self._loaded_objects = []
         self._used_objects = []
         self._number_of_lights = 3
@@ -345,7 +297,7 @@ class Scene:
         return False
 
     def create_env(self):
-        create_prim_from_usd(self._world.stage, '/World/env', conf['asset_path'], Gf.Vec3d([0, 0, 0.0]))
+        create_prim_from_usd(self._world.stage, '/World/env', self._asset_path, Gf.Vec3d([0, 0, 0.0]))
 
     def create_camera_D415(self):
         camera = Camera(
@@ -411,14 +363,22 @@ class Scene:
 
 class RandomScene(Scene):
     def __init__(self, world, conf):
-        self._names = conf['names']
-        self._usd_files = conf['usd_files']
-        super().__init__(world)
+        self._object_inv_table = {}
+        super().__init__(world, conf)
 
     def create_objects(self):
-        for i, (name, usd_file) in enumerate(zip(self._names, self._usd_files)):
-            self._loaded_objects.append(Object(name, usd_file, i, conf['masses'][name], self._world))
+        for i, (name, usd_file, mass) in enumerate(self._conf):
+            self._loaded_objects.append(Object(name, usd_file, i, mass, self._world))
+
+        for o in self._loaded_objects:
+            self._object_inv_table[o.get_primitive_name()] = o.get_name()
         self.reset_object_positions()
+
+    def get_object_name_by_primitive_name(self, prim_name):
+        try:
+            return self._object_inv_table[prim_name]
+        except KeyError:
+            return 'seria_basket'
 
     def reset_object_positions(self):
         for i, o in enumerate(self._loaded_objects):
@@ -438,8 +398,7 @@ class RandomScene(Scene):
 
 class RandomSeriaBasketScene(RandomScene):
     def __init__(self, world, conf):
-        self._names = conf['names']
-        self._usd_files = conf['usd_files']
+        self._asset_path = os.environ["HOME"] + "/Downloads/Collected_ycb_piled_scene/ycb_piled_scene.usd"
         super().__init__(world, conf)
 
     def change_scene(self):
@@ -464,8 +423,7 @@ class RandomSeriaBasketScene(RandomScene):
 
 class RandomTableScene(RandomScene):
     def __init__(self, world, conf):
-        self._names = conf['names']
-        self._usd_files = conf['usd_files']
+        self._asset_path = os.environ['HOME'] + "/Downloads/green_table_scene.usd"
         super().__init__(world, conf)
 
     def change_scene(self):
@@ -598,15 +556,16 @@ class Recorder:
         self._camera = camera
         self._data_dir = 'data'
 
-    def save_state(self, objects_to_monitor):
+    def save_state(self, scene):
         """
             Record bin-state and force
         """
         contact_positions = []
         impulse_values = []
+        contacting_objects = []
         bin_state = []
 
-        for o in objects_to_monitor:
+        for o in scene.get_active_objects():
             contact_sensor = o.get_contact_sensor()
             contacts = read_contact_sensor(contact_sensor)
             # print(contact_sensor.get_current_frame())
@@ -614,8 +573,11 @@ class Recorder:
 
             for contact in contacts:
                 if scipy.linalg.norm(contact['impulse']) > 1e-8:
+                    objectA = scene.get_object_name_by_primitive_name(contact['body0'])
+                    objectB = scene.get_object_name_by_primitive_name(contact['body1'])
                     contact_positions.append(contact['position'])
                     impulse_values.append(scipy.linalg.norm(contact['impulse']))
+                    contacting_objects.append((objectA, objectB))
 
             prim = o.get_primitive()
             pose = omni.usd.utils.get_world_transform_matrix(prim)
@@ -627,10 +589,10 @@ class Recorder:
             print(f'SCENE[{self._frameNo},{o.get_name()}]:', trans, quat)
 
         pd.to_pickle(bin_state, os.path.join(self._data_dir, 'bin_state{:05d}.pkl'.format(self._frameNo)))
-        pd.to_pickle((contact_positions, impulse_values), os.path.join(self._data_dir, 'contact_raw_data{:05d}.pkl'.format(self._frameNo)))
+        pd.to_pickle((contact_positions, impulse_values, contacting_objects), os.path.join(self._data_dir, 'contact_raw_data{:05d}.pkl'.format(self._frameNo)))
 
         if self.__output_force:
-            force_dist = self.convert_to_force_distribution(contact_positions, impulse_values)
+            force_dist = self.convert_to_force_distribution(contact_positions, impulse_values, contacting_objects)
             pd.to_pickle(force_dist, os.path.join(self._data_dir, 'force_zip{:05d}.pkl'.format(self._frameNo)))
 
     def save_image(self, viewNum=None):
@@ -646,7 +608,7 @@ class Recorder:
     #     obj = world.scene.get_object(prim_path)
     #     return obj.get_world_pose()
 
-    def convert_to_force_distribution(self, contact_positions, impulse_values, log_scale=True):
+    def convert_to_force_distribution(self, contact_positions, impulse_values, log_scale=False):
         fmap = forcemap.GridForceMap('konbini_shelf')
         d = fmap.getDensity(contact_positions, impulse_values)
         if log_scale:
@@ -659,7 +621,7 @@ class DatasetGenerator(metaclass=ABCMeta):
         self._scene = scene
         self._recorder = Recorder(self._scene._camera, output_force=output_force)
 
-    def create(self, number_of_scenes):
+    def create(self, number_of_scenes, number_of_views=5):
         simulation_context.initialize_physics()
         simulation_context.play()
 
@@ -667,11 +629,11 @@ class DatasetGenerator(metaclass=ABCMeta):
             self._scene.change_scene()
             self._scene.wait_for_stability()
 
-            for viewNum in range(5):
+            for viewNum in range(number_of_views):
                 self._scene.change_observation_condition()
                 self._scene.wait_for_stability(count=10)
                 self._recorder.save_image(viewNum)
-            self._recorder.save_state(self._scene.get_active_objects())
+            self._recorder.save_state(self._scene)
             self._recorder.incrementFrameNumber()
 
         # simulation_context.stop()
@@ -689,8 +651,9 @@ class DatasetGenerator(metaclass=ABCMeta):
 # names = [os.path.splitext(usd_file.split("/")[-1])[0] for usd_file in usd_files]
 
 # Seria basket scene (IROS2023, moonshot interim demo.)
-# scene = RandomSeriaBasketScene(world, conf)
+scene = RandomSeriaBasketScene(world, conf)
 
-scene = RandomTableScene(world, conf)
+# scene = RandomTableScene(world, conf)
+
 dataset = DatasetGenerator(scene, output_force=False)
-dataset.create(10)
+dataset.create(100, 2)

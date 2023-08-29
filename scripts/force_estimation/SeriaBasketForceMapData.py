@@ -11,7 +11,7 @@ import cv2
 from KonbiniForceMapData import KonbiniRandomScene
 
 
-def curate_dataset(num_samples=1000, views=range(2)):
+def curate_dataset(num_samples=2000, views=range(3)):
     input_dir = os.path.join(os.path.expanduser('~'), 'Dataset/dataset2/basket-filling3/')
     output_dir = os.path.join(os.path.expanduser('~'), 'Dataset/dataset2/basket-filling3-c-1k/')
     all_ids = range(num_samples)
@@ -110,6 +110,7 @@ class SeriaBasketRandomSceneDataset(Dataset, SeriaBasketRandomScene):
                  stdev=0.02,
                  img_format='CWH',
                  root_dir=os.path.join(os.path.expanduser('~'), 'Dataset/dataset2/'),
+                 view_index=None,
                  ):
         SeriaBasketRandomScene.__init__(self,
                                         data_type=data_type,
@@ -118,13 +119,17 @@ class SeriaBasketRandomSceneDataset(Dataset, SeriaBasketRandomScene):
                                         img_format=img_format,
                                         root_dir=root_dir,
                                         )
+        self._view_index = view_index
 
     def __len__(self):
         return len(self.forces)
 
     def __getitem__(self, idx):
         n_views = self.images.shape[0]
-        x_img = self.images[np.random.randint(n_views), idx]
+        if self._view_index == None:
+            x_img = self.images[np.random.randint(n_views), idx]
+        else:
+            x_img = self.images[self._view_index, idx]
         y_force = self.forces[idx]
         return x_img, y_force
 

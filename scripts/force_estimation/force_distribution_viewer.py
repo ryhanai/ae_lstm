@@ -90,8 +90,8 @@ class ForceDistributionViewer:
             # std_fvals = (fvals - fmin) / (fmax - fmin)
             std_fvals = fvals
             for (x, y, z), f in zip(positions, std_fvals):
-                # if f > 0.08:
-                if f > 0.3:
+                if f > 0.15:
+                # if f > 0.3:
                     points.append([x, y, z])
                     r, g, b = colorsys.hsv_to_rgb(1./3 * (1-f), 1, 1)
                     rgbas.append([r, g, b, 1])

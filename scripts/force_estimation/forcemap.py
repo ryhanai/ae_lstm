@@ -62,6 +62,7 @@ class GridForceMap:
                             sample_weights=sample_weights, 
                             bandwidth=self.bandwidth, 
                             atol=1e-2)
+            V = V * np.sum(sample_weights)
             print(f'KDE took: {time.time() - start_kde} [sec]')
         else:
             V = np.zeros(self.positions.shape[0])
