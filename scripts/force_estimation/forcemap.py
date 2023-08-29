@@ -21,15 +21,22 @@ def kde_sklearn(x, x_grid, sample_weights, bandwidth=1.0, **kwargs):
 
 
 class GridForceMap:
-    def __init__(self, name):
+    def __init__(self, name, bandwidth=0.010):
         assert name == 'seria_basket' or 'konbini_shelf'
         if name == 'seria_basket':
+            self.grid = np.mgrid[-0.13:0.13:40j, -0.13:0.13:40j, 0.73:0.99:40j]
+            X, Y, Z = self.grid
+            self.dV = 0.26 * 0.26 * 0.26 / (40**3)
+            positions = np.vstack([X.ravel(), Y.ravel(), Z.ravel()])
+            self.positions = positions.T  # [number of points, 3]
+            self.bandwidth = bandwidth
+        elif name == 'seria_basket_old':
             self.grid = np.mgrid[-0.095:0.095:40j, -0.13:0.13:40j, 0.73:0.92:40j]
             X, Y, Z = self.grid
             self.dV = 0.19 * 0.26 * 0.20 / (40**3)
             positions = np.vstack([X.ravel(), Y.ravel(), Z.ravel()])
             self.positions = positions.T  # [number of points, 3]
-            self.bandwidth = 0.010
+            self.bandwidth = bandwidth
         elif name == 'konbini_shelf':
             self.grid = np.mgrid[-0.3:0.3:120j, -0.4:0.4:160j, 0.73:0.93:40j]
             X, Y, Z = self.grid
