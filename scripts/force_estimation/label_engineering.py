@@ -17,25 +17,9 @@ fmap = forcemap.GridForceMap('seria_basket', bandwidth=0.03)
 viewer = force_distribution_viewer.ForceDistributionViewer.get_instance()
 
 
-data_dir = f"{os.environ['HOME']}/Dataset/dataset2/basket-filling230829"
+data_dir = f"{os.environ['HOME']}/Dataset/dataset2/basket-filling230918"
 obj_dir = f"{os.environ['HOME']}/Program/moonshot/ae_lstm/specification/meshes/objects"
 
-def compute_df(mesh, state, size, scale):
-    p, q = state
-    r = R.from_quat(q)
-    # r.as_matrix()
-
-    vertices = r.apply(mesh.vertices) + p - np.array([0, 0, 0.73+0.13])
-    vertices = vertices * scale
-
-    sdf = mesh2sdf.compute(vertices, mesh.faces, size, fix=True, level=2/size, return_mesh=False)
-    # m.export('hoge.obj')
-    df = np.where(sdf >= 0, sdf, 0)('seria_basket', bandwidth=0.03)
-viewer = force_distribution_viewer.ForceDistributionViewer.get_instance()
-
-
-data_dir = f"{os.environ['HOME']}/Dataset/dataset2/basket-filling230829"
-obj_dir = f"{os.environ['HOME']}/Program/moonshot/ae_lstm/specification/meshes/objects"
 
 def compute_df(mesh, state, size, scale):
     p, q = state
@@ -48,26 +32,6 @@ def compute_df(mesh, state, size, scale):
     sdf = mesh2sdf.compute(vertices, mesh.faces, size, fix=True, level=2/size, return_mesh=False)
     # m.export('hoge.obj')
     df = np.where(sdf >= 0, sdf, 0)
-    return df
-
-
-def normal(fmap, contact_position):
-    mean = contact_position
-    sigma = fmap.bandwidth
-    v = [np.exp(-((np.linalg.norm(p-mean))/sigma)**2) for p in fmap.positions]
-    v = np.array(v).reshape((40, 40, 40))
-    return v
-
-
-def get_obj_file(name):
-    if name == 'seria_basket':
-        return f'{obj_dir}/seria_basket_body_collision.obj', 0.001
-    else:
-        return f'{obj_dir}/ycb/{name}/google_16k/textured.obj', 1.0
-
-
-def get_obj_position(bin_state, object_name):
-    try:
     return df
 
 
