@@ -26,7 +26,7 @@ def curate_dataset(num_samples=2000, views=range(3)):
         fmaps = []
         rgbs = []
         bss = []
-        bounds = np.log([np.array([fmin, fmax])])
+        bounds = np.log([fmin, fmax])
 
         for j in views:
             rgbs.append([])
