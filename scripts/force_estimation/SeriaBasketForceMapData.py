@@ -35,7 +35,7 @@ def curate_dataset(num_samples=2000, views=range(3)):
             fmap = pd.read_pickle(os.path.join(input_dir, f'force_zip{i:05}.pkl'))
             fmap = fmap[:, :, :30].astype('float32')
             fmap = np.clip(fmap, fmin, fmax)
-            fmap = (np.log(fmap) - bounds[0]) / (bounds[1] - bounds[0])
+            fmap = np.log(fmap)
             fmaps.append(fmap)
 
             bss.append(pd.read_pickle(os.path.join(input_dir, f'bin_state{i:05}.pkl')))
