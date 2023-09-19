@@ -12,25 +12,32 @@ from KonbiniForceMapData import KonbiniRandomScene
 
 
 def curate_dataset(num_samples=2000, views=range(3)):
-    input_dir = os.path.join(os.path.expanduser('~'), 'Dataset/dataset2/basket-filling3/')
-    output_dir = os.path.join(os.path.expanduser('~'), 'Dataset/dataset2/basket-filling3-c-1k/')
+    # input_dir = os.path.join(os.path.expanduser('~'), 'Dataset/dataset2/basket-filling3/')
+    # output_dir = os.path.join(os.path.expanduser('~'), 'Dataset/dataset2/basket-filling3-c-1k/')
+    input_dir = os.path.join(os.path.expanduser('~'), 'Dataset/dataset2/basket-filling230918/')
+    output_dir = os.path.join(os.path.expanduser('~'), 'Dataset/dataset2/basket-filling230918-c-2k/')
     all_ids = range(num_samples)
     train_ids, validation_ids, test_ids = np.split(all_ids, [int(len(all_ids)*0.75), int(len(all_ids)*0.875)])
 
     height = 360
     width = 512
 
-    def f(ids, output_dir, data_type):
+    def f(ids, output_dir, data_type, fmin=1e-8, fmax=1e-3):
         fmaps = []
         rgbs = []
         bss = []
+        bounds = np.log([np.array([fmin, fmax])])
+
         for j in views:
             rgbs.append([])
         for i in ids:
             print(i)
             fmap = pd.read_pickle(os.path.join(input_dir, f'force_zip{i:05}.pkl'))
-            fmap = fmap[:, :, :30]
-            fmaps.append(fmap.astype('float32'))
+            fmap = fmap[:, :, :30].astype('float32')
+            fmap = np.clip(fmap, fmin, fmax)
+            fmap = (np.log(fmap) - bounds[0]) / (bounds[1] - bounds[0])
+            fmaps.append(fmap)
+
             bss.append(pd.read_pickle(os.path.join(input_dir, f'bin_state{i:05}.pkl')))
             for j in views:
                 rgb = cv2.cvtColor(cv2.imread(os.path.join(input_dir, f'rgb{i:05}_{j:05}.jpg')), cv2.COLOR_BGR2RGB)
@@ -43,7 +50,8 @@ def curate_dataset(num_samples=2000, views=range(3)):
         pd.to_pickle(rgbs, os.path.join(output_dir, data_type, 'rgb_bz2.pkl'), compression='bz2')
         pd.to_pickle(bss, os.path.join(output_dir, data_type, 'bin_state_bz2.pkl'), compression='bz2')
         if data_type == 'train':
-            np.save(os.path.join(output_dir, 'force_bounds.npy'), np.array([np.min(fmaps), np.max(fmaps)]))
+            np.save(os.path.join(output_dir, 'force_bounds.npy'), bounds)
+            # np.save(os.path.join(output_dir, 'force_bounds.npy'), np.array([np.min(fmaps), np.max(fmaps)]))
 
     f(train_ids, output_dir, 'train')
     f(validation_ids, output_dir, 'validation')
@@ -69,8 +77,8 @@ class SeriaBasketRandomScene(KonbiniRandomScene):
                   root_dir=os.path.join(os.path.expanduser('~'), 'Dataset/dataset2/'),
                   ):
 
-        super().__init__(data_type, minmax, stdev, img_format, root_dir, 'basket-filling3-c-1k')
-
+        super().__init__(data_type, minmax, stdev, img_format, root_dir, 'basket-filling230918-c-2k')
+        
     def _load_data(self):
         images = pd.read_pickle(os.path.join(self.root_dir, self.task_name, self.data_type, 'rgb_bz2.pkl'), compression='bz2')
         forces = pd.read_pickle(os.path.join(self.root_dir, self.task_name, self.data_type, 'force_bz2.pkl'), compression='bz2')

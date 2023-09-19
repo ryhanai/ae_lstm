@@ -64,8 +64,8 @@ def compute_density(scene_number=38,
     bin_state = pd.read_pickle(f'{data_dir}/bin_state{scene_number:05}.pkl')
     contacts = pd.read_pickle(f'{data_dir}/contact_raw_data{scene_number:05}.pkl')
 
-    kde_dists = []
-    weighted_dists = []
+    kde_dists = [np.zeros((size, size, size))]
+    weighted_dists = [np.zeros((size, size, size))]
 
     for contact_position, force_value, contact_pair in zip(*contacts):
         objectA, objectB = contact_pair
@@ -99,12 +99,12 @@ def compute_density(scene_number=38,
     return bin_state, functools.reduce(operator.add, weighted_dists)
 
 
-def compute_force_distribution(frameNo, log_scale=True, overwrite=False):
+def compute_force_distribution(frameNo, log_scale=False, overwrite=False):
     out_file = os.path.join(data_dir, 'force_zip{:05d}.pkl'.format(frameNo))
     if (not overwrite) and os.path.exists(out_file):
         print(f'skip [{frameNo}]')
     else:
-        print(f'process [{frameNo}]')
+        print(f'process [{frameNo}], log_scale={log_scale}')
         bs, d = compute_density(frameNo)
         if log_scale:
             d = np.log(1 + d)
@@ -121,3 +121,6 @@ def compute_force_distribution_for_all(scene_numbers=range(0, 2000)):
 def visualize(bin_state, d, scale=0.4):
     fmap.set_values(d * scale)
     viewer.publish_bin_state(bin_state, fmap)
+
+
+compute_force_distribution_for_all()

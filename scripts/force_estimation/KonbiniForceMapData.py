@@ -87,8 +87,12 @@ class KonbiniRandomScene:
         self._load_data()
 
     def _load_data(self):
-        images = pd.read_pickle( os.path.join(self.root_dir, self.task_name, self.data_type, 'rgb_bz2.pkl'), compression='bz2' )
-        forces = pd.read_pickle( os.path.join(self.root_dir, self.task_name, self.data_type, 'force_bz2.pkl'), compression='bz2' )
+        rgb_path = os.path.join(self.root_dir, self.task_name, self.data_type, 'rgb_bz2.pkl')
+        print(f'loading {rgb_path} ...')
+        images = pd.read_pickle(rgb_path, compression='bz2' )
+        force_path = os.path.join(self.root_dir, self.task_name, self.data_type, 'force_bz2.pkl')
+        print(f'loading {force_path} ...')
+        forces = pd.read_pickle(force_path, compression='bz2' )
         force_bounds = np.load( os.path.join(self.root_dir, self.task_name, 'force_bounds.npy') )
         
         if self.img_format == 'CWH':

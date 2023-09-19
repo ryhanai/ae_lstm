@@ -656,4 +656,4 @@ scene = RandomSeriaBasketScene(world, conf)
 # scene = RandomTableScene(world, conf)
 
 dataset = DatasetGenerator(scene, output_force=False)
-dataset.create(100, 2)
+dataset.create(100, 3)
