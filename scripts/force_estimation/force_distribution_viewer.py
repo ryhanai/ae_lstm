@@ -33,7 +33,8 @@ class ForceDistributionViewer:
                           bin_state,
                           fmap,
                           draw_fmap=True,
-                          draw_force_gradient=False):
+                          draw_force_gradient=False,
+                          draw_range=[0.5, 0.9]):
         self.rviz_client.delete_all()
         self.draw_bin(fmap)
 
@@ -43,7 +44,7 @@ class ForceDistributionViewer:
         if bin_state is not None:
             self.draw_objects(bin_state, fmap)
         if draw_fmap:
-            self.draw_force_distribution(positions, fvals)
+            self.draw_force_distribution(positions, fvals, draw_range=draw_range)
         if draw_force_gradient:
             self.draw_force_gradient(positions, fvals)
         self.rviz_client.show()
@@ -80,21 +81,23 @@ class ForceDistributionViewer:
                                         pose,
                                         (0.5, 0.5, 0.5, 0.3))
 
-    def draw_force_distribution(self, positions, fvals):
+    def draw_force_distribution(self, positions, fvals, draw_range=[0.5, 0.9]):
         fvals = fvals.flatten()
         fmax = np.max(fvals)
         fmin = np.min(fvals)
         points = []
         rgbas = []
-        if fmax - fmin > 1e-3:
-            std_fvals = (fvals - fmin) / (fmax - fmin)
-            # std_fvals = fvals
-            for (x, y, z), f in zip(positions, std_fvals):
-                if f > 0.7:
-                # if f > 0.3:ForceEstimationResNetSeriaBasket
-                    points.append([x, y, z])
-                    r, g, b = colorsys.hsv_to_rgb((1-f), 1, 1)
-                    rgbas.append([r, g, b, 1])
+        if fmax - fmin < 1e-3:
+            print('the range of force values too small')
+            return
+        # std_fvals = (fvals - fmin) / (fmax - fmin)
+
+        for (x, y, z), f in zip(positions, fvals):
+            if draw_range[0] <= f and f <= draw_range[1]:
+                points.append([x, y, z])
+                hue = max(0, (0.7 - f) / 0.7)
+                r, g, b = colorsys.hsv_to_rgb(hue, 1, 1)
+                rgbas.append([r, g, b, 1])
         self.rviz_client.draw_points(points, rgbas)
 
     def draw_vector_field(self, positions, values, scale=0.5):

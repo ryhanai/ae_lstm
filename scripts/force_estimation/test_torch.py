@@ -77,6 +77,7 @@ class Tester:
         bs_file = os.path.join(self.test_data.root_dir, self.test_data.task_name, self.test_data.data_type, 'bin_state_bz2.pkl')
         if os.path.exists(bs_file):
             self._bin_states = self._bin_states = pd.read_pickle(bs_file, compression='bz2')
+        self._draw_range = [0.5, 0.9]
 
     def predict(self, idx, view_idx=None, show_result=True, log_scale=True, show_bin_state=True):
         if view_idx is not None:
@@ -173,11 +174,14 @@ class Tester:
     def load_bin_state(self, idx):
         return self._bin_states[idx]
 
-    def show_forcemap(self, fmap_values, bin_state):
+    def show_forcemap(self, fmap_values, bin_state, draw_lower_bound=0.4):
         self._fmap.set_values(fmap_values)
         # bin_state = self.test_data[2][n] if visualize_bin_state else None
         # viewer.publish_bin_state(bin_state, fmap)
-        viewer.publish_bin_state(bin_state, self._fmap)
+        viewer.publish_bin_state(bin_state, self._fmap, draw_range=self._draw_range)
+
+    def set_draw_range(self, values):
+        self._draw_range = values
 
     def predict_force_with_multiviews(self, idx):
         eps = 1e-8
