@@ -6,12 +6,16 @@ from torch.utils.data import Dataset
 
 import pandas as pd
 import cv2
+import json
+from eipl_print_func import *
 
 
 from KonbiniForceMapData import KonbiniRandomScene
 
 
-def curate_dataset(num_samples=2000, views=range(3)):
+def curate_dataset(num_samples=2000,
+                   views=range(3),
+                   ):
     # input_dir = os.path.join(os.path.expanduser('~'), 'Dataset/dataset2/basket-filling3/')
     # output_dir = os.path.join(os.path.expanduser('~'), 'Dataset/dataset2/basket-filling3-c-1k/')
     input_dir = os.path.join(os.path.expanduser('~'), 'Dataset/dataset2/basket-filling230918/')
@@ -23,6 +27,7 @@ def curate_dataset(num_samples=2000, views=range(3)):
     width = 512
 
     def f(ids, output_dir, data_type, fmin=1e-8, fmax=1e-3):
+        os.mkdir(output_path = os.path.join(output_dir, data_type))
         fmaps = []
         rgbs = []
         bss = []
@@ -53,9 +58,22 @@ def curate_dataset(num_samples=2000, views=range(3)):
             np.save(os.path.join(output_dir, 'force_bounds.npy'), bounds)
             # np.save(os.path.join(output_dir, 'force_bounds.npy'), np.array([np.min(fmaps), np.max(fmaps)]))
 
+    try:
+        os.mkdir(output_dir)
+    except FileExistsError:
+        print_error(f'Direcotry {output_dir} already exists.')
+        return
+
     f(train_ids, output_dir, 'train')
     f(validation_ids, output_dir, 'validation')
     f(test_ids, output_dir, 'test')
+
+    with open(os.path.join(output_dir, 'params.json'), 'w') as f:
+        dataset_descriptor = {
+            "data loader": "SeriaBasketRandomSceneDataset",
+            "forcemap": "seria_basket"
+            }
+        json.dump(dataset_descriptor, f, indent=4)
 
 
 class SeriaBasketRandomScene(KonbiniRandomScene):
@@ -78,7 +96,7 @@ class SeriaBasketRandomScene(KonbiniRandomScene):
                   ):
 
         super().__init__(data_type, minmax, stdev, img_format, root_dir, 'basket-filling230918-c-2k')
-        
+
     def _load_data(self):
         images = pd.read_pickle(os.path.join(self.root_dir, self.task_name, self.data_type, 'rgb_bz2.pkl'), compression='bz2')
         forces = pd.read_pickle(os.path.join(self.root_dir, self.task_name, self.data_type, 'force_bz2.pkl'), compression='bz2')

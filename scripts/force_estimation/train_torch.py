@@ -175,7 +175,7 @@ torch.backends.cudnn.benchmark = True
 
 # argument parser
 parser = argparse.ArgumentParser(description='Learning convolutional autoencoder')
-parser.add_argument('--model',       type=str, default='CAE'    )
+parser.add_argument('--model',       type=str, default='ForceEstimationResNetSeriaBasket')
 parser.add_argument('--epoch',       type=int, default=10000    )
 parser.add_argument('--batch_size',  type=int, default=32       )
 parser.add_argument('--feat_dim',    type=int, default=10       )
@@ -241,9 +241,11 @@ test_loader = DataLoader(
 # mean_network_weights = torch.load('log/20230627_1730_52/CAE.pth')['model_state_dict']
 # model = ForceEstimationResNetSeriaBasketMVE(mean_network_weights, device=args.device)
 
-model = ForceEstimationResNetSeriaBasket(fine_tune_encoder=True, device=args.device)
-# model.load_state_dict(mean_network_weights)
 
+model_class = globals()[args.model]()
+print_info(f'Model: {model_class}')
+model = model_class(fine_tune_encoder=True, device=args.device)
+# model.load_state_dict(mean_network_weights)
 
 # model = ForceEstimationResNet(fine_tune_encoder=True, device=args.device)
 # model = ForceEstimationResNetMVE(fine_tune_encoder=True, device=args.device)
