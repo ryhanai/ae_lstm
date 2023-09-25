@@ -27,7 +27,7 @@ def curate_dataset(num_samples=2000,
     width = 512
 
     def f(ids, output_dir, data_type, fmin=1e-8, fmax=1e-3):
-        os.mkdir(output_path = os.path.join(output_dir, data_type))
+        os.mkdir(os.path.join(output_dir, data_type))
         fmaps = []
         rgbs = []
         bss = []
