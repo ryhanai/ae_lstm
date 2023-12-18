@@ -31,7 +31,7 @@ ycb:
 - '014_lemon'
 - '016_pear'
 - '017_orange'
-# - '023_wine_glass'  # no 3D model
+- '023_wine_glass'  # no 3D model
 - '026_sponge'
 - '040_large_marker'
 # - '041_small_marker'
@@ -39,7 +39,7 @@ ycb:
 - '056_tennis_ball'
 - '061_foam_brick'
 # - additional objects
-# - '001_chips_can' 
+- '001_chips_can' 
 - '002_master_chef_can' 
 - '015_peach'
 - '018_plum'
@@ -65,7 +65,7 @@ ycb:
 - '050_medium_clamp'
 - '051_large_clamp'
 - '052_extra_large_clamp'
-- '053_mini_soccer_ball'
+# - '053_mini_soccer_ball'
 - '054_softball'
 - '057_racquetball'
 - '058_golf_ball'
@@ -129,8 +129,8 @@ ycb_property:
   061_foam_brick:
     mass: 0.059
     center: [-0.018, 0.019, 0.025]
-  # 001_chips_can:
-  #   mass: 0.205
+  001_chips_can:
+    mass: 0.205
   002_master_chef_can:
     mass: 0.414
   015_peach:
@@ -231,7 +231,7 @@ konbini_v0:
 - 'vermont_curry_chukara'
 - 'jif'
 - '7i_handsoap'
-- 'biore_bodysoap_mini'
+# - 'biore_bodysoap_mini'  # quality is too bad
 - 'clinica_ad_hamigaki'
 - 'clinica_advantage'
 - 'clinica_quick_wash'

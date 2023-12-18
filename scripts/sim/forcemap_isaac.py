@@ -42,13 +42,17 @@ class ObjectsInfo:
     def load_config(self, conf_file):
         with open(conf_file) as f:
             self._yaml_config = yaml.safe_load(f)
-        self._names = self._yaml_config['ycb_iros23']
+        # self._names = self._yaml_config['ycb_iros23']
+        # self._names = self._yaml_config['ycb']
+        self._names = self._yaml_config['konbini_v0']
 
     def usd_file(self, name):
-        return f'{os.environ["HOME"]}/Program/moonshot/ae_lstm/specification/meshes/objects/ycb/{name}/google_16k/textured/textured.usd'
+        # return f'{os.environ["HOME"]}/Program/moonshot/ae_lstm/specification/meshes/objects/ycb/{name}/google_16k/textured/textured.usd'
+        return f'{os.environ["HOME"]}/Dataset/Konbini/ycb_konbini/{name}/{name}/{name}.usd'
 
     def mass(self, name):
-        return self._yaml_config['ycb_property'][name]['mass']
+        # return self._yaml_config['ycb_property'][name]['mass']
+        return 0.1
 
     def __iter__(self):
         self._i = 0
@@ -461,6 +465,73 @@ class RandomTableScene(RandomScene):
         self._camera.set_vertical_aperture(1.4621 + 0.0877 * (np.random.random() - 0.5))
 
 
+class AllObjectTableScene(RandomScene):
+    def __init__(self, world, conf):
+        self._asset_path = os.environ['HOME'] + "/Downloads/green_table_scene.usd"
+        super().__init__(world, conf)
+
+    def change_scene(self):
+        self._world.reset()
+        self.place_objects()
+
+    def sample_object_pose(self):
+        xy = np.array([0.15, 0.15]) * (np.random.random(2) - 0.5)
+        z = 0.75 + 0.25 * np.random.random()
+        theta = 180 * np.random.random()
+        phi = 360 * np.random.random()
+        axis = [np.cos(theta)*np.cos(phi), np.cos(theta)*np.sin(phi), np.sin(theta)]
+        angle = 360 * np.random.random()
+        return [xy[0], xy[1], z], (axis, angle)
+
+    def place_objects(self):
+        self._used_objects = []
+        for i, o in enumerate(self._loaded_objects):
+            print(f'placing {o.get_name()}')
+            prim = o.get_primitive()
+            contact_sensor = o.get_contact_sensor()
+
+            while True:
+                pose = self.sample_object_pose()
+                set_pose(prim, pose)
+
+                no_collision = True
+                for j in range(3):
+                    self.wait_for_stability(count=1)
+                    contacts = read_contact_sensor(contact_sensor)
+                    if len(contacts) > 0:
+                        # if c['body1'] != '/World/env/simple_shelf':
+                        # print(f"initial collision with {c['body1']}. replace ...")
+                        no_collision = False
+                if no_collision:
+                    break
+
+            print(f'{o.get_name()} placed')
+            self._used_objects.append(o)
+
+    def randomize_camera_parameters(self):
+        d = 1.0 + 0.2 * (np.random.random() - 0.5)
+        theta0 = np.radians(20)
+        theta1 = np.radians(60)
+        z = np.random.random()
+        th = np.arcsin(z * (np.sin(theta1) - np.sin(theta0)) + np.sin(theta0))
+        phi = 360 * np.random.random()
+        ph = np.deg2rad(phi)
+        position = np.array([0, 0, 0.75]) + d * np.array([np.cos(th)*np.cos(ph), np.cos(th)*np.sin(ph), np.sin(th)])
+        theta2 = np.degrees(th) + 6 * (np.random.random() - 0.5)
+        phi2 = phi + 6 * (np.random.random() - 0.5)
+        orientation = rot_utils.euler_angles_to_quats(np.array([0, theta2, 180+phi2]), degrees=True)
+        print(f'position={position}, orientation={orientation}')
+        self._camera.set_world_pose(position, orientation)
+
+        self._camera.set_focal_length(1.88 + 0.1128 * (np.random.random() - 0.5))  # 3% of the spec
+        self._camera.set_focus_distance(50)
+        self._camera.set_horizontal_aperture(2.6034 + 0.1562 * (np.random.random() - 0.5))
+        self._camera.set_vertical_aperture(1.4621 + 0.0877 * (np.random.random() - 0.5))
+
+    def randomize_object_colors(self):
+        pass
+
+
 # def delete_objects():
 #     global loaded_objects, contact_sensors
 #     for i, _ in enumerate(loaded_objects):
@@ -651,9 +722,11 @@ class DatasetGenerator(metaclass=ABCMeta):
 # names = [os.path.splitext(usd_file.split("/")[-1])[0] for usd_file in usd_files]
 
 # Seria basket scene (IROS2023, moonshot interim demo.)
-scene = RandomSeriaBasketScene(world, conf)
+# scene = RandomSeriaBasketScene(world, conf)
 
 # scene = RandomTableScene(world, conf)
 
+scene = AllObjectTableScene(world, conf)
+
 dataset = DatasetGenerator(scene, output_force=False)
-dataset.create(100, 3)
+dataset.create(1, 3)
