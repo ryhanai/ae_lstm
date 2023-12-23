@@ -1,75 +1,215 @@
-ycb_iros23:
-- '004_sugar_box'
-- '005_tomato_soup_can'
-- '007_tuna_fish_can'
-- '008_pudding_box'
-- '009_gelatin_box'
-- '010_potted_meat_can'
-- '011_banana'
-- '012_strawberry'
-- '013_apple'
-- '014_lemon'
-- '016_pear'
-- '017_orange'
-- '026_sponge'
-- '040_large_marker'
-- '055_baseball'
-- '056_tennis_ball'
-- '061_foam_brick'
-
 ycb:
-- '004_sugar_box'
-- '005_tomato_soup_can'
-# - '006_mustard_bottle'
-- '007_tuna_fish_can'
-- '008_pudding_box'
-- '009_gelatin_box'
-- '010_potted_meat_can'
-- '011_banana'
-- '012_strawberry'
-- '013_apple'
-- '014_lemon'
-- '016_pear'
-- '017_orange'
-- '023_wine_glass'  # no 3D model
-- '026_sponge'
-- '040_large_marker'
-# - '041_small_marker'
-- '055_baseball'
-- '056_tennis_ball'
-- '061_foam_brick'
-# - additional objects
-- '001_chips_can' 
-- '002_master_chef_can' 
-- '015_peach'
-- '018_plum'
-- '021_bleach_cleanser'
-# - '022_windex_bottle' 
-- '023_wine_glass'
-- '024_bowl'
-- '025_mug'
-- '029_plate'
-- '030_fork'
-- '031_spoon'
-- '032_knife'
-- '033_spatula'
-- '035_power_drill'
-- '036_wood_block'
-- '037_scissors'
-# - '041_small_marker' 
-- '042_adjustable_wrench'
-- '043_phillips_screwdriver'
-- '044_flat_screwdriver'
-- '048_hammer'
-# - '049_small_clamp'
-- '050_medium_clamp'
-- '051_large_clamp'
-- '052_extra_large_clamp'
-# - '053_mini_soccer_ball'
-- '054_softball'
-- '057_racquetball'
-- '058_golf_ball'
-- '077_rubiks_cube'
+  004_sugar_box:
+    mass: 0.514
+    center: [-0.01, -0.018, 0.09]
+  005_tomato_soup_can:
+    mass: 0.349
+    center: [-0.01, 0.085, 0.054]
+  #006_mustard_bottle:
+  # mass: 0.603
+  007_tuna_fish_can:
+    mass: 0.171
+    center: [-0.026, -0.021, 0.015]
+  008_pudding_box:
+    mass: 0.187
+    center: [0.004, 0.02, 0.02]
+  009_gelatin_box:
+    mass: 0.097
+    center: [-0.022, -0.007, 0.014]
+  010_potted_meat_can:
+    mass: 0.370
+    center: [-0.035, -0.026, 0.04]
+  011_banana:
+    mass: 0.066
+    center: [-0.013, 0.013, 0.019]
+  012_strawberry:
+    mass: 0.018
+    center: [-0.001, 0.017, 0.022]
+  013_apple:
+    mass: 0.068
+    center: [0.001, -0.001, 0.04]
+  014_lemon:
+    mass: 0.029
+    center: [-0.011, 0.024, 0.027]
+  016_pear:
+    mass: 0.049
+    center: [-0.015, 0.009, 0.03]
+  017_orange:
+    mass: 0.047
+    center: [-0.007, -0.015, 0.038]
+  # 023_wine_glass: # no 3D model
+  #   mass: 0.133
+  026_sponge:
+    mass: 0.0062
+    center: [-0.015, 0.019, 0.01]
+  040_large_marker:
+    mass: 0.0158
+    center: [-0.036, -0.002, 0.01]
+  # 041_small_marker:
+  #   mass: 0.0082
+  055_baseball:
+    mass: 0.148
+    center: [-0.01, -0.045, 0.04]
+  056_tennis_ball:
+    mass: 0.056
+    center: [0.008, -0.041, 0.035]
+  061_foam_brick:
+    mass: 0.059
+    center: [-0.018, 0.019, 0.025]
+  001_chips_can:
+    mass: 0.205
+  002_master_chef_can:
+    mass: 0.414
+  015_peach:
+    mass: 0.033
+  018_plum:
+    mass: 0.025
+  021_bleach_cleanser:
+    mass: 1.131
+  # 022_windex_bottle:
+  #   mass: 1.022
+  023_wine_glass:
+    mass: 0.133
+  024_bowl:
+    mass: 0.147
+  025_mug:
+    mass: 0.118
+  029_plate:
+    mass: 0.279
+  030_fork:
+    mass: 0.034
+  031_spoon:
+    mass: 0.030
+  032_knife:
+    mass: 0.031
+  033_spatula:
+    mass: 0.0515
+  035_power_drill:
+    mass: 0.895
+  036_wood_block:
+    mass: 0.729
+  037_scissors:
+    mass: 0.082
+  # 041_small_marker:
+  #   mass: 0.0082
+  042_adjustable_wrench:
+    mass: 0.252
+  043_phillips_screwdriver:
+    mass: 0.097
+  044_flat_screwdriver:
+    mass: 0.0984
+  048_hammer:
+    mass: 0.665
+  # 049_small_clamp:
+  #   0.0192
+  050_medium_clamp:
+    mass: 0.059
+  051_large_clamp:
+    mass: 0.125
+  052_extra_large_clamp:
+    mass: 0.202
+  053_mini_soccer_ball:
+    mass: 0.123
+  054_softball:
+    mass: 0.191
+  057_racquetball:
+    mass: 0.041
+  058_golf_ball:
+    mass: 0.665
+  077_rubiks_cube:
+    mass: 0.252
+
+conveni:
+  xylitol:
+    mass: 0.143
+  clorets:
+    mass: 0.140
+  toppo:
+    mass: 0.072
+  pocky:
+    mass: 0.072
+  kinokonoyama:
+    mass: 0.074
+  chip_star:
+    mass: 0.050
+  koalas_march:
+    mass: 0.050
+  chocoball:
+    mass: 0.028
+  macademia:
+    mass: 0.064
+  takenoko:
+    mass: 0.070
+  coca_cola_300ml:
+    mass: 0.332
+  gogotea_straight:
+    mass: 0.515
+  oi_ocha_350ml:
+    mass: 0.365
+  calorie_mate_cheese:
+    mass: 0.080
+  calorie_mate_fruit:
+    mass: 0.080
+  xylitol_7assort:
+    mass: 0.143
+  xylitol_freshmint:
+    mass: 0.143
+  # pana_battery_1_2:  # not found
+  2nd_cupnoodle:
+    mass: 0.077
+  creap:
+    mass: 0.085
+  cupnoodle_curry:
+    mass: 0.087
+  golden_curry_chukara:
+    mass: 0.090
+  # canned_tsubugai  # model not found
+  ginger_tube:
+    mass: 0.040
+  mastard_tube:
+    mass: 0.042
+  stew_cream_box:
+    mass: 0.108
+  java_curry_chukara:
+    mass: 0.104
+  kikkoman_soysauce_gennenn:
+    mass: 0.259
+  kikkoman_soysauce:
+    mass: 0.270
+  kizami_aojiso_tube:
+    mass: 0.038
+  canned_iwashi_kabayaki:
+    mass: 0.100
+  pan_meat:
+    mass: 0.050
+  pepper_steak:
+    mass: 0.050
+  honwasabi_tube:
+    mass: 0.043
+  vermont_curry_amakuchi:
+    mass: 0.115
+  vermont_curry_chukara:
+    mass: 0.115
+  jif:
+    mass: 0.358
+  7i_handsoap:
+    mass: 0.300
+  # biore_bodysoap_mini:  # quality is too bad
+  clinica_ad_hamigaki:
+    mass: 0.140
+  clinica_advantage:
+    mass: 0.080
+  clinica_quick_wash:
+    mass: 0.102
+  gum_paste:
+    mass: 0.132
+  kao_soap:
+    mass: 0.128
+  # - 'myuzu_kokei'  # model not found
+  nonio_mintpaste:
+    mass: 0.140
+  nonio_strong_energy:
+    mass: 0.140
 
 ycb_property:
   004_sugar_box:
@@ -191,52 +331,3 @@ ycb_property:
     mass: 0.665
   077_rubiks_cube:
     mass: 0.252
-
-konbini_v0:
-- 'xylitol'
-- 'clorets'
-- 'toppo'
-- 'pocky'
-- 'kinokonoyama'
-- 'chip_star'
-- 'koalas_march'
-- 'chocoball'
-- 'macademia'
-- 'takenoko'
-- 'coca_cola_300ml'
-- 'gogotea_straight'
-- 'oi_ocha_350ml'
-- 'calorie_mate_cheese'
-- 'calorie_mate_fruit'
-- 'xylitol_7assort'
-- 'xylitol_freshmint'
-# - 'pana_battery_1_2'  # not found
-- '2nd_cupnoodle'
-- 'creap'
-- 'cupnoodle_curry'
-- 'golden_curry_chukara'
-# - 'canned_tsubugai'  # model not found
-- 'ginger_tube'
-- 'mastard_tube'
-- 'stew_cream_box'
-- 'java_curry_chukara'
-- 'kikkoman_soysauce_gennenn'
-- 'kikkoman_soysauce'
-- 'kizami_aojiso_tube'
-- 'canned_iwashi_kabayaki'
-- 'pan_meat'
-- 'pepper_steak'
-- 'honwasabi_tube'
-- 'vermont_curry_amakuchi'
-- 'vermont_curry_chukara'
-- 'jif'
-- '7i_handsoap'
-# - 'biore_bodysoap_mini'  # quality is too bad
-- 'clinica_ad_hamigaki'
-- 'clinica_advantage'
-- 'clinica_quick_wash'
-- 'gum_paste'
-- 'kao_soap'
-# - 'myuzu_kokei'  # model not found
-- 'nonio_mintpaste'
-- 'nonio_strong_energy'

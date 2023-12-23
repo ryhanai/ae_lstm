@@ -1,0 +1,72 @@
+ycb_iros23:
+  - 004_sugar_box
+  - 005_tomato_soup_can
+  - 007_tuna_fish_can
+  - 008_pudding_box
+  - 009_gelatin_box
+  - 010_potted_meat_can
+  - 011_banana
+  - 012_strawberry
+  - 013_apple
+  - 014_lemon
+  - 016_pear
+  - 017_orange
+  - 026_sponge
+  - 040_large_marker
+  - 055_baseball
+  - 056_tennis_ball
+  - 061_foam_brick
+
+ycb:
+- '004_sugar_box'
+- '005_tomato_soup_can'
+# - '006_mustard_bottle'
+- '007_tuna_fish_can'
+- '008_pudding_box'
+- '009_gelatin_box'
+- '010_potted_meat_can'
+- '011_banana'
+- '012_strawberry'
+- '013_apple'
+- '014_lemon'
+- '016_pear'
+- '017_orange'
+- '023_wine_glass'  # no 3D model
+- '026_sponge'
+- '040_large_marker'
+# - '041_small_marker'
+- '055_baseball'
+- '056_tennis_ball'
+- '061_foam_brick'
+# - additional objects
+- '001_chips_can' 
+- '002_master_chef_can' 
+- '015_peach'
+- '018_plum'
+- '021_bleach_cleanser'
+# - '022_windex_bottle' 
+- '023_wine_glass'
+- '024_bowl'
+- '025_mug'
+- '029_plate'
+- '030_fork'
+- '031_spoon'
+- '032_knife'
+- '033_spatula'
+- '035_power_drill'
+- '036_wood_block'
+- '037_scissors'
+# - '041_small_marker' 
+- '042_adjustable_wrench'
+- '043_phillips_screwdriver'
+- '044_flat_screwdriver'
+- '048_hammer'
+# - '049_small_clamp'
+- '050_medium_clamp'
+- '051_large_clamp'
+- '052_extra_large_clamp'
+# - '053_mini_soccer_ball'
+- '054_softball'
+- '057_racquetball'
+- '058_golf_ball'
+- '077_rubiks_cube'

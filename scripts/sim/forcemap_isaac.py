@@ -28,48 +28,20 @@ import matplotlib.pyplot as plt
 
 from force_estimation import forcemap
 from abc import ABCMeta, abstractmethod
-import yaml
+
+
+from object_loader import ObjectsInfo
+
+object_dir = f'{os.environ["HOME"]}/Dataset/ycb_conveni'
+config_dir = f'{os.environ["HOME"]}/Program/moonshot/ae_lstm/specification/config'
+conf = ObjectsInfo(object_dir, config_dir, 'ycb_conveni_v1')
 
 # assets_root_path = get_assets_root_path()
 # asset_path = assets_root_path + "/Isaac/Robots/Franka/franka_alt_fingers.usd"
 # world.scene.add_default_ground_plane()
 
 
-class ObjectsInfo:
-    def __init__(self, conf_file):
-        self.load_config(conf_file)
-
-    def load_config(self, conf_file):
-        with open(conf_file) as f:
-            self._yaml_config = yaml.safe_load(f)
-        # self._names = self._yaml_config['ycb_iros23']
-        # self._names = self._yaml_config['ycb']
-        self._names = self._yaml_config['konbini_v0']
-
-    def usd_file(self, name):
-        # return f'{os.environ["HOME"]}/Program/moonshot/ae_lstm/specification/meshes/objects/ycb/{name}/google_16k/textured/textured.usd'
-        return f'{os.environ["HOME"]}/Dataset/Konbini/ycb_konbini/{name}/{name}/{name}.usd'
-
-    def mass(self, name):
-        # return self._yaml_config['ycb_property'][name]['mass']
-        return 0.1
-
-    def __iter__(self):
-        self._i = 0
-        return self
-
-    def __next__(self):
-        if self._i >= len(self._names):
-            raise StopIteration
-        name = self._names[self._i]
-        self._i += 1
-        return name, self.usd_file(name), self.mass(name)
-
-
 # asset_path = os.environ["HOME"] + "/Downloads/Collected_ycb_piled_scene/simple_shelf_scene.usd"
-
-
-conf = ObjectsInfo(os.environ['HOME'] + '/Program/moonshot/ae_lstm/specification/config/objects.yaml')
 
 
 # add_reference_to_stage(usd_path=asset_path, prim_path="/World")
@@ -724,9 +696,9 @@ class DatasetGenerator(metaclass=ABCMeta):
 # Seria basket scene (IROS2023, moonshot interim demo.)
 # scene = RandomSeriaBasketScene(world, conf)
 
-# scene = RandomTableScene(world, conf)
+scene = RandomTableScene(world, conf)
 
-scene = AllObjectTableScene(world, conf)
+# scene = AllObjectTableScene(world, conf)
 
 dataset = DatasetGenerator(scene, output_force=False)
-dataset.create(1, 3)
+dataset.create(10, 3)
