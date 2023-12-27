@@ -139,6 +139,7 @@ def set_rotate_euler(prim, rot_euler):
 def set_mass(prim, kg):
     mass_api = UsdPhysics.MassAPI.Apply(prim)
     mass_api.CreateMassAttr(kg)
+    return kg
 
 
 def create_prim_from_usd(stage, prim_env_path, prim_usd_path, location=[0, 0, 0.1]):
@@ -374,7 +375,7 @@ class RandomScene(Scene):
 
 class RandomSeriaBasketScene(RandomScene):
     def __init__(self, world, conf):
-        self._asset_path = os.environ["HOME"] + "/Downloads/Collected_ycb_piled_scene/ycb_piled_scene.usd"
+        self._asset_path = os.environ["HOME"] + "/Dataset/scenes/ycb_piled_scene.usd"
         super().__init__(world, conf)
 
     def change_scene(self):
@@ -399,12 +400,13 @@ class RandomSeriaBasketScene(RandomScene):
 
 class RandomTableScene(RandomScene):
     def __init__(self, world, conf):
-        self._asset_path = os.environ['HOME'] + "/Downloads/green_table_scene.usd"
+        self._asset_path = os.environ['HOME'] + "/Dataset/scenes/green_table_scene.usd"
         super().__init__(world, conf)
 
     def change_scene(self):
         self._world.reset()
-        number_of_objects = np.clip(np.random.poisson(7), 1, 10)
+        # number_of_objects = np.clip(np.random.poisson(7), 1, 10)
+        number_of_objects = np.clip(np.random.poisson(9), 3, 12)
         self.place_objects(number_of_objects)
 
     def sample_object_pose(self):
@@ -439,7 +441,7 @@ class RandomTableScene(RandomScene):
 
 class AllObjectTableScene(RandomScene):
     def __init__(self, world, conf):
-        self._asset_path = os.environ['HOME'] + "/Downloads/green_table_scene.usd"
+        self._asset_path = os.environ['HOME'] + "/Dataset/scenes/green_table_scene.usd"
         super().__init__(world, conf)
 
     def change_scene(self):
@@ -701,4 +703,4 @@ scene = RandomTableScene(world, conf)
 # scene = AllObjectTableScene(world, conf)
 
 dataset = DatasetGenerator(scene, output_force=False)
-dataset.create(10, 3)
+dataset.create(2, 3)
