@@ -14,8 +14,9 @@ import pandas as pd
 import scipy
 from force_estimation import forcemap
 from object_loader import ObjectInfo
-from omni.isaac.core import SimulationContext, World
+from omni.isaac.core import World
 from omni.isaac.core.materials.physics_material import PhysicsMaterial
+from omni.isaac.core.objects import FixedCuboid
 from omni.isaac.core.prims import GeometryPrim
 from omni.isaac.core.utils.stage import add_reference_to_stage, create_new_stage
 from omni.isaac.sensor import Camera, ContactSensor
@@ -137,23 +138,6 @@ class Object:
 
 class ForcemapSim:
     def __init__(self) -> None:
-        # super().__init__()
-
-        # SCENE GEOMETRY
-
-        # randomization
-        # self._randomize_nut_positions = True
-        # self._nut_position_noise_minmax = 0.005
-        # self._rng_seed = 8
-
-        # # states
-        # self._reset_hydra_instancing_on_shutdown = False
-        # self._time = 0.0
-        # self._fsm_time = 0.0
-
-        # self._sim_dt = 1.0 / self._time_steps_per_second
-        # self._fsm_update_dt = 1.0 / self._fsm_update_rate
-
         self._loaded_objects = []
         self._used_objects = []
         self._object_inv_table = {}
@@ -212,21 +196,10 @@ class ForcemapSim:
             self._used_objects.append(o)
 
     def wait_for_stability(self, n_steps=100, render=True):
-        # stable = True
+        stable = True
         for n in range(n_steps):
             self.get_world().step(render=render)
-            # for i in range(10):
-            #     o = world.scene.get_object(f'object{i}')
-            #     for child in o.GetChildren():
-            #         child_path = child.GetPath().pathString
-            #         body_handle = dc.get_rigid_body(child_path)
-            #         if body_handle != 0:
-            #             print(dc.get_rigid_body_linear_velocity(body_handle))
-            #     # if np.linalg.norm(o.get_linear_velocity()) > 0.001:
-            #     #     stable = False
-        #     if stable:
-        #         return True
-        return False
+        return stable
 
     def add_camera_D415(self):
         camera = Camera(
@@ -261,9 +234,9 @@ class ForcemapSim:
         for i in range(self._number_of_lights):
             prim = self._world.stage.GetPrimAtPath(f"/World/Light/SphereLight{i}")
             pos_xy = np.array([-2.5, -2.5]) + 5.0 * np.random.random(2)
-            pos_z = 2.5 + 1.5 * np.random.random()
+            pos_z = 2.0 + 1.5 * np.random.random()
             set_translate(prim, Gf.Vec3d(pos_xy[0], pos_xy[1], pos_z))
-            prim.GetAttribute("intensity").Set(2000.0 + 8000.0 * np.random.random())
+            prim.GetAttribute("intensity").Set(2000.0 + 10000.0 * np.random.random())
             prim.GetAttribute("color").Set(Gf.Vec3f(*(np.array([0.2, 0.2, 0.2]) + 0.6 * np.random.random(3))))
             # prim.GetAttribute("scale").Set(Gf.Vec3f(*(np.array([0.2, 0.2, 0.2]) + 0.6 * np.random.random(3))))
 
@@ -320,7 +293,7 @@ class ForcemapSim:
         for object_id, (name, usd_file, mass) in enumerate(self._obj_config):
             prim_path = f"/World/object{object_id}"
             geom_prim = self.create_primitive(usd_file, prim_path, name)
-            # geom_prim.set_world_pose(position=[0, 0, 0])
+            # geom_prim.set_collision_approximation("convexDecomposition")
             utils.setRigidBody(geom_prim.prim.GetPrim(), "convexDecomposition", False)
             self._loaded_objects.append(Object(usd_file, object_id, mass, self._world, geom_prim))
 
@@ -329,53 +302,10 @@ class ForcemapSim:
 
         self.reset_object_positions()
 
+        self.add_walls()
+
         self.add_lights()
         self.add_camera_D415()
-
-        # add_table_assets
-        # add_reference_to_stage(usd_path=self.asset_paths["shop_table"], prim_path="/World/env/table")
-        # world.scene.add(GeometryPrim(prim_path="/World/env/table", name=f"table_ref_geom", collision=True))
-
-        # add_reference_to_stage(usd_path=self.asset_paths["tooling_plate"], prim_path="/World/env/tooling_plate")
-        # world.scene.add(GeometryPrim(prim_path="/World/env/tooling_plate", name=f"tooling_plate_geom", collision=True))
-
-        # add_reference_to_stage(usd_path=self.asset_paths["pipe"], prim_path="/World/env/pipe")
-        # world.scene.add(GeometryPrim(prim_path="/World/env/pipe", name=f"pipe_geom", collision=True))
-
-        # # add_vibra_table_assets
-        # add_reference_to_stage(usd_path=self.asset_paths["vibra_table_bot"], prim_path="/World/env/vibra_table_bottom")
-        # world.scene.add(GeometryPrim(prim_path="/World/env/vibra_table_bottom", name=f"vibra_table_bottom_geom"))
-
-        # add_reference_to_stage(
-        #     usd_path=self.asset_paths["vibra_table_clamps"], prim_path="/World/env/vibra_table_clamps"
-        # )
-        # world.scene.add(
-        #     GeometryPrim(prim_path="/World/env/vibra_table_clamps", name=f"vibra_table_clamps_geom", collision=True)
-        # )
-
-        # world.scene.add(XFormPrim(prim_path="/World/env/vibra_table", name=f"vibra_table_xform"))
-        # add_reference_to_stage(usd_path=self.asset_paths["vibra_table_top"], prim_path="/World/env/vibra_table/visual")
-        # add_reference_to_stage(
-        #     usd_path=self.asset_paths["vibra_table_collision"], prim_path="/World/env/vibra_table/collision"
-        # )
-
-        # world.scene.add(XFormPrim(prim_path="/World/env/vibra_table/visual", name=f"vibra_table_visual_xform"))
-        # world.scene.add(
-        #     GeometryPrim(
-        #         prim_path="/World/env/vibra_table/collision", name=f"vibra_table_collision_ref_geom", collision=True
-        #     )
-        # )
-
-        # # add_nuts_bolts_assets
-        # for bolt in range(self._num_bolts):
-        #     add_reference_to_stage(usd_path=self.asset_paths["bolt"], prim_path=f"/World/env/bolt{bolt}")
-        #     world.scene.add(GeometryPrim(prim_path=f"/World/env/bolt{bolt}", name=f"bolt{bolt}_geom"))
-        # for nut in range(self._num_nuts):
-        #     add_reference_to_stage(usd_path=self.asset_paths["nut"], prim_path=f"/World/env/nut{nut}")
-        #     world.scene.add(GeometryPrim(prim_path=f"/World/env/nut{nut}", name=f"nut{nut}_geom"))
-
-        # # add_franka_assets
-        # world.scene.add(Franka(prim_path="/World/env/franka", name=f"franka"))
 
         self._setup_simulation()
 
@@ -393,51 +323,26 @@ class ForcemapSim:
     def stop_simulation(self):
         self._world.stop()
 
-    async def setup_post_load(self):
-        self._world = self.get_world()
-        self._rng = np.random.default_rng(self._rng_seed)
-
-        self._world.scene.enable_bounding_boxes_computations()
-        await self._setup_materials()
-        # next four functions are for setting up the right positions and orientations for all assets
-        await self._add_table()
-        await self._add_vibra_table()
-        await self._add_nuts_and_bolt(add_debug_nut=self._num_nuts == 2)
-        await self._add_franka()
-        # self._controller = NutBoltController(name="nut_bolt_controller", franka=self._franka)
-        self._franka.gripper.open()
-        self._rbApi2 = UsdPhysics.RigidBodyAPI.Apply(self._vibra_table_xform.prim.GetPrim())
-        self._world.add_physics_callback(f"sim_step", callback_fn=self.physics_step)
-        await self._world.play_async()
-        return
-
-    def physics_step(self, step_size):
-        # if self._controller.is_paused():
-        #     if self._controller._i >= min(self._num_nuts, self._num_bolts):
-        #         self._rbApi2.CreateVelocityAttr().Set(Gf.Vec3f(0.0, 0.0, 0.0))
-        #         return
-        #     self._controller.reset(self._franka)
-
-        # if self._controller._i < min(self._num_nuts, self._num_bolts):
-        #     initial_position = self._vibra_table_nut_pickup_pos_offset + self._vibra_table_position
-        #     self._bolt_geom = self._world.scene.get_object(f"bolt{self._controller._i}_geom")
-
-        #     finger_pos = self._franka.get_joint_positions()[-2:]
-        #     positive_x_offset = finger_pos[1] - finger_pos[0]
-
-        #     bolt_position, _ = self._bolt_geom.get_world_pose()
-        #     placing_position = bolt_position + self._top_of_bolt
-        #     _vibra_table_transforms = self._controller.forward(
-        #         initial_picking_position=initial_position,
-        #         bolt_top=placing_position,
-        #         gripper_to_nut_offset=self._gripper_to_nut_offset,
-        #         x_offset=positive_x_offset,
-        #     )
-
-        # self._rbApi2.CreateVelocityAttr().Set(
-        #     Gf.Vec3f(_vibra_table_transforms[0], _vibra_table_transforms[1], _vibra_table_transforms[2])
-        # )
-        return
+    def add_walls(self):
+        self._walls = []
+        scale = [0.05, 0.6, 0.4]
+        color = [0.5, 0.5, 0.5]
+        positions = [[0.25, 0.0, 0.8], [-0.25, 0.0, 0.8], [0.0, 0.3, 0.8], [0.0, -0.3, 0.8]]
+        orientations = [[0, 0, 0], [0, 0, 0], [0, 0, np.pi / 2], [0, 0, np.pi / 2]]
+        for i in range(4):
+            w = self.get_world().scene.add(
+                FixedCuboid(
+                    name=f"wall{i}",
+                    position=np.array(positions[i]),
+                    orientation=rot_utils.euler_angles_to_quats(np.array(orientations[i])),
+                    prim_path=f"/World/wall{i}",
+                    size=1.0,
+                    scale=np.array(scale),
+                    color=np.array(color),
+                )
+            )
+            w.set_visibility(False)
+            self._walls.append(w)
 
     # async def _add_table(self):
     #     ##shop_table
@@ -652,12 +557,6 @@ class ForcemapSim:
     #     filteredRel = self._boltCollisionGroup.CreateFilteredGroupsRel()
     #     filteredRel.AddTarget("/World/collisionGroups/meshColliders")
 
-    async def setup_pre_reset(self):
-        return
-
-    async def setup_post_reset(self):
-        return
-
     def world_cleanup(self):
         self._controller = None
         return
@@ -695,14 +594,12 @@ class RandomSeriaBasketSim(ForcemapSim):
 
 class RandomTabletopSim(ForcemapSim):
     def __init__(self, multiviews=False):
-        self._asset_path = os.environ["HOME"] + "/Dataset/scenes/green_table_scene.usd"
         self._multiviews = multiviews
         super().__init__()
 
     def update_scene(self):
         self._world.reset()
-        # number_of_objects = np.clip(np.random.poisson(7), 1, 10)
-        number_of_objects = np.clip(np.random.poisson(9), 3, 12)
+        number_of_objects = np.clip(np.random.poisson(9), 4, 10)
         self.place_objects(number_of_objects)
 
     def sample_object_pose(self):
@@ -913,7 +810,7 @@ class Recorder:
     #     return obj.get_world_pose()
 
     def convert_to_force_distribution(self, contact_positions, impulse_values, log_scale=False):
-        fmap = forcemap.GridForceMap("konbini_shelf")
+        fmap = forcemap.GridForceMap("small_table")
         d = fmap.getDensity(contact_positions, impulse_values)
         if log_scale:
             d = np.log(1 + d)
@@ -963,8 +860,8 @@ obj_config = ObjectInfo(object_dir, config_dir, "ycb_conveni_v1")
 
 sim = RandomTabletopSim()
 sim.setup_scene(env_usd_file, obj_config)
-dg = DatasetGenerator(sim, output_force=False)
-dg.generate(3, 3)
+dg = DatasetGenerator(sim, output_force=True)
+# dg.generate(5, 3)
 
 
 def steps(n=10, render=True):
