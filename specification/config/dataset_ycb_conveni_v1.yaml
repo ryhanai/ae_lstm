@@ -1,6 +1,6 @@
 train:  
   ycb:
-    # 27
+    # 26
     - 004_sugar_box
     - 008_pudding_box
     - 010_potted_meat_can
@@ -14,7 +14,7 @@ train:
     - 018_plum
     - 024_bowl
     - 025_mug
-    - 029_plate
+    # - 029_plate
     - 030_fork
     - 032_knife
     - 033_spatula
