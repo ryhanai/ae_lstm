@@ -317,4 +317,4 @@ if __name__ == "__main__":
     opt = parse_opt()
     main(opt)
 
-# python yolov5_detect.py --source ~/Dataset/ycb_video/data/0000/ --weights ~/Program/yolov5/runs/train/exp2/weights/best.pt --conf-thres 0.5 --save_bbox
+# python yolov5_detect.py --source ~/Dataset/ycb_video/data/0000/ --weights ~/Program/yolov5/runs/train/exp2/weights/best.pt --conf-thres 0.5 --save-bbox
