@@ -1,0 +1,38 @@
+# YOLOv5 🚀 by Ultralytics, AGPL-3.0 license
+# YCB_Video_seg dataset 
+# Example usage: python train.py --data ycb_video-seg.yaml
+# parent
+# ├── yolov5
+# └── datasets
+#     └── ycb_video-seg
+
+
+# Train/val/test sets as 1) dir: path/to/imgs, 2) file: path/to/imgs.txt, or 3) list: [path/to/imgs1, path/to/imgs2, ..]
+path: /home/ryo/Dataset/ycb_video/yolo_seg  # dataset root dir
+train: images/train  # train images (relative to 'path')
+val: images/train  # val images (relative to 'path')
+test:  # test images (optional)
+
+# Classes
+names:
+  0: 002_master_chef_can
+  1: 003_cracker_box
+  2: 004_sugar_box
+  3: 005_tomato_soup_can
+  4: 006_mustard_bottle
+  5: 007_tuna_fish_can
+  6: 008_pudding_box
+  7: 009_gelatin_box
+  8: 010_potted_meat_can
+  9: 011_banana
+  10: 019_pitcher_base
+  11: 021_bleach_cleanser
+  12: 024_bowl
+  13: 025_mug
+  14: 035_power_drill
+  15: 036_wood_block
+  16: 037_scissors
+  17: 040_large_marker
+  18: 051_large_clamp
+  19: 052_extra_large_clamp
+  20: 061_foam_brick

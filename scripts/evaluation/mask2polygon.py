@@ -7,7 +7,7 @@ import numpy as np
 import scipy.io
 import supervision as sv
 
-data_dir = Path(os.environ["HOME"]) / "Dataset/ycb_video/data"
+# data_dir = Path(os.environ["HOME"]) / "Dataset/ycb_video/data"
 
 
 def read_meta_file(sequence_number, frame_number):
@@ -49,20 +49,31 @@ def save_polygons(f, cls_index, polygons, mask):
     f.write("\n")
 
 
-def convert(sequence_number, frame_number, draw_result=False):
-    cls_indices = get_cls_indices(sequence_number, frame_number)
-    mask = read_mask_file(sequence_number, frame_number)
+# def convert(sequence_number, frame_number, draw_result=False):
+#     cls_indices = get_cls_indices(sequence_number, frame_number)
+#     mask = read_mask_file(sequence_number, frame_number)
 
-    # save_path = data_dir / f"{sequence_number:04d}/{frame_number:06d}-poly.txt"
-    save_path = f"labels/{sequence_number:04d}-{frame_number:06d}-poly.txt"
-    with open(save_path, "w") as f:
+#     # save_path = data_dir / f"{sequence_number:04d}/{frame_number:06d}-poly.txt"
+#     save_path = f"labels/{sequence_number:04d}-{frame_number:06d}-poly.txt"
+#     with open(save_path, "w") as f:
+#         for cls_index in cls_indices:
+#             single_mask = np.where(mask == cls_index, 1, 0)
+#             polygons = sv.mask_to_polygons(single_mask)
+
+#             if draw_result:
+#                 bgr_img = read_color_image(sequence_number, frame_number)
+#                 draw_polygons(bgr_img, polygons)
+
+#             save_polygons(f, cls_index, polygons, mask)
+
+
+def gen_polygon_mask(color_file_path, polygon_file_path):
+    meta_data = scipy.io.loadmat(str.replace(color_file_path, "-color.jpg", "") + "-meta.mat")
+    cls_indices = meta_data["cls_indexes"]
+    mask = cv2.imread(str.replace(color_file_path, "-color.jpg", "") + "-label.png")[:, :, 0]
+
+    with open(polygon_file_path, "w") as f:
         for cls_index in cls_indices:
-            vertices = []
             single_mask = np.where(mask == cls_index, 1, 0)
             polygons = sv.mask_to_polygons(single_mask)
-
-            if draw_result:
-                bgr_img = read_color_image(sequence_number, frame_number)
-                draw_polygons(bgr_img, polygons)
-
             save_polygons(f, cls_index, polygons, mask)
