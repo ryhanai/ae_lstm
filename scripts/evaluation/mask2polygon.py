@@ -41,7 +41,7 @@ def draw_polygons(bgr_img, polygons, color=[0, 255, 0]):
 
 def save_polygons(f, cls_index, polygons, mask):
     height, width = mask.shape
-    f.write(f"{cls_index[0]} ")
+    f.write(f"{cls_index[0]-1} ")
     for polygon in polygons:
         polygon = np.array(polygon) / [width, height]
         for v in polygon:
