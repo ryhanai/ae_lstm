@@ -318,3 +318,9 @@ if __name__ == "__main__":
     main(opt)
 
 # python yolov5_detect.py --source ~/Dataset/ycb_video/data/0000/ --weights ~/Program/yolov5/runs/train/exp2/weights/best.pt --conf-thres 0.5 --save-bbox
+
+# segmentation
+# - training
+#   python segment/train.py --data ../moonshot/ae_lstm/scripts/evaluation/ycb_video-seg.yaml --weights yolov5s-seg.pt --img 640
+# - prediction
+#   python segment/predict.py --weights ~/Program/moonshot/ae_lstm/scripts/evaluation/yolo_runs/exp8/weights/best.pt --source ~/Dataset/ycb_video/yolo_seg/images/test/000000010000.jpg
