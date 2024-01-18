@@ -1,8 +1,9 @@
 from omni.isaac.kit import SimulationApp
 
-simulation_app = SimulationApp({"headless": False})
+simulation_app = SimulationApp({"headless": True})
 
 import os
+import re
 from abc import ABCMeta, abstractmethod
 
 import cv2
@@ -154,10 +155,7 @@ class ForcemapSim:
         return self._used_objects
 
     def get_object_name_by_primitive_name(self, prim_name):
-        try:
-            return self._object_inv_table[prim_name]
-        except KeyError:
-            return "seria_basket"
+        return self._object_inv_table[prim_name]
 
     def sample_object_pose(self):
         pos_xy = np.array([0.10, 0.0]) + np.array([0.2, 0.3]) * (np.random.random(2) - 0.5)
@@ -298,7 +296,7 @@ class ForcemapSim:
             self._loaded_objects.append(Object(usd_file, object_id, mass, self._world, geom_prim))
 
         for o in self._loaded_objects:
-            self._object_inv_table[o.get_primitive_name()] = o.get_name()
+            self._object_inv_table[str(o.get_primitive_name())] = o.get_name()
 
         self.reset_object_positions()
 
@@ -633,9 +631,10 @@ class RandomTabletopSim(ForcemapSim):
             self._camera.set_horizontal_aperture(2.6034 + 0.1562 * (np.random.random() - 0.5))
             self._camera.set_vertical_aperture(1.4621 + 0.0877 * (np.random.random() - 0.5))
         else:  # perturb viewpoint
-            position = np.array([0, 0, 1.358]) + 0.02 * (np.random.random(3) - 0.5)
+            # position = np.array([0, 0, 1.358]) + 0.02 * (np.random.random(3) - 0.5)
+            position = np.array([0, 0, 1.6]) + 0.02 * (np.random.random(3) - 0.5)
             orientation = rot_utils.euler_angles_to_quats(
-                np.array([0, 90, 180] + 6 * (np.random.random(3) - 0.5)), degrees=True
+                np.array([0, 90, 180] + 3 * (np.random.random(3) - 0.5)), degrees=True
             )
             self._camera.set_world_pose(position, orientation)
 
@@ -742,11 +741,18 @@ class AllObjectTabletopSim(ForcemapSim):
 
 
 class Recorder:
-    def __init__(self, sim, output_force=False):
-        self.__output_force = output_force
+    def __init__(self, sim, output_force_distribution=False):
+        self._output_force_distribution = output_force_distribution
         self._frameNo = 0
         self._sim = sim
         self._data_dir = "data"
+
+    def get_object_name(self, name):
+        if name == "/World/env" or re.match("/World/wall.*", name) != None:
+            return None
+        if name == "/World/env/table":
+            return "table"
+        return self._sim.get_object_name_by_primitive_name(name)
 
     def save_state(self):
         """
@@ -765,8 +771,10 @@ class Recorder:
 
             for contact in contacts:
                 if scipy.linalg.norm(contact["impulse"]) > 1e-8:
-                    objectA = self._sim.get_object_name_by_primitive_name(contact["body0"])
-                    objectB = self._sim.get_object_name_by_primitive_name(contact["body1"])
+                    objectA = self.get_object_name(contact["body0"])
+                    objectB = self.get_object_name(contact["body1"])
+                    if objectA == None or objectB == None:
+                        continue
                     contact_positions.append(contact["position"])
                     impulse_values.append(scipy.linalg.norm(contact["impulse"]))
                     contacting_objects.append((objectA, objectB))
@@ -786,16 +794,24 @@ class Recorder:
             os.path.join(self._data_dir, "contact_raw_data{:05d}.pkl".format(self._frameNo)),
         )
 
-        if self.__output_force:
+        if self._output_force_distribution:
             force_dist = self.convert_to_force_distribution(contact_positions, impulse_values, contacting_objects)
             pd.to_pickle(force_dist, os.path.join(self._data_dir, "force_zip{:05d}.pkl".format(self._frameNo)))
 
-    def save_image(self, viewNum=None):
+    def save_image(self, viewNum=None, crop_center=True):
         rgb = self._sim.get_camera().get_current_frame()["rgba"][:, :, :3]
-        cv2.imwrite(
-            os.path.join(self._data_dir, f"rgb{self._frameNo:05}_{viewNum:05}.jpg"),
-            cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR),
-        )
+        rgb_path = os.path.join(self._data_dir, f"rgb{self._frameNo:05}_{viewNum:05}.jpg")
+        if crop_center:
+            cam_height, cam_width, _ = rgb.shape
+            height = 360
+            width = 512
+            rgb_cropped = rgb[
+                int((cam_height - height) / 2) : int((cam_height - height) / 2 + height),
+                int((cam_width - width) / 2) : int((cam_width - width) / 2 + width),
+            ]
+            cv2.imwrite(rgb_path, cv2.cvtColor(rgb_cropped, cv2.COLOR_RGB2BGR))
+        else:
+            cv2.imwrite(rgb_path, cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
         pd.to_pickle(
             self._sim.get_camera().get_world_pose(),
             os.path.join(self._data_dir, f"camera_info{self._frameNo:05}_{viewNum:05}.pkl"),
@@ -818,9 +834,9 @@ class Recorder:
 
 
 class DatasetGenerator:
-    def __init__(self, sim, output_force=True):
+    def __init__(self, sim, output_force_distribution=True):
         self._sim = sim
-        self._recorder = Recorder(sim, output_force=output_force)
+        self._recorder = Recorder(sim, output_force_distribution=output_force_distribution)
 
     def generate(self, number_of_scenes, number_of_views=5):
         for frameNum in range(number_of_scenes):
@@ -860,7 +876,7 @@ obj_config = ObjectInfo(object_dir, config_dir, "ycb_conveni_v1")
 
 sim = RandomTabletopSim()
 sim.setup_scene(env_usd_file, obj_config)
-dg = DatasetGenerator(sim, output_force=True)
+dg = DatasetGenerator(sim, output_force_distribution=False)
 # dg.generate(5, 3)
 
 

@@ -20,16 +20,24 @@ class ObjectInfo:
             self._info[name] = {
                 "mass": prop["mass"],
                 "usd_file": f"{object_dir}/ycb/{name}/google_16k/textured/textured.usd",
+                "dataset": "ycb",
             }
         for name in dataset_def["conveni"]:
             prop = obj_def["conveni"][name]
-            self._info[name] = {"mass": prop["mass"], "usd_file": f"{object_dir}/conveni/{name}/{name}/{name}.usd"}
+            self._info[name] = {
+                "mass": prop["mass"],
+                "usd_file": f"{object_dir}/conveni/{name}/{name}/{name}.usd",
+                "dataset": "conveni",
+            }
 
     def usd_file(self, name):
         return self._info[name]["usd_file"]
 
     def mass(self, name):
         return self._info[name]["mass"]
+
+    def dataset(self, name):
+        return self._info[name]["dataset"]
 
     def names(self):
         return list(self._info.keys())

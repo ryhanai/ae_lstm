@@ -45,9 +45,13 @@ class GridForceMap:
             self.positions = positions.T  # [number of points, 3]
             self.bandwidth = bandwidth
         elif name == "small_table":
-            self.grid = np.mgrid[-0.2:0.2:80j, -0.25:0.25:100j, 0.73:0.93:40j]
+            self.grid = np.mgrid[-0.2:0.2:80j, -0.2:0.2:80j, 0.73:0.93:40j]
             X, Y, Z = self.grid
-            self.dV = 0.4 * 0.5 * 0.20 / (80 * 100 * 40)
+            self._xrange = X.max() - X.min()
+            self._yrange = Y.max() - Y.min()
+            self._zrange = Z.max() - Z.min()
+            self._nx, self._ny, self._nz = X.shape
+            self.dV = self._xrange * self._yrange * self._zrange / (self._nx * self._ny * self._nz)
             positions = np.vstack([X.ravel(), Y.ravel(), Z.ravel()])
             self.positions = positions.T  # [number of points, 3]
             self.bandwidth = bandwidth
@@ -61,6 +65,9 @@ class GridForceMap:
 
         self._title = "force map"
         self._scene_name = name
+
+    def get_grid_shape(self):
+        return self.grid[0].shape
 
     def getDensity(self, sample_positions, sample_weights, moving_average=False, return_3d=False):
         if len(sample_weights) > 0:
@@ -82,7 +89,7 @@ class GridForceMap:
             result = V
 
         if return_3d:
-            return result.reshape(self.grid[0].shape)
+            return result.reshape(self.get_grid_shape())
         else:
             return result
 
