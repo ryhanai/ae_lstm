@@ -1,11 +1,15 @@
 import os
+from pathlib import Path
 
 import yaml
 
 
 class ObjectInfo:
-    def __init__(self, object_dir, config_dir, dataset="ycb_conveni"):
-        self.load_config(object_dir, config_dir, dataset)
+    object_dir = f"{os.environ['HOME']}/Dataset/ycb_conveni"
+    config_dir = f"{os.environ['HOME']}/Program/moonshot/ae_lstm/specification/config"
+
+    def __init__(self, dataset="ycb_conveni"):
+        self.load_config(ObjectInfo.object_dir, ObjectInfo.config_dir, dataset)
 
     def load_config(self, object_dir, config_dir, dataset):
         with open(os.path.join(config_dir, f"dataset_{dataset}.yaml")) as f:
@@ -33,6 +37,31 @@ class ObjectInfo:
     def usd_file(self, name):
         return self._info[name]["usd_file"]
 
+    def obj_file(self, name):
+        """
+        return obj file name and scale
+        """
+        p = Path(self.usd_file(name))
+        if self.dataset(name) == "ycb":
+            obj_file = p.parent.parent / "textured.obj"
+        if self.dataset(name) == "conveni":
+            obj_file = p.parent.parent / "textured.obj"
+        scale = 1.0
+        return str(obj_file), scale
+
+        # if name == "seria_basket":
+        #     return f"{obj_dir}/seria_basket_body_collision.obj", 0.001
+        # else:
+        #     return f"{obj_dir}/ycb/{name}/google_16k/textured.obj", 1.0
+
+    def rviz_mesh_file(self, name):
+        if self.dataset(name) == "ycb":
+            mesh_file = f"package://force_estimation/meshes/ycb/{name}/google_16k/textured.dae"
+        if self.dataset(name) == "conveni":
+            mesh_file = f"package://force_estimation/meshes/conveni/{name}/textured.obj"
+        scale = 1.0
+        return mesh_file, scale
+
     def mass(self, name):
         return self._info[name]["mass"]
 
@@ -56,6 +85,4 @@ class ObjectInfo:
 
 
 if __name__ == "__main__":
-    object_dir = f'{os.environ["HOME"]}/Dataset/ycb_conveni'
-    config_dir = f'{os.environ["HOME"]}/Program/moonshot/ae_lstm/specification/config'
-    conf = ObjectInfo(object_dir, config_dir, "ycb_conveni_v1")
+    conf = ObjectInfo("ycb_conveni_v1")

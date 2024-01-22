@@ -1,22 +1,28 @@
 # -*- coding: utf-8 -*-
 
-import os, time
+import os
+import time
+
 import cv2
+import matplotlib.patches as patches
+import matplotlib.pyplot as plt
 import numpy as np
-from scipy.linalg import norm
 import termcolor
 import yaml
 from PIL import Image
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
-import tensorflow as tf
+from scipy.linalg import norm
+
+# import tensorflow as tf
 
 
 ###
 ###
 ###
 
-def swap(x): return x[1], x[0]
+
+def swap(x):
+    return x[1], x[0]
+
 
 ###
 # Visualization tools
@@ -24,12 +30,12 @@ def swap(x): return x[1], x[0]
 
 
 def draw_rect(image, roi):
-    '''
+    """
     To draw i'th image with ROI rectangle
 
     draw_rect(x[0][i][0], rois[i])
     plt.show()
-    '''
+    """
     fig, ax = plt.subplots()
     ax.imshow(image)
     height = image.shape[0]
@@ -38,18 +44,18 @@ def draw_rect(image, roi):
     w = width * (roi[3] - roi[1])
     y = height * roi[0]
     h = height * (roi[2] - roi[0])
-    rect = patches.Rectangle((x, y), w, h, linewidth=1, edgecolor='red', fill=False)  # x,y,w,h [pixels]
+    rect = patches.Rectangle((x, y), w, h, linewidth=1, edgecolor="red", fill=False)  # x,y,w,h [pixels]
     ax.add_patch(rect)
 
 
-def draw_bounding_boxes(images, bboxes, color=[[1, 0, 0]]):
-    if type(images) != np.ndarray:
-        images = np.array(images)
-    if type(bboxes) != np.ndarray:
-        bboxes = np.array(bboxes)
-        if bboxes.ndim == 2:
-            bboxes = np.expand_dims(bboxes, 1)
-    return tf.image.draw_bounding_boxes(images, bboxes, color)
+# def draw_bounding_boxes(images, bboxes, color=[[1, 0, 0]]):
+#     if type(images) != np.ndarray:
+#         images = np.array(images)
+#     if type(bboxes) != np.ndarray:
+#         bboxes = np.array(bboxes)
+#         if bboxes.ndim == 2:
+#             bboxes = np.expand_dims(bboxes, 1)
+#     return tf.image.draw_bounding_boxes(images, bboxes, color)
 
 
 def create_anim_gif_from_images(images, out_filename, rois=[], predicted_images=[]):
@@ -63,17 +69,17 @@ def create_anim_gif_from_images(images, out_filename, rois=[], predicted_images=
             imgs = draw_bounding_boxes(images, rois)
             if len(predicted_images) > 0:
                 imgs = [np.concatenate([i.numpy(), pi], axis=0) for (i, pi) in zip(imgs, predicted_images)]
-                imgs = [Image.fromarray((255*i).astype(np.uint8)) for i in imgs]
+                imgs = [Image.fromarray((255 * i).astype(np.uint8)) for i in imgs]
         else:
             if len(predicted_images) > 0:
                 imgs = [np.concatenate([i, pi], axis=0) for (i, pi) in zip(images, predicted_images)]
-        imgs = [Image.fromarray((255*i).astype(np.uint8)) for i in images]
+        imgs = [Image.fromarray((255 * i).astype(np.uint8)) for i in images]
     else:
         imgs = images
     imgs[0].save(out_filename, save_all=True, append_images=imgs[1:], optimize=False, duration=100, loop=0)
 
 
-def create_anim_gif_for_group(images, rois, group_num, dir='./images'):
+def create_anim_gif_for_group(images, rois, group_num, dir="./images"):
     n_frames = rois.shape[0]
     image_files = []
     for i in range(n_frames):
@@ -82,11 +88,11 @@ def create_anim_gif_for_group(images, rois, group_num, dir='./images'):
         if not os.path.exists(dir):
             os.mkdir(dir)
 
-        path = os.path.join(*[dir, str('{:05}.png'.format(i))])
+        path = os.path.join(*[dir, str("{:05}.png".format(i))])
         plt.savefig(path)
         plt.close()
         image_files.append(path)
-        create_anim_gif_from_images(image_files, 'group{:05}.gif'.format(group_num))
+        create_anim_gif_from_images(image_files, "group{:05}.gif".format(group_num))
 
 
 def visualize_ds(images, rois=[], max_samples=20, colorize_gray_image=True):
@@ -101,8 +107,8 @@ def visualize_ds(images, rois=[], max_samples=20, colorize_gray_image=True):
     fig.subplots_adjust(hspace=0.1)
 
     for p in range(samples):
-        ax = fig.add_subplot(samples//4, 4, p+1)
-        ax.axis('off')
+        ax = fig.add_subplot(samples // 4, 4, p + 1)
+        ax.axis("off")
         ax.imshow(images[p])
         if len(rois) > 0:
             roi = rois[p][0]
@@ -112,12 +118,11 @@ def visualize_ds(images, rois=[], max_samples=20, colorize_gray_image=True):
             w = width * (roi[3] - roi[1])
             y = height * roi[0]
             h = height * (roi[2] - roi[0])
-            rect = patches.Rectangle((x, y), w, h, linewidth=1, edgecolor='red', fill=False)  # x,y,w,h [pixels]
+            rect = patches.Rectangle((x, y), w, h, linewidth=1, edgecolor="red", fill=False)  # x,y,w,h [pixels]
             ax.add_patch(rect)
 
 
-def coordinate(axes, range_x, range_y, grid=True,
-               xyline=True, xlabel='x', ylabel='y'):
+def coordinate(axes, range_x, range_y, grid=True, xyline=True, xlabel="x", ylabel="y"):
     axes.set_xlabel(xlabel, fontsize=16)
     axes.set_ylabel(ylabel, fontsize=16)
     axes.set_xlim(range_x[0], range_x[1])
@@ -125,24 +130,24 @@ def coordinate(axes, range_x, range_y, grid=True,
     if grid is True:
         axes.grid()
     if xyline is True:
-        axes.axhline(0, color='gray')
-        axes.axvline(0, color='gray')
+        axes.axhline(0, color="gray")
+        axes.axvline(0, color="gray")
 
 
-def draw_vector(axes, loc, vector, color='red', scale=1, width=1):
-    axes.quiver(loc[0], loc[1],
-                vector[0], vector[1], color=color,
-                angles='xy', scale_units='xy', scale=scale, width=width)
+def draw_vector(axes, loc, vector, color="red", scale=1, width=1):
+    axes.quiver(
+        loc[0], loc[1], vector[0], vector[1], color=color, angles="xy", scale_units="xy", scale=scale, width=width
+    )
 
 
-def draw_trajectory(ax, traj, color='red', scale=0.4, width=0.002):
+def draw_trajectory(ax, traj, color="red", scale=0.4, width=0.002):
     for p1, p2 in traj:
         p1 = np.array(p1[:2])
         p2 = np.array(p2[:2])
-        draw_vector(ax, p1, p2-p1, color=color, scale=scale, width=width)
+        draw_vector(ax, p1, p2 - p1, color=color, scale=scale, width=width)
 
 
-def draw_predictions_and_labels(ax, cs, ps, ls, colors=['red', 'blue'], scale=0.4, width=0.002):
+def draw_predictions_and_labels(ax, cs, ps, ls, colors=["red", "blue"], scale=0.4, width=0.002):
     trajs = [zip(cs[::3], ls[::3]), zip(cs[::3], ps[::3])]
     for traj, color in zip(trajs, colors):
         draw_trajectory(ax, traj, color=color, scale=scale, width=width)
@@ -152,6 +157,7 @@ def draw_predictions_and_labels(ax, cs, ps, ls, colors=['red', 'blue'], scale=0.
 # Data loader
 ###
 
+
 def load_torobo_unity_joint_seq(joint_seq_file, start_step=0, step_length=None):
     joint_seq = []
     joint_time = []
@@ -159,16 +165,16 @@ def load_torobo_unity_joint_seq(joint_seq_file, start_step=0, step_length=None):
         contents = f.readlines()
         if step_length is None:
             step_length = len(contents)
-        for line_idx in range(start_step, start_step+step_length):
+        for line_idx in range(start_step, start_step + step_length):
             line = contents[line_idx]
-            line = line.rstrip('\n')
-            line = line.rstrip(', )')
-            line = line.split(':')
-            time = line[2].rstrip('\tPOSITION')
-            time_arr = np.fromstring(time, dtype=np.float64, sep=' ')
-            data = line[3].rstrip(' )')
-            data = data.lstrip(' (')
-            data_arr = np.fromstring(data, dtype=np.float64, sep=', ')
+            line = line.rstrip("\n")
+            line = line.rstrip(", )")
+            line = line.split(":")
+            time = line[2].rstrip("\tPOSITION")
+            time_arr = np.fromstring(time, dtype=np.float64, sep=" ")
+            data = line[3].rstrip(" )")
+            data = data.lstrip(" (")
+            data_arr = np.fromstring(data, dtype=np.float64, sep=", ")
             joint_time.append(time_arr)
             joint_seq.append(data_arr)
     np_joint_time = np.array(joint_time)
@@ -178,36 +184,36 @@ def load_torobo_unity_joint_seq(joint_seq_file, start_step=0, step_length=None):
     return np_joint_seq_time
 
 
-class Dataset():
+class Dataset:
     def __init__(self, name, mode, **kargs):
-        '''
+        """
         Args:
             mode: 'train' or 'test'
-        '''
+        """
         self._name = name
 
         try:
-            config_file = kargs['config_file']
+            config_file = kargs["config_file"]
         except KeyError:
-            config_file = '../../specification/training/dataset.yaml'
-        with open(config_file, mode='r') as f:
+            config_file = "../../specification/training/dataset.yaml"
+        with open(config_file, mode="r") as f:
             tree = yaml.safe_load(f)
             self._config = tree[name]
 
         try:
-            self.dataset_path = kargs['dataset_path']
+            self.dataset_path = kargs["dataset_path"]
         except KeyError:
-            self.dataset_path = eval(tree['dataset-path'])
+            self.dataset_path = eval(tree["dataset-path"])
 
-        self._directory = self._config['directory']
+        self._directory = self._config["directory"]
 
-        assert mode == 'train' or mode == 'test'
-        if mode == 'train':
-            self._groups = eval(self._config['train_groups'])
-        if mode == 'test':
-            self._groups = eval(self._config['validation_groups'])
+        assert mode == "train" or mode == "test"
+        if mode == "train":
+            self._groups = eval(self._config["train_groups"])
+        if mode == "test":
+            self._groups = eval(self._config["validation_groups"])
 
-        self.joint_range_data = eval(self._config['joint_range_data'])
+        self.joint_range_data = eval(self._config["joint_range_data"])
         self.compute_joint_position_range()
 
     def compute_joint_position_range(self):
@@ -226,11 +232,10 @@ class Dataset():
     def unnormalize_joint_position(self, q):
         return q * (self.joint_max_positions - self.joint_min_positions) + self.joint_min_positions
 
-    def load_group(self, group, load_image=True, image_size=(90, 160),
-                   sampling_interval=1, normalize=True):
-        path = os.path.join(self.dataset_path, '%s/%d' % (self._directory, group))
+    def load_group(self, group, load_image=True, image_size=(90, 160), sampling_interval=1, normalize=True):
+        path = os.path.join(self.dataset_path, "%s/%d" % (self._directory, group))
         # load joint and frame indices
-        joint_file = os.path.join(path, 'joint_position.txt')
+        joint_file = os.path.join(path, "joint_position.txt")
         joint_seq = np.loadtxt(joint_file)
 
         if normalize:
@@ -243,29 +248,30 @@ class Dataset():
         if load_image:
             frames = []
             for i in range(0, n_frames, sampling_interval):
-                img = plt.imread(os.path.join(path, 'image_frame%05d.jpg' % i))
+                img = plt.imread(os.path.join(path, "image_frame%05d.jpg" % i))
 
                 # img = img[130:250, 120:360] # crop the center
                 img = cv2.resize(img, (image_size[1], image_size[0]))
 
                 if normalize:
-                    img = img/255.
+                    img = img / 255.0
                 frames.append(img)
 
             return joint_seq, frames
         else:
             return joint_seq
 
-    def load(self,
-             image_size=(90, 160),
-             groups=None,
-             load_image=True,
-             sampling_interval=1,
-             visualize=False,
-             start_step=0,
-             step_length=None,
-             normalize=True):
-
+    def load(
+        self,
+        image_size=(90, 160),
+        groups=None,
+        load_image=True,
+        sampling_interval=1,
+        visualize=False,
+        start_step=0,
+        step_length=None,
+        normalize=True,
+    ):
         start = time.time()
         data = []
 
@@ -274,15 +280,19 @@ class Dataset():
 
         n_groups = len(groups)
         for i, group in enumerate(groups):
-            print('\rloading: {}/{}'.format(i, n_groups), end='')
-            data.append(self.load_group(group,
-                                        load_image=load_image,
-                                        image_size=image_size,
-                                        sampling_interval=sampling_interval,
-                                        normalize=normalize))
+            print("\rloading: {}/{}".format(i, n_groups), end="")
+            data.append(
+                self.load_group(
+                    group,
+                    load_image=load_image,
+                    image_size=image_size,
+                    sampling_interval=sampling_interval,
+                    normalize=normalize,
+                )
+            )
 
         end = time.time()
-        print('\ntotal time spent for loading data: {} [min]'.format((end-start)/60))
+        print("\ntotal time spent for loading data: {} [min]".format((end - start) / 60))
         self.data = data
 
     def get(self):
@@ -295,11 +305,11 @@ class Dataset():
     def extend_initial_and_final_states(self, size):
         def extend_group(gd):
             joint_seq, images = gd
-            joint_seq2 = np.empty((joint_seq.shape[0] + size*2,) + joint_seq.shape[1:])
+            joint_seq2 = np.empty((joint_seq.shape[0] + size * 2,) + joint_seq.shape[1:])
             joint_seq2[:size] = joint_seq[0]
-            joint_seq2[size:size+joint_seq.shape[0]] = joint_seq
-            joint_seq2[size+joint_seq.shape[0]:] = joint_seq[-1]
-            images2 = [images[0]]*size + images + [images[-1]]*size
+            joint_seq2[size : size + joint_seq.shape[0]] = joint_seq
+            joint_seq2[size + joint_seq.shape[0] :] = joint_seq[-1]
+            images2 = [images[0]] * size + images + [images[-1]] * size
             return joint_seq2, images2
 
         data2 = []
@@ -308,23 +318,23 @@ class Dataset():
         self.data = data2
 
     def smoothen(self, filter_size=5):
-        '''
+        """
         filter_size must be odd number
-        '''
-        w = np.ones(filter_size)/filter_size
+        """
+        w = np.ones(filter_size) / filter_size
 
         def smoothen_jv(jv):
             seqlen, dim = jv.shape
-            smoothed_jv = np.empty((seqlen-filter_size+1, dim))
+            smoothed_jv = np.empty((seqlen - filter_size + 1, dim))
             for i in range(dim):
-                jvp = np.convolve(jv[:, i], w, 'valid')
+                jvp = np.convolve(jv[:, i], w, "valid")
                 smoothed_jv[:, i] = jvp
             return smoothed_jv
 
         def smoothen_group(gd):
             joint_seq, images = gd
             smoothed_joint_seq = smoothen_jv(joint_seq)
-            c = int((filter_size-1)/2)
+            c = int((filter_size - 1) / 2)
             return smoothed_joint_seq, images[c:-c]
 
         data2 = []
@@ -341,9 +351,10 @@ class Dataset():
 # Analysis
 ##
 
+
 def print_distances(joint_vec_seq):
-    for i in range(len(joint_vec_seq)-1):
-        print(norm(joint_vec_seq[i] - joint_vec_seq[i+1]))
+    for i in range(len(joint_vec_seq) - 1):
+        print(norm(joint_vec_seq[i] - joint_vec_seq[i + 1]))
 
 
 class StateManager:
@@ -396,13 +407,14 @@ class StateManager:
 # Print Message
 ##
 
+
 def error(msg):
-    print(termcolor.colored('[ERROR]: {}'.format(msg), 'red'))
+    print(termcolor.colored("[ERROR]: {}".format(msg), "red"))
 
 
 def warn(msg):
-    print(termcolor.colored('[WARN]: {}'.format(msg), 'yellow'))
+    print(termcolor.colored("[WARN]: {}".format(msg), "yellow"))
 
 
-def message(msg, tag=''):
-    print(termcolor.colored('{}{}'.format(tag, msg), 'green'))
+def message(msg, tag=""):
+    print(termcolor.colored("{}{}".format(tag, msg), "green"))

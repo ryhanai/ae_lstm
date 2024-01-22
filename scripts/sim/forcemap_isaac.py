@@ -4,37 +4,34 @@ from omni.isaac.kit import SimulationApp
 
 simulation_app = SimulationApp({"headless": False})
 
-from omni.isaac.core import World
-from omni.isaac.sensor import ContactSensor
-from omni.isaac.sensor import Camera
-from omni.isaac.core import SimulationContext
-import omni.isaac.core.utils.numpy.rotations as rot_utils
+import glob
+import os
+from abc import ABCMeta, abstractmethod
 
-import omni
-from pxr import UsdPhysics
-from omni.physx.scripts import utils
-import omni.isaac.core.utils.prims as prim_utils
-
-from pxr import Gf, Usd, UsdGeom, UsdShade, Sdf
-import omni.usd
-
-import numpy as np
-import os, glob, cv2, scipy
-import pandas as pd
+import cv2
 import matplotlib.pyplot as plt
+import numpy as np
+import omni
+import omni.isaac.core.utils.numpy.rotations as rot_utils
+import omni.isaac.core.utils.prims as prim_utils
+import omni.usd
+import pandas as pd
+import scipy
+from force_estimation import forcemap
+from object_loader import ObjectsInfo
+from omni.isaac.core import SimulationContext, World
+from omni.isaac.core.materials import PhysicsMaterial
+from omni.isaac.sensor import Camera, ContactSensor
+from omni.physx.scripts import utils
+from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, UsdShade
 
 # from omni.isaac.dynamic_control import _dynamic_control
 # dc = _dynamic_control.acquire_dynamic_control_interface()
 
-from force_estimation import forcemap
-from abc import ABCMeta, abstractmethod
-
-
-from object_loader import ObjectsInfo
 
 object_dir = f'{os.environ["HOME"]}/Dataset/ycb_conveni'
 config_dir = f'{os.environ["HOME"]}/Program/moonshot/ae_lstm/specification/config'
-conf = ObjectsInfo(object_dir, config_dir, 'ycb_conveni_v1')
+conf = ObjectsInfo(object_dir, config_dir, "ycb_conveni_v1")
 
 # assets_root_path = get_assets_root_path()
 # asset_path = assets_root_path + "/Isaac/Robots/Franka/franka_alt_fingers.usd"
@@ -53,35 +50,11 @@ conf = ObjectsInfo(object_dir, config_dir, 'ycb_conveni_v1')
 world = World(stage_units_in_meters=1.0)
 simulation_context = SimulationContext()
 
-# masses = {
-#     '15_TOPPO-ART-pl2048SA': 0.072,
-#     '05_JIF-ART-pl2048SA': 0.358,
-#     # 'akaikitsune_mini-ART-pl2048SA': 0.136, # mesh is too bad
-#     '21_MT-KINOKO-ART-pl2048SA': 0.074,
-#     '20_MELTYKISS-ART-pl2048SA': 0.050, # not found in csv
-#     '07_GREEN-TEA-ART-pl2048SA': 0.040,
-#     '14_SHAMPOO-ART-pl2048SA': 0.633,
-#     'face_tawel-ART-pl2048SA': 0.179,
-#     '18_WAKAME-SOUP-ART-pl2048SA': 0.050,
-#     '16_CHOCO-RUSK-ART-pl2048SA': 0.090,
-#     '17_BUTTER-COOKIE-ART-pl2048SA': 0.120,
-#     '16cha_660-ART-pl2048SA': 0.656,
-#     '7i_barley_tea-ART-pl2048SA': 1.508,
-#     '2nd_cupnoodle_origin-ART-pl2048SA': 0.077,
-#     '11_XYLITOL-ART-pl2048SA': 0.143,
-#     '28_KOALAS-MARCH-ART-pl2048SA': 0.050,
-#     '19_POCKY-ART-pl2048SA': 0.072,
-#     '7i_edamamearare-ART-pl2048SA': 0.040,
-#     '13_CLORETS-ART-pl2048SA': 0.140,
-#     'vc_3000_dozen-ART-pl2048SA': 0.090,
-#     'Ayataka_pet1l-ART-pl2048SA': 1.006,
-# }
-
 
 def set_pose(prim, pose):
     p, (axis, angle) = pose
     xform = UsdGeom.Xformable(prim)
-    xform.ClearXformOpOrder() # Is this necessary?
+    xform.ClearXformOpOrder()  # Is this necessary?
     transform = xform.AddTransformOp()
     mat = Gf.Matrix4d()
     mat.SetTranslateOnly(Gf.Vec3d(*p))
@@ -146,22 +119,49 @@ def create_prim_from_usd(stage, prim_env_path, prim_usd_path, location=[0, 0, 0.
     envPrim = stage.DefinePrim(prim_env_path, "Xform")
     envPrim.GetReferences().AddReference(prim_usd_path)
     set_translate(envPrim, Gf.Vec3d(*location))
-    prim = stage.GetPrimAtPath(envPrim.GetPath().pathString)
+    return stage.GetPrimAtPath(envPrim.GetPath().pathString)
+
+
+def assign_physics_material(stage, prim, prim_path):
+    # geom_prim = world.scene.get_object(os.path.join(prim_path, "textured/mesh"))
+    # geom_prim = stage.GetPrimAtPath(os.path.join(prim_path, "textured/mesh"))
+    geom_prim = prim.geom_prim()
+    geom_prim.apply_physics_material(
+        PhysicsMaterial(
+            prim_path=os.path.join(prim_path, "physics_material"),
+            static_friction=0.5,
+            dynamic_friction=0.4,
+            restitution=0.1,
+        )
+    )
+
+    # for child_prim in Usd.PrimRange(prim):
+    #     if child_prim.IsA(UsdGeom.Mesh):
+    #         print("SET_MATERIAL")
+    #         child_prim.apply_physics_material(
+    #             PhysicsMaterial(
+    #                 prim_path=os.path.join(prim_env_path, "physics_material"),
+    #                 static_friction=0.5,
+    #                 dynamic_friction=0.4,
+    #                 restitution=0.1,
+    #             )
+    #         )
     return prim
 
 
 class Object:
     def __init__(self, name, usd_file, object_id, mass, world):
         self._usd_file = usd_file
-        self._primitive_name = f'/World/object{object_id}'
+        self._primitive_name = f"/World/object{object_id}"
         self._prim = create_prim_from_usd(world.stage, self._primitive_name, usd_file)
+        assign_physics_material(world.stage, self._prim, self._primitive_name)
         self._id = object_id
         self._name = name
         utils.setRigidBody(self._prim, "convexDecomposition", False)
         for node_prim in Usd.PrimRange(self._prim):
             for prim in Usd.PrimRange(node_prim):
                 if prim.IsA(UsdGeom.Mesh):
-                    print('SET_MASS: ', self._name, set_mass(prim, kg=mass))  # why is this called 3 times?
+                    print("SET_MASS: ", self._name, set_mass(prim, kg=mass))  # why is this called 3 times?
         self.attach_contact_sensor(world)
 
     def get_primitive(self):
@@ -181,14 +181,15 @@ class Object:
 
     def attach_contact_sensor(self, world):
         self._contact_sensor = world.scene.add(
-                                    ContactSensor(
-                                        prim_path="/World/object{}/contact_sensor".format(self._id),
-                                        name=f'{self._id}_cs',
-                                        min_threshold=0,
-                                        max_threshold=10000000,
-                                        radius=0.5,
-                                        translation=np.array([0, 0, 0])
-                                    ))
+            ContactSensor(
+                prim_path="/World/object{}/contact_sensor".format(self._id),
+                name=f"{self._id}_cs",
+                min_threshold=0,
+                max_threshold=10000000,
+                radius=0.5,
+                translation=np.array([0, 0, 0]),
+            )
+        )
 
 
 class Scene:
@@ -227,14 +228,14 @@ class Scene:
         pos_z = 0.76 + 0.3 * np.random.random()
         theta = 180 * np.random.random()
         phi = 360 * np.random.random()
-        axis = [np.cos(theta)*np.cos(phi), np.cos(theta)*np.sin(phi), np.sin(theta)]
+        axis = [np.cos(theta) * np.cos(phi), np.cos(theta) * np.sin(phi), np.sin(theta)]
         angle = 360 * np.random.random()
         return [pos_xy[0], pos_xy[1], pos_z], (axis, angle)
 
     def place_objects(self, n):
         self._used_objects = []
         for i, o in enumerate(np.random.choice(self._loaded_objects, n, replace=False)):
-            print(f'placing {o.get_name()}')
+            print(f"placing {o.get_name()}")
             prim = o.get_primitive()
             contact_sensor = o.get_contact_sensor()
 
@@ -253,7 +254,7 @@ class Scene:
                 if no_collision:
                     break
 
-            print(f'{o.get_name()} placed')
+            print(f"{o.get_name()} placed")
             self._used_objects.append(o)
 
     def wait_for_stability(self, count=100):
@@ -274,7 +275,7 @@ class Scene:
         return False
 
     def create_env(self):
-        create_prim_from_usd(self._world.stage, '/World/env', self._asset_path, Gf.Vec3d([0, 0, 0.0]))
+        create_prim_from_usd(self._world.stage, "/World/env", self._asset_path, Gf.Vec3d([0, 0, 0.0]))
 
     def create_camera_D415(self):
         camera = Camera(
@@ -282,7 +283,8 @@ class Scene:
             position=np.array([0.4, 0.0, 1.15]),
             frequency=20,
             resolution=(1280, 720),
-            orientation=rot_utils.euler_angles_to_quats(np.array([0, 45, 180]), degrees=True))
+            orientation=rot_utils.euler_angles_to_quats(np.array([0, 45, 180]), degrees=True),
+        )
         camera.set_focal_length(1.88)
         camera.set_focus_distance(40)
         camera.set_horizontal_aperture(2.7288)
@@ -293,7 +295,7 @@ class Scene:
     def create_lights(self):
         for i in range(self._number_of_lights):
             prim_utils.create_prim(
-                f'/World/Light/SphereLight{i}',
+                f"/World/Light/SphereLight{i}",
                 "SphereLight",
                 translation=(0.0, 0.0, 3.0),
                 attributes={"radius": 1.0, "intensity": 5000.0, "color": (0.8, 0.8, 0.8)},
@@ -301,13 +303,13 @@ class Scene:
 
     def randomize_lights(self):
         for i in range(self._number_of_lights):
-            prim = self._world.stage.GetPrimAtPath(f'/World/Light/SphereLight{i}')
+            prim = self._world.stage.GetPrimAtPath(f"/World/Light/SphereLight{i}")
             pos_xy = np.array([-2.5, -2.5]) + 5.0 * np.random.random(2)
             pos_z = 2.5 + 1.5 * np.random.random()
             set_translate(prim, Gf.Vec3d(pos_xy[0], pos_xy[1], pos_z))
-            prim.GetAttribute("intensity").Set(2000. + 8000. * np.random.random())
+            prim.GetAttribute("intensity").Set(2000.0 + 8000.0 * np.random.random())
             prim.GetAttribute("color").Set(Gf.Vec3f(*(np.array([0.2, 0.2, 0.2]) + 0.6 * np.random.random(3))))
-            # prim.GetAttribute("scale").Set(Gf.Vec3f(*(np.array([0.2, 0.2, 0.2]) + 0.6 * np.random.random(3))))        
+            # prim.GetAttribute("scale").Set(Gf.Vec3f(*(np.array([0.2, 0.2, 0.2]) + 0.6 * np.random.random(3))))
 
     def randomize_camera_parameters(self):
         d = 0.7 + 0.2 * (np.random.random() - 0.5)
@@ -315,11 +317,11 @@ class Scene:
         phi = -50 + 100 * np.random.random()
         th = np.deg2rad(theta)
         ph = np.deg2rad(phi)
-        position = np.array([0, 0, 0.75]) + d * np.array([np.cos(th)*np.cos(ph), np.cos(th)*np.sin(ph), np.sin(th)])
+        position = np.array([0, 0, 0.75]) + d * np.array([np.cos(th) * np.cos(ph), np.cos(th) * np.sin(ph), np.sin(th)])
         theta2 = theta + 6 * (np.random.random() - 0.5)
         phi2 = phi + 6 * (np.random.random() - 0.5)
-        orientation = rot_utils.euler_angles_to_quats(np.array([0, theta2, 180+phi2]), degrees=True)
-        print(f'position={position}, orientation={orientation}')
+        orientation = rot_utils.euler_angles_to_quats(np.array([0, theta2, 180 + phi2]), degrees=True)
+        print(f"position={position}, orientation={orientation}")
         self._camera.set_world_pose(position, orientation)
 
         self._camera.set_focal_length(1.88 + 0.1128 * (np.random.random() - 0.5))  # 3% of the spec
@@ -330,11 +332,13 @@ class Scene:
     def randomize_object_colors(self):
         for o in self._used_objects:
             object_id = o.get_ID()
-            mtl_prim = world.stage.GetPrimAtPath(f'/World/object{object_id}/Looks/material_0')
+            mtl_prim = world.stage.GetPrimAtPath(f"/World/object{object_id}/Looks/material_0")
             # mtl_prim.GetAttribute("color tint").Set()
-            omni.usd.create_material_input(mtl_prim, "diffuse_tint", Gf.Vec3f(*(0.5 + 0.5*np.random.random(3))), Sdf.ValueTypeNames.Color3f)
+            omni.usd.create_material_input(
+                mtl_prim, "diffuse_tint", Gf.Vec3f(*(0.5 + 0.5 * np.random.random(3))), Sdf.ValueTypeNames.Color3f
+            )
             mtl_shade = UsdShade.Material(mtl_prim)
-            obj_prim = world.stage.GetPrimAtPath(f'/World/object{object_id}')
+            obj_prim = world.stage.GetPrimAtPath(f"/World/object{object_id}")
             UsdShade.MaterialBindingAPI(obj_prim).Bind(mtl_shade, UsdShade.Tokens.strongerThanDescendants)
 
 
@@ -355,12 +359,12 @@ class RandomScene(Scene):
         try:
             return self._object_inv_table[prim_name]
         except KeyError:
-            return 'seria_basket'
+            return "seria_basket"
 
     def reset_object_positions(self):
         for i, o in enumerate(self._loaded_objects):
             prim = o.get_primitive()
-            set_translate(prim, Gf.Vec3d(0.1*i, 0, 0))
+            set_translate(prim, Gf.Vec3d(0.1 * i, 0, 0))
         self._used_objects = []
 
     def change_scene(self):
@@ -388,19 +392,22 @@ class RandomSeriaBasketScene(RandomScene):
         z = 0.75 + 0.25 * np.random.random()
         theta = 180 * np.random.random()
         phi = 360 * np.random.random()
-        axis = [np.cos(theta)*np.cos(phi), np.cos(theta)*np.sin(phi), np.sin(theta)]
+        axis = [np.cos(theta) * np.cos(phi), np.cos(theta) * np.sin(phi), np.sin(theta)]
         angle = 360 * np.random.random()
         return [xy[0], xy[1], z], (axis, angle)
 
     def randomize_camera_parameters(self):
         position = np.array([0, 0, 1.358]) + 0.02 * (np.random.random(3) - 0.5)
-        orientation = rot_utils.euler_angles_to_quats(np.array([0, 90, 180] + 6 * (np.random.random(3) - 0.5)), degrees=True)
+        orientation = rot_utils.euler_angles_to_quats(
+            np.array([0, 90, 180] + 6 * (np.random.random(3) - 0.5)), degrees=True
+        )
         self._camera.set_world_pose(position, orientation)
 
 
 class RandomTableScene(RandomScene):
-    def __init__(self, world, conf):
-        self._asset_path = os.environ['HOME'] + "/Dataset/scenes/green_table_scene.usd"
+    def __init__(self, world, conf, multiviews=False):
+        self._asset_path = os.environ["HOME"] + "/Dataset/scenes/green_table_scene.usd"
+        self._multiviews = multiviews
         super().__init__(world, conf)
 
     def change_scene(self):
@@ -414,34 +421,42 @@ class RandomTableScene(RandomScene):
         z = 0.75 + 0.25 * np.random.random()
         theta = 180 * np.random.random()
         phi = 360 * np.random.random()
-        axis = [np.cos(theta)*np.cos(phi), np.cos(theta)*np.sin(phi), np.sin(theta)]
+        axis = [np.cos(theta) * np.cos(phi), np.cos(theta) * np.sin(phi), np.sin(theta)]
         angle = 360 * np.random.random()
         return [xy[0], xy[1], z], (axis, angle)
 
     def randomize_camera_parameters(self):
-        d = 0.7 + 0.2 * (np.random.random() - 0.5)
-        theta0 = np.radians(20)
-        theta1 = np.radians(60)
-        z = np.random.random()
-        th = np.arcsin(z * (np.sin(theta1) - np.sin(theta0)) + np.sin(theta0))
-        phi = 360 * np.random.random()
-        ph = np.deg2rad(phi)
-        position = np.array([0, 0, 0.75]) + d * np.array([np.cos(th)*np.cos(ph), np.cos(th)*np.sin(ph), np.sin(th)])
-        theta2 = np.degrees(th) + 6 * (np.random.random() - 0.5)
-        phi2 = phi + 6 * (np.random.random() - 0.5)
-        orientation = rot_utils.euler_angles_to_quats(np.array([0, theta2, 180+phi2]), degrees=True)
-        print(f'position={position}, orientation={orientation}')
-        self._camera.set_world_pose(position, orientation)
-
-        self._camera.set_focal_length(1.88 + 0.1128 * (np.random.random() - 0.5))  # 3% of the spec
-        self._camera.set_focus_distance(50)
-        self._camera.set_horizontal_aperture(2.6034 + 0.1562 * (np.random.random() - 0.5))
-        self._camera.set_vertical_aperture(1.4621 + 0.0877 * (np.random.random() - 0.5))
+        if self._multiviews:
+            d = 0.7 + 0.2 * (np.random.random() - 0.5)
+            theta0 = np.radians(20)
+            theta1 = np.radians(60)
+            z = np.random.random()
+            th = np.arcsin(z * (np.sin(theta1) - np.sin(theta0)) + np.sin(theta0))
+            phi = 360 * np.random.random()
+            ph = np.deg2rad(phi)
+            position = np.array([0, 0, 0.75]) + d * np.array(
+                [np.cos(th) * np.cos(ph), np.cos(th) * np.sin(ph), np.sin(th)]
+            )
+            theta2 = np.degrees(th) + 6 * (np.random.random() - 0.5)
+            phi2 = phi + 6 * (np.random.random() - 0.5)
+            orientation = rot_utils.euler_angles_to_quats(np.array([0, theta2, 180 + phi2]), degrees=True)
+            print(f"position={position}, orientation={orientation}")
+            self._camera.set_world_pose(position, orientation)
+            self._camera.set_focal_length(1.88 + 0.1128 * (np.random.random() - 0.5))  # 3% of the spec
+            self._camera.set_focus_distance(50)
+            self._camera.set_horizontal_aperture(2.6034 + 0.1562 * (np.random.random() - 0.5))
+            self._camera.set_vertical_aperture(1.4621 + 0.0877 * (np.random.random() - 0.5))
+        else:  # perturb viewpoint
+            position = np.array([0, 0, 1.358]) + 0.02 * (np.random.random(3) - 0.5)
+            orientation = rot_utils.euler_angles_to_quats(
+                np.array([0, 90, 180] + 6 * (np.random.random(3) - 0.5)), degrees=True
+            )
+            self._camera.set_world_pose(position, orientation)
 
 
 class AllObjectTableScene(RandomScene):
     def __init__(self, world, conf):
-        self._asset_path = os.environ['HOME'] + "/Dataset/scenes/green_table_scene.usd"
+        self._asset_path = os.environ["HOME"] + "/Dataset/scenes/green_table_scene.usd"
         super().__init__(world, conf)
 
     def change_scene(self):
@@ -453,14 +468,14 @@ class AllObjectTableScene(RandomScene):
         z = 0.75 + 0.25 * np.random.random()
         theta = 180 * np.random.random()
         phi = 360 * np.random.random()
-        axis = [np.cos(theta)*np.cos(phi), np.cos(theta)*np.sin(phi), np.sin(theta)]
+        axis = [np.cos(theta) * np.cos(phi), np.cos(theta) * np.sin(phi), np.sin(theta)]
         angle = 360 * np.random.random()
         return [xy[0], xy[1], z], (axis, angle)
 
     def place_objects(self):
         self._used_objects = []
         for i, o in enumerate(self._loaded_objects):
-            print(f'placing {o.get_name()}')
+            print(f"placing {o.get_name()}")
             prim = o.get_primitive()
             contact_sensor = o.get_contact_sensor()
 
@@ -479,7 +494,7 @@ class AllObjectTableScene(RandomScene):
                 if no_collision:
                     break
 
-            print(f'{o.get_name()} placed')
+            print(f"{o.get_name()} placed")
             self._used_objects.append(o)
 
     def randomize_camera_parameters(self):
@@ -490,11 +505,11 @@ class AllObjectTableScene(RandomScene):
         th = np.arcsin(z * (np.sin(theta1) - np.sin(theta0)) + np.sin(theta0))
         phi = 360 * np.random.random()
         ph = np.deg2rad(phi)
-        position = np.array([0, 0, 0.75]) + d * np.array([np.cos(th)*np.cos(ph), np.cos(th)*np.sin(ph), np.sin(th)])
+        position = np.array([0, 0, 0.75]) + d * np.array([np.cos(th) * np.cos(ph), np.cos(th) * np.sin(ph), np.sin(th)])
         theta2 = np.degrees(th) + 6 * (np.random.random() - 0.5)
         phi2 = phi + 6 * (np.random.random() - 0.5)
-        orientation = rot_utils.euler_angles_to_quats(np.array([0, theta2, 180+phi2]), degrees=True)
-        print(f'position={position}, orientation={orientation}')
+        orientation = rot_utils.euler_angles_to_quats(np.array([0, theta2, 180 + phi2]), degrees=True)
+        print(f"position={position}, orientation={orientation}")
         self._camera.set_world_pose(position, orientation)
 
         self._camera.set_focal_length(1.88 + 0.1128 * (np.random.random() - 0.5))  # 3% of the spec
@@ -529,38 +544,30 @@ def read_contact_sensor(contact_sensor):
         contact_point["body1"] = csif.decode_body_name(int(cs_raw_data["body1"][i]))
 
         contact_point["position"] = backend_utils.create_tensor_from_list(
-                                    [
-                                        cs_raw_data["position"][i][0],
-                                        cs_raw_data["position"][i][1],
-                                        cs_raw_data["position"][i][2],
-                                    ],
-                                    dtype="float32",
-                                    device=device,
-                                    )
+            [
+                cs_raw_data["position"][i][0],
+                cs_raw_data["position"][i][1],
+                cs_raw_data["position"][i][2],
+            ],
+            dtype="float32",
+            device=device,
+        )
         contact_point["normal"] = backend_utils.create_tensor_from_list(
-                                    [
-                                        cs_raw_data["normal"][i][0],
-                                        cs_raw_data["normal"][i][1],
-                                        cs_raw_data["normal"][i][2]
-                                    ],
-                                    dtype="float32",
-                                    device=device,
-                                    )
+            [cs_raw_data["normal"][i][0], cs_raw_data["normal"][i][1], cs_raw_data["normal"][i][2]],
+            dtype="float32",
+            device=device,
+        )
         contact_point["impulse"] = backend_utils.create_tensor_from_list(
-                                    [
-                                        cs_raw_data["impulse"][i][0],
-                                        cs_raw_data["impulse"][i][1],
-                                        cs_raw_data["impulse"][i][2],
-                                    ],
-                                    dtype="float32",
-                                    device=device,
-                                    )
+            [
+                cs_raw_data["impulse"][i][0],
+                cs_raw_data["impulse"][i][1],
+                cs_raw_data["impulse"][i][2],
+            ],
+            dtype="float32",
+            device=device,
+        )
         current_frame.append(contact_point)
     return current_frame
-
-
-# sr = world.scene._scene_registry
-# print(sr._rigid_objects, sr._geometry_objects)
 
 
 class AlignedToppoScene(Scene):
@@ -569,7 +576,10 @@ class AlignedToppoScene(Scene):
 
     def create_toppos(self, n):
         self._loaded_objects = []
-        usd_file = os.path.join(os.environ['HOME'], 'Dataset/Konbini/VER002/Seamless/vt2048/15_TOPPO-ART-vt2048SA/15_TOPPO-ART-pl2048SA/15_TOPPO-ART-pl2048SA.usd')
+        usd_file = os.path.join(
+            os.environ["HOME"],
+            "Dataset/Konbini/VER002/Seamless/vt2048/15_TOPPO-ART-vt2048SA/15_TOPPO-ART-pl2048SA/15_TOPPO-ART-pl2048SA.usd",
+        )
         for i in range(n):
             self._loaded_objects.append(Object(usd_file, i, self._world))
 
@@ -577,7 +587,7 @@ class AlignedToppoScene(Scene):
         global used_objects
         used_objects = []
 
-        world.reset()        
+        world.reset()
         for i, o in enumerate(loaded_objects):
             prim = o.get_primitive()
             pos_xy = np.array([0.0, -0.1]) + np.array([0.0, 0.025]) * i
@@ -599,11 +609,11 @@ class Recorder:
         self.__output_force = output_force
         self._frameNo = 0
         self._camera = camera
-        self._data_dir = 'data'
+        self._data_dir = "data"
 
     def save_state(self, scene):
         """
-            Record bin-state and force
+        Record bin-state and force
         """
         contact_positions = []
         impulse_values = []
@@ -617,11 +627,11 @@ class Recorder:
             # print(contact_sensor_contact_sensor_interface.get_contact_sensor_raw_data(contact_sensor.prim_path))
 
             for contact in contacts:
-                if scipy.linalg.norm(contact['impulse']) > 1e-8:
-                    objectA = scene.get_object_name_by_primitive_name(contact['body0'])
-                    objectB = scene.get_object_name_by_primitive_name(contact['body1'])
-                    contact_positions.append(contact['position'])
-                    impulse_values.append(scipy.linalg.norm(contact['impulse']))
+                if scipy.linalg.norm(contact["impulse"]) > 1e-8:
+                    objectA = scene.get_object_name_by_primitive_name(contact["body0"])
+                    objectB = scene.get_object_name_by_primitive_name(contact["body1"])
+                    contact_positions.append(contact["position"])
+                    impulse_values.append(scipy.linalg.norm(contact["impulse"]))
                     contacting_objects.append((objectA, objectB))
 
             prim = o.get_primitive()
@@ -631,19 +641,28 @@ class Recorder:
             quat = pose.ExtractRotation().GetQuaternion()
             quat = np.array(list(quat.imaginary) + [quat.real])
             bin_state.append((o.get_name(), (trans, quat)))
-            print(f'SCENE[{self._frameNo},{o.get_name()}]:', trans, quat)
+            print(f"SCENE[{self._frameNo},{o.get_name()}]:", trans, quat)
 
-        pd.to_pickle(bin_state, os.path.join(self._data_dir, 'bin_state{:05d}.pkl'.format(self._frameNo)))
-        pd.to_pickle((contact_positions, impulse_values, contacting_objects), os.path.join(self._data_dir, 'contact_raw_data{:05d}.pkl'.format(self._frameNo)))
+        pd.to_pickle(bin_state, os.path.join(self._data_dir, "bin_state{:05d}.pkl".format(self._frameNo)))
+        pd.to_pickle(
+            (contact_positions, impulse_values, contacting_objects),
+            os.path.join(self._data_dir, "contact_raw_data{:05d}.pkl".format(self._frameNo)),
+        )
 
         if self.__output_force:
             force_dist = self.convert_to_force_distribution(contact_positions, impulse_values, contacting_objects)
-            pd.to_pickle(force_dist, os.path.join(self._data_dir, 'force_zip{:05d}.pkl'.format(self._frameNo)))
+            pd.to_pickle(force_dist, os.path.join(self._data_dir, "force_zip{:05d}.pkl".format(self._frameNo)))
 
     def save_image(self, viewNum=None):
-        rgb = self._camera.get_current_frame()['rgba'][:, :, :3]
-        cv2.imwrite(os.path.join(self._data_dir, f'rgb{self._frameNo:05}_{viewNum:05}.jpg'), cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
-        pd.to_pickle(self._camera.get_world_pose(), os.path.join(self._data_dir, f'camera_info{self._frameNo:05}_{viewNum:05}.pkl'))
+        rgb = self._camera.get_current_frame()["rgba"][:, :, :3]
+        cv2.imwrite(
+            os.path.join(self._data_dir, f"rgb{self._frameNo:05}_{viewNum:05}.jpg"),
+            cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR),
+        )
+        pd.to_pickle(
+            self._camera.get_world_pose(),
+            os.path.join(self._data_dir, f"camera_info{self._frameNo:05}_{viewNum:05}.pkl"),
+        )
 
     def incrementFrameNumber(self):
         self._frameNo += 1
@@ -654,7 +673,7 @@ class Recorder:
     #     return obj.get_world_pose()
 
     def convert_to_force_distribution(self, contact_positions, impulse_values, log_scale=False):
-        fmap = forcemap.GridForceMap('konbini_shelf')
+        fmap = forcemap.GridForceMap("konbini_shelf")
         d = fmap.getDensity(contact_positions, impulse_values)
         if log_scale:
             d = np.log(1 + d)
@@ -698,9 +717,14 @@ class DatasetGenerator(metaclass=ABCMeta):
 # Seria basket scene (IROS2023, moonshot interim demo.)
 # scene = RandomSeriaBasketScene(world, conf)
 
-scene = RandomTableScene(world, conf)
+# scene = RandomTableScene(world, conf)
 
-# scene = AllObjectTableScene(world, conf)
+# # scene = AllObjectTableScene(world, conf)
 
-dataset = DatasetGenerator(scene, output_force=False)
-dataset.create(2, 3)
+# dataset = DatasetGenerator(scene, output_force=False)
+# dataset.create(5, 3)
+
+from omni.isaac.core.utils.stage import add_reference_to_stage
+
+asset_path = os.environ["HOME"] + "/Dataset/scenes/green_table_scene.usd"
+add_reference_to_stage(usd_path=asset_path, prim_path="/World/env")
