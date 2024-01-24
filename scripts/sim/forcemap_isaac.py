@@ -17,25 +17,28 @@ import omni.isaac.core.utils.prims as prim_utils
 import omni.usd
 import pandas as pd
 import scipy
+from core.object_loader import ObjectInfo
 from force_estimation import forcemap
-from object_loader import ObjectsInfo
 from omni.isaac.core import SimulationContext, World
 from omni.isaac.core.materials import PhysicsMaterial
+from omni.isaac.core.prims.xform_prim import XFormPrim
 from omni.isaac.sensor import Camera, ContactSensor
 from omni.physx.scripts import utils
-from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, UsdShade
+from pxr import Gf, Sdf, Usd, UsdGeom, UsdLux, UsdPhysics, UsdShade
 
 # from omni.isaac.dynamic_control import _dynamic_control
 # dc = _dynamic_control.acquire_dynamic_control_interface()
 
 
-object_dir = f'{os.environ["HOME"]}/Dataset/ycb_conveni'
-config_dir = f'{os.environ["HOME"]}/Program/moonshot/ae_lstm/specification/config'
-conf = ObjectsInfo(object_dir, config_dir, "ycb_conveni_v1")
+conf = ObjectInfo("ycb_conveni_v1")
 
 # assets_root_path = get_assets_root_path()
 # asset_path = assets_root_path + "/Isaac/Robots/Franka/franka_alt_fingers.usd"
 # world.scene.add_default_ground_plane()
+
+# from omni.isaac.core.utils.stage import add_reference_to_stage
+# asset_path = os.environ["HOME"] + "/Dataset/scenes/green_table_scene.usd"
+# add_reference_to_stage(usd_path=asset_path, prim_path="/World/env")
 
 
 # asset_path = os.environ["HOME"] + "/Downloads/Collected_ycb_piled_scene/simple_shelf_scene.usd"
@@ -154,7 +157,7 @@ class Object:
         self._usd_file = usd_file
         self._primitive_name = f"/World/object{object_id}"
         self._prim = create_prim_from_usd(world.stage, self._primitive_name, usd_file)
-        assign_physics_material(world.stage, self._prim, self._primitive_name)
+        # assign_physics_material(world.stage, self._prim, self._primitive_name)
         self._id = object_id
         self._name = name
         utils.setRigidBody(self._prim, "convexDecomposition", False)
@@ -203,7 +206,6 @@ class Scene:
         self.create_env()
         self.create_lights()
         self._camera = self.create_camera_D415()
-        self._camera.initialize()
         self.create_objects()
 
     @abstractmethod
@@ -285,6 +287,7 @@ class Scene:
             resolution=(1280, 720),
             orientation=rot_utils.euler_angles_to_quats(np.array([0, 45, 180]), degrees=True),
         )
+        camera.initialize()
         camera.set_focal_length(1.88)
         camera.set_focus_distance(40)
         camera.set_horizontal_aperture(2.7288)
@@ -294,12 +297,17 @@ class Scene:
 
     def create_lights(self):
         for i in range(self._number_of_lights):
-            prim_utils.create_prim(
-                f"/World/Light/SphereLight{i}",
-                "SphereLight",
-                translation=(0.0, 0.0, 3.0),
-                attributes={"radius": 1.0, "intensity": 5000.0, "color": (0.8, 0.8, 0.8)},
-            )
+            # prim_utils.create_prim(
+            #     f"/World/Light/SphereLight{i}",
+            #     "SphereLight",
+            #     translation=(0.0, 0.0, 3.0),
+            #     attributes={"radius": 1.0, "intensity": 5000.0, "color": (0.8, 0.8, 0.8)},
+            # )
+            light = UsdLux.SphereLight.Define(self._world.stage, Sdf.Path(f"/World/Light/SphereLight{i}"))
+            light.CreateRadiusAttr(1.0)
+            light.CreateIntensityAttr(5000.0)
+            light.CreateColorAttr((0.8, 0.8, 0.8))
+            XFormPrim(str(light.GetPath().pathString)).set_world_pose([0.0, 0.0, 3.0])
 
     def randomize_lights(self):
         for i in range(self._number_of_lights):
@@ -372,7 +380,7 @@ class RandomScene(Scene):
         self.place_objects(10)
 
     def change_observation_condition(self):
-        self.randomize_lights()
+        # self.randomize_lights()
         self.randomize_camera_parameters()
         self.randomize_object_colors()
 
@@ -635,7 +643,7 @@ class Recorder:
                     contacting_objects.append((objectA, objectB))
 
             prim = o.get_primitive()
-            pose = omni.usd.utils.get_world_transform_matrix(prim)
+            pose = omni.usd.get_world_transform_matrix(prim)
             trans = pose.ExtractTranslation()
             trans = np.array(trans)
             quat = pose.ExtractRotation().GetQuaternion()
@@ -686,8 +694,10 @@ class DatasetGenerator(metaclass=ABCMeta):
         self._recorder = Recorder(self._scene._camera, output_force=output_force)
 
     def create(self, number_of_scenes, number_of_views=5):
-        simulation_context.initialize_physics()
-        simulation_context.play()
+        # simulation_context.initialize_physics()
+        # simulation_context.play()
+        self._scene._world.initialize_physics()
+        self._scene._world.play()
 
         for frameNum in range(number_of_scenes):
             self._scene.change_scene()
@@ -706,8 +716,11 @@ class DatasetGenerator(metaclass=ABCMeta):
         while simulation_app.is_running():
             self._scene._world.step(render=True)
         # simulation_context.step(render=True)
-        simulation_context.stop()
-        simulation_app.close()
+
+        # simulation_context.stop()
+        # simulation_app.close()
+        self._scene._world.stop()
+        self._scene._world.close()
 
 
 # Konbini objects
@@ -715,16 +728,11 @@ class DatasetGenerator(metaclass=ABCMeta):
 # names = [os.path.splitext(usd_file.split("/")[-1])[0] for usd_file in usd_files]
 
 # Seria basket scene (IROS2023, moonshot interim demo.)
-# scene = RandomSeriaBasketScene(world, conf)
+scene = RandomSeriaBasketScene(world, conf)
 
 # scene = RandomTableScene(world, conf)
 
 # # scene = AllObjectTableScene(world, conf)
 
-# dataset = DatasetGenerator(scene, output_force=False)
+dataset = DatasetGenerator(scene, output_force=False)
 # dataset.create(5, 3)
-
-from omni.isaac.core.utils.stage import add_reference_to_stage
-
-asset_path = os.environ["HOME"] + "/Dataset/scenes/green_table_scene.usd"
-add_reference_to_stage(usd_path=asset_path, prim_path="/World/env")
