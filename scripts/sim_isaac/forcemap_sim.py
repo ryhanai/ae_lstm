@@ -1,28 +1,32 @@
 from omni.isaac.kit import SimulationApp
 
-simulation_app = SimulationApp({"headless": True})
+simulation_app = SimulationApp({"headless": False})
 
 import os
 import re
 from abc import ABCMeta, abstractmethod
 
 import cv2
+import matplotlib.pyplot as plt
 import numpy as np
 import omni
 import omni.isaac.core.utils.numpy.rotations as rot_utils
 import omni.isaac.core.utils.prims as prim_utils
 import pandas as pd
 import scipy
+from core.object_loader import ObjectInfo
+from core.utils import message
 from force_estimation import forcemap
-from object_loader import ObjectInfo
 from omni.isaac.core import World
 from omni.isaac.core.materials.physics_material import PhysicsMaterial
 from omni.isaac.core.objects import FixedCuboid
+from omni.isaac.core.physics_context.physics_context import PhysicsContext
 from omni.isaac.core.prims import GeometryPrim
+from omni.isaac.core.prims.xform_prim import XFormPrim
 from omni.isaac.core.utils.stage import add_reference_to_stage, create_new_stage
-from omni.isaac.sensor import Camera, ContactSensor
+from omni.isaac.sensor import Camera, ContactSensor, _sensor
 from omni.physx.scripts import utils
-from pxr import Gf, Sdf, UsdGeom, UsdPhysics, UsdShade
+from pxr import Gf, PhysxSchema, Sdf, UsdGeom, UsdLux, UsdPhysics, UsdShade
 
 
 def set_translate(prim, new_loc):
@@ -44,13 +48,13 @@ def set_translate(prim, new_loc):
         xform_op.Set(Gf.Matrix4d().SetTranslate(new_loc))
 
 
-def read_contact_sensor(simulation_context, contact_sensor):
-    csif = contact_sensor._contact_sensor_interface
+def read_contact_sensor(contact_sensor):
+    csif = _sensor.acquire_contact_sensor_interface()
     cs_raw_data = csif.get_contact_sensor_raw_data(contact_sensor.prim_path)
-    backend_utils = simulation_context.backend_utils
-    device = simulation_context.device
+    backend_utils = contact_sensor._backend_utils
+    device = contact_sensor._device
 
-    current_frame = []
+    contacts = []
     for i in range(len(cs_raw_data)):
         contact_point = dict()
         contact_point["body0"] = csif.decode_body_name(int(cs_raw_data["body0"][i]))
@@ -79,8 +83,16 @@ def read_contact_sensor(simulation_context, contact_sensor):
             dtype="float32",
             device=device,
         )
-        current_frame.append(contact_point)
+        contacts.append(contact_point)
+
+    current_frame = {}
+    current_frame["contacts"] = contacts
+    if len(contacts) > 0:
+        current_frame["in_contact"] = True
+    else:
+        current_frame["in_contact"] = False
     return current_frame
+    # return contact_sensor.get_current_frame()
 
 
 class Object:
@@ -120,10 +132,11 @@ class Object:
                 name=f"{self._id}_cs",
                 min_threshold=0,
                 max_threshold=10000000,
-                radius=0.5,
+                radius=1,
                 translation=np.array([0, 0, 0]),
             )
         )
+        self._contact_sensor.add_raw_contact_data_to_frame()
 
     def add_material(self):
         self.get_geom_primitive().apply_physics_material(
@@ -182,10 +195,8 @@ class ForcemapSim:
                 no_collision = True
                 for j in range(3):
                     self.wait_for_stability(n_steps=1)
-                    contacts = read_contact_sensor(self.get_world(), contact_sensor)
-                    if len(contacts) > 0:
-                        # if c['body1'] != '/World/env/simple_shelf':
-                        # print(f"initial collision with {c['body1']}. replace ...")
+                    cs_current_frame = read_contact_sensor(contact_sensor)
+                    if cs_current_frame["in_contact"]:
                         no_collision = False
                 if no_collision:
                     break
@@ -207,6 +218,7 @@ class ForcemapSim:
             resolution=(1280, 720),
             orientation=rot_utils.euler_angles_to_quats(np.array([0, 45, 180]), degrees=True),
         )
+        camera.initialize()  # This is needed after Isaac 2023
         camera.set_focal_length(1.88)
         camera.set_focus_distance(40)
         camera.set_horizontal_aperture(2.7288)
@@ -221,12 +233,18 @@ class ForcemapSim:
 
     def add_lights(self):
         for i in range(self._number_of_lights):
-            prim_utils.create_prim(
-                f"/World/Light/SphereLight{i}",
-                "SphereLight",
-                translation=(0.0, 0.0, 3.0),
-                attributes={"radius": 1.0, "intensity": 5000.0, "color": (0.8, 0.8, 0.8)},
-            )
+            # This doesn't work after Isaac 2023
+            # prim_utils.create_prim(
+            #     f"/World/Light/SphereLight{i}",
+            #     "SphereLight",
+            #     translation=(0.0, 0.0, 3.0),
+            #     attributes={"radius": 1.0, "intensity": 5000.0, "color": (0.8, 0.8, 0.8)},
+            # )
+            light = UsdLux.SphereLight.Define(self._world.stage, Sdf.Path(f"/World/Light/SphereLight{i}"))
+            light.CreateRadiusAttr(1.0)
+            light.CreateIntensityAttr(5000.0)
+            light.CreateColorAttr((0.8, 0.8, 0.8))
+            XFormPrim(str(light.GetPath().pathString)).set_world_pose([0.0, 0.0, 3.0])
 
     def randomize_lights(self):
         for i in range(self._number_of_lights):
@@ -279,6 +297,8 @@ class ForcemapSim:
         create_new_stage()
         # self._world = World(**self._world_settings)
         self._world = World()
+        # self._physics_context = PhysicsContext()
+        # self._physics_context.enable_gpu_dynamics(flag=True)
         # self._world.scene.add_default_ground_plane()
 
         # world.scene.add(XFormPrim(prim_path="/World/collisionGroups", name="collision_groups_xform"))
@@ -291,8 +311,16 @@ class ForcemapSim:
         for object_id, (name, usd_file, mass) in enumerate(self._obj_config):
             prim_path = f"/World/object{object_id}"
             geom_prim = self.create_primitive(usd_file, prim_path, name)
+
             # geom_prim.set_collision_approximation("convexDecomposition")
             utils.setRigidBody(geom_prim.prim.GetPrim(), "convexDecomposition", False)
+            # utils.setRigidBody(geom_prim.prim.GetPrim(), "sdfMesh", False)
+
+            # prim = geom_prim.prim.GetPrim()
+            # meshcollisionAPI = UsdPhysics.MeshCollisionAPI.Apply(prim)
+            # meshCollision = PhysxSchema.PhysxSDFMeshCollisionAPI.Apply(prim)
+            # meshCollision.CreateSdfResolutionAttr().Set(256)
+            # meshcollisionAPI.CreateApproximationAttr().Set("sdf")
             self._loaded_objects.append(Object(usd_file, object_id, mass, self._world, geom_prim))
 
         for o in self._loaded_objects:
@@ -314,7 +342,7 @@ class ForcemapSim:
         self._used_objects = []
 
     def change_observation_condition(self):
-        self.randomize_lights()
+        # self.randomize_lights()
         self.randomize_camera_parameters()
         self.randomize_object_colors()
 
@@ -339,7 +367,7 @@ class ForcemapSim:
                     color=np.array(color),
                 )
             )
-            w.set_visibility(False)
+            w.set_visibility(True)
             self._walls.append(w)
 
     # async def _add_table(self):
@@ -671,10 +699,8 @@ class AllObjectTabletopSim(ForcemapSim):
                 no_collision = True
                 for j in range(3):
                     self.wait_for_stability(n_steps=1)
-                    contacts = read_contact_sensor(self.get_world(), contact_sensor)
-                    if len(contacts) > 0:
-                        # if c['body1'] != '/World/env/simple_shelf':
-                        # print(f"initial collision with {c['body1']}. replace ...")
+                    cs_current_frame = read_contact_sensor(contact_sensor)
+                    if cs_current_frame["in_contact"]:
                         no_collision = False
                 if no_collision:
                     break
@@ -764,29 +790,42 @@ class Recorder:
         bin_state = []
 
         for o in self._sim.get_active_objects():
-            contact_sensor = o.get_contact_sensor()
-            contacts = read_contact_sensor(self._sim.get_world(), contact_sensor)
-            # print(contact_sensor.get_current_frame())
-            # print(contact_sensor_contact_sensor_interface.get_contact_sensor_raw_data(contact_sensor.prim_path))
-
-            for contact in contacts:
-                if scipy.linalg.norm(contact["impulse"]) > 1e-8:
-                    objectA = self.get_object_name(contact["body0"])
-                    objectB = self.get_object_name(contact["body1"])
-                    if objectA == None or objectB == None:
-                        continue
-                    contact_positions.append(contact["position"])
-                    impulse_values.append(scipy.linalg.norm(contact["impulse"]))
-                    contacting_objects.append((objectA, objectB))
-
-            prim = o.get_primitive()
-            pose = omni.usd.utils.get_world_transform_matrix(prim)
+            pose = omni.usd.get_world_transform_matrix(o.get_primitive())
             trans = pose.ExtractTranslation()
             trans = np.array(trans)
             quat = pose.ExtractRotation().GetQuaternion()
             quat = np.array(list(quat.imaginary) + [quat.real])
+
+            contact_sensor = o.get_contact_sensor()
+            cs_current_frame = read_contact_sensor(contact_sensor)
+
+            print(
+                f"SCENE[{self._frameNo}], ",
+                o.get_name(),
+                f"# of contacts={len(cs_current_frame['contacts'])}",
+                trans,
+                quat,
+            )
+
+            for contact in cs_current_frame["contacts"]:
+                print("CC: ", contact)
+                objectA = self.get_object_name(contact["body0"])
+                objectB = self.get_object_name(contact["body1"])
+                # print(f"C: {contact['body0']}, {contact['body1']}", end="  ")
+                # print(f"C: {objectA}, {objectB}", end="  ")
+
+                # if objectA == None or objectB == None:
+                #     continue
+
+                # if scipy.linalg.norm(contact["impulse"]) < 1e-12:
+                #     print(f"skip, too small impulse: {contact['impulse']}")
+                #     continue
+
+                # contact_positions.append(contact["position"])
+                # impulse_values.append(scipy.linalg.norm(contact["impulse"]))
+                # contacting_objects.append((objectA, objectB))
+
             bin_state.append((o.get_name(), (trans, quat)))
-            print(f"SCENE[{self._frameNo},{o.get_name()}]:", trans, quat)
 
         pd.to_pickle(bin_state, os.path.join(self._data_dir, "bin_state{:05d}.pkl".format(self._frameNo)))
         pd.to_pickle(
@@ -799,7 +838,7 @@ class Recorder:
             pd.to_pickle(force_dist, os.path.join(self._data_dir, "force_zip{:05d}.pkl".format(self._frameNo)))
 
     def save_image(self, viewNum=None, crop_center=True):
-        rgb = self._sim.get_camera().get_current_frame()["rgba"][:, :, :3]
+        rgb = self._sim.get_camera().get_rgba()[:, :, :3]
         rgb_path = os.path.join(self._data_dir, f"rgb{self._frameNo:05}_{viewNum:05}.jpg")
         if crop_center:
             cam_height, cam_width, _ = rgb.shape
@@ -845,7 +884,7 @@ class DatasetGenerator:
 
             for viewNum in range(number_of_views):
                 self._sim.change_observation_condition()
-                self._sim.wait_for_stability(n_steps=10)
+                self._sim.wait_for_stability(n_steps=20)
                 self._recorder.save_image(viewNum)
             self._recorder.save_state()
             self._recorder.incrementFrameNumber()
@@ -870,9 +909,7 @@ class DatasetGenerator:
 
 
 env_usd_file = f'{os.environ["HOME"]}/Dataset/scenes/green_table_scene.usd'
-object_dir = f'{os.environ["HOME"]}/Dataset/ycb_conveni'
-config_dir = f'{os.environ["HOME"]}/Program/moonshot/ae_lstm/specification/config'
-obj_config = ObjectInfo(object_dir, config_dir, "ycb_conveni_v1")
+obj_config = ObjectInfo("ycb_v1")
 
 sim = RandomTabletopSim()
 sim.setup_scene(env_usd_file, obj_config)

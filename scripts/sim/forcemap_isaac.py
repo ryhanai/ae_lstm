@@ -1,8 +1,13 @@
 # -*- coding: utf-8 -*-
+# For Isaac Sim 2022.2.0
+
+# TODO (if necessary)
+# add walls around objects
+# add physics material and change restitution, friction etc.
 
 from omni.isaac.kit import SimulationApp
 
-simulation_app = SimulationApp({"headless": False})
+simulation_app = SimulationApp({"headless": True})
 
 import glob
 import os
@@ -26,29 +31,7 @@ from omni.isaac.sensor import Camera, ContactSensor
 from omni.physx.scripts import utils
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdLux, UsdPhysics, UsdShade
 
-# from omni.isaac.dynamic_control import _dynamic_control
-# dc = _dynamic_control.acquire_dynamic_control_interface()
-
-
 conf = ObjectInfo("ycb_conveni_v1")
-
-# assets_root_path = get_assets_root_path()
-# asset_path = assets_root_path + "/Isaac/Robots/Franka/franka_alt_fingers.usd"
-# world.scene.add_default_ground_plane()
-
-# from omni.isaac.core.utils.stage import add_reference_to_stage
-# asset_path = os.environ["HOME"] + "/Dataset/scenes/green_table_scene.usd"
-# add_reference_to_stage(usd_path=asset_path, prim_path="/World/env")
-
-
-# asset_path = os.environ["HOME"] + "/Downloads/Collected_ycb_piled_scene/simple_shelf_scene.usd"
-
-
-# add_reference_to_stage(usd_path=asset_path, prim_path="/World")
-# prim = world.stage.GetPrimAtPath('/World')
-# stage = get_current_stage()
-# scope = UsdGeom.Scope.Define(world.stage, 'Objects')
-# prim.GetReferences().AddReference(asset_path)
 
 world = World(stage_units_in_meters=1.0)
 simulation_context = SimulationContext()
@@ -85,19 +68,6 @@ def set_translate(prim, new_loc):
 
 
 def set_rotate_mat(prim, rot_mat):
-    # properties = prim.GetPropertyNames()
-    # if "xformOp:rotate" in properties:
-    #     rotate_attr = prim.GetAttribute("xformOp:rotate")
-    #     rotate_attr.Set(rot_mat)
-    # elif "xformOp:transform" in properties:
-    #     transform_attr = prim.GetAttribute("xformOp:transform")
-    #     matrix = prim.GetAttribute("xformOp:transform").Get()
-    #     matrix.SetRotateOnly(rot_mat.ExtractRotation())
-    #     transform_attr.Set(matrix)
-    # else:
-    #     xform = UsdGeom.Xformable(prim)
-    #     xform_op = xform.AddXformOp(UsdGeom.XformOp.TypeTransform, UsdGeom.XformOp.PrecisionDouble, "")
-    #     xform_op.Set(Gf.Matrix4d().SetRotate(rot_mat))
     xform = UsdGeom.Xformable(prim)
     xform_op = xform.AddXformOp(UsdGeom.XformOp.TypeTransform, UsdGeom.XformOp.PrecisionDouble, "")
     xform_op.Set(Gf.Matrix4d().SetRotate(rot_mat))
@@ -222,6 +192,10 @@ class Scene:
         """
         pass
 
+    @abstractmethod
+    def get_env_name(self):
+        return "env"
+
     def get_active_objects(self):
         return self._used_objects
 
@@ -250,8 +224,6 @@ class Scene:
                     self.wait_for_stability(count=1)
                     contacts = read_contact_sensor(contact_sensor)
                     if len(contacts) > 0:
-                        # if c['body1'] != '/World/env/simple_shelf':
-                        # print(f"initial collision with {c['body1']}. replace ...")
                         no_collision = False
                 if no_collision:
                     break
@@ -297,17 +269,20 @@ class Scene:
 
     def create_lights(self):
         for i in range(self._number_of_lights):
-            # prim_utils.create_prim(
-            #     f"/World/Light/SphereLight{i}",
-            #     "SphereLight",
-            #     translation=(0.0, 0.0, 3.0),
-            #     attributes={"radius": 1.0, "intensity": 5000.0, "color": (0.8, 0.8, 0.8)},
-            # )
-            light = UsdLux.SphereLight.Define(self._world.stage, Sdf.Path(f"/World/Light/SphereLight{i}"))
-            light.CreateRadiusAttr(1.0)
-            light.CreateIntensityAttr(5000.0)
-            light.CreateColorAttr((0.8, 0.8, 0.8))
-            XFormPrim(str(light.GetPath().pathString)).set_world_pose([0.0, 0.0, 3.0])
+            # IsaacSim 2022.2.0
+            prim_utils.create_prim(
+                f"/World/Light/SphereLight{i}",
+                "SphereLight",
+                translation=(0.0, 0.0, 3.0),
+                attributes={"radius": 1.0, "intensity": 5000.0, "color": (0.8, 0.8, 0.8)},
+            )
+
+            # IsaacSim > 2023?
+            # light = UsdLux.SphereLight.Define(self._world.stage, Sdf.Path(f"/World/Light/SphereLight{i}"))
+            # light.CreateRadiusAttr(1.0)
+            # light.CreateIntensityAttr(5000.0)
+            # light.CreateColorAttr((0.8, 0.8, 0.8))
+            # XFormPrim(str(light.GetPath().pathString)).set_world_pose([0.0, 0.0, 3.0])
 
     def randomize_lights(self):
         for i in range(self._number_of_lights):
@@ -315,7 +290,7 @@ class Scene:
             pos_xy = np.array([-2.5, -2.5]) + 5.0 * np.random.random(2)
             pos_z = 2.5 + 1.5 * np.random.random()
             set_translate(prim, Gf.Vec3d(pos_xy[0], pos_xy[1], pos_z))
-            prim.GetAttribute("intensity").Set(2000.0 + 8000.0 * np.random.random())
+            prim.GetAttribute("intensity").Set(1000.0 + 15000.0 * np.random.random())
             prim.GetAttribute("color").Set(Gf.Vec3f(*(np.array([0.2, 0.2, 0.2]) + 0.6 * np.random.random(3))))
             # prim.GetAttribute("scale").Set(Gf.Vec3f(*(np.array([0.2, 0.2, 0.2]) + 0.6 * np.random.random(3))))
 
@@ -367,7 +342,7 @@ class RandomScene(Scene):
         try:
             return self._object_inv_table[prim_name]
         except KeyError:
-            return "seria_basket"
+            return self.get_env_name()
 
     def reset_object_positions(self):
         for i, o in enumerate(self._loaded_objects):
@@ -380,7 +355,7 @@ class RandomScene(Scene):
         self.place_objects(10)
 
     def change_observation_condition(self):
-        # self.randomize_lights()
+        self.randomize_lights()
         self.randomize_camera_parameters()
         self.randomize_object_colors()
 
@@ -411,6 +386,9 @@ class RandomSeriaBasketScene(RandomScene):
         )
         self._camera.set_world_pose(position, orientation)
 
+    def get_env_name(self):
+        return "seria_basket"
+
 
 class RandomTableScene(RandomScene):
     def __init__(self, world, conf, multiviews=False):
@@ -420,8 +398,7 @@ class RandomTableScene(RandomScene):
 
     def change_scene(self):
         self._world.reset()
-        # number_of_objects = np.clip(np.random.poisson(7), 1, 10)
-        number_of_objects = np.clip(np.random.poisson(9), 3, 12)
+        number_of_objects = np.clip(np.random.poisson(9), 3, 9)
         self.place_objects(number_of_objects)
 
     def sample_object_pose(self):
@@ -455,11 +432,14 @@ class RandomTableScene(RandomScene):
             self._camera.set_horizontal_aperture(2.6034 + 0.1562 * (np.random.random() - 0.5))
             self._camera.set_vertical_aperture(1.4621 + 0.0877 * (np.random.random() - 0.5))
         else:  # perturb viewpoint
-            position = np.array([0, 0, 1.358]) + 0.02 * (np.random.random(3) - 0.5)
+            position = np.array([0, 0, 1.6]) + 0.02 * (np.random.random(3) - 0.5)
             orientation = rot_utils.euler_angles_to_quats(
-                np.array([0, 90, 180] + 6 * (np.random.random(3) - 0.5)), degrees=True
+                np.array([0, 90, 180] + 3 * (np.random.random(3) - 0.5)), degrees=True
             )
             self._camera.set_world_pose(position, orientation)
+
+    def get_env_name(self):
+        return "table"
 
 
 class AllObjectTableScene(RandomScene):
@@ -496,8 +476,6 @@ class AllObjectTableScene(RandomScene):
                     self.wait_for_stability(count=1)
                     contacts = read_contact_sensor(contact_sensor)
                     if len(contacts) > 0:
-                        # if c['body1'] != '/World/env/simple_shelf':
-                        # print(f"initial collision with {c['body1']}. replace ...")
                         no_collision = False
                 if no_collision:
                     break
@@ -527,16 +505,6 @@ class AllObjectTableScene(RandomScene):
 
     def randomize_object_colors(self):
         pass
-
-
-# def delete_objects():
-#     global loaded_objects, contact_sensors
-#     for i, _ in enumerate(loaded_objects):
-#         # world.scene.remove_object(f'{i}_cs')
-#         world.scene.clear()
-#         prims.delete_prim(f'/World/object{i}')
-#     loaded_objects = []
-#     contact_sensors = []
 
 
 def read_contact_sensor(contact_sensor):
@@ -631,8 +599,6 @@ class Recorder:
         for o in scene.get_active_objects():
             contact_sensor = o.get_contact_sensor()
             contacts = read_contact_sensor(contact_sensor)
-            # print(contact_sensor.get_current_frame())
-            # print(contact_sensor_contact_sensor_interface.get_contact_sensor_raw_data(contact_sensor.prim_path))
 
             for contact in contacts:
                 if scipy.linalg.norm(contact["impulse"]) > 1e-8:
@@ -651,6 +617,11 @@ class Recorder:
             bin_state.append((o.get_name(), (trans, quat)))
             print(f"SCENE[{self._frameNo},{o.get_name()}]:", trans, quat)
 
+        # remove duplicated contacts
+        contact_positions, uidx = np.unique(contact_positions, axis=0, return_index=True)
+        impulse_values = [impulse_values[idx] for idx in uidx]
+        contacting_objects = [contacting_objects[idx] for idx in uidx]
+
         pd.to_pickle(bin_state, os.path.join(self._data_dir, "bin_state{:05d}.pkl".format(self._frameNo)))
         pd.to_pickle(
             (contact_positions, impulse_values, contacting_objects),
@@ -661,24 +632,38 @@ class Recorder:
             force_dist = self.convert_to_force_distribution(contact_positions, impulse_values, contacting_objects)
             pd.to_pickle(force_dist, os.path.join(self._data_dir, "force_zip{:05d}.pkl".format(self._frameNo)))
 
-    def save_image(self, viewNum=None):
-        rgb = self._camera.get_current_frame()["rgba"][:, :, :3]
-        cv2.imwrite(
-            os.path.join(self._data_dir, f"rgb{self._frameNo:05}_{viewNum:05}.jpg"),
-            cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR),
-        )
+    def save_image(self, viewNum=None, crop_center=True):
+        rgb = self._camera.get_rgba()[:, :, :3]
+        rgb_path = os.path.join(self._data_dir, f"rgb{self._frameNo:05}_{viewNum:05}.jpg")
+        if crop_center:
+            cam_height, cam_width, _ = rgb.shape
+            height = 360
+            width = 512
+            rgb_cropped = rgb[
+                int((cam_height - height) / 2) : int((cam_height - height) / 2 + height),
+                int((cam_width - width) / 2) : int((cam_width - width) / 2 + width),
+            ]
+            cv2.imwrite(rgb_path, cv2.cvtColor(rgb_cropped, cv2.COLOR_RGB2BGR))
+        else:
+            cv2.imwrite(rgb_path, cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
         pd.to_pickle(
             self._camera.get_world_pose(),
             os.path.join(self._data_dir, f"camera_info{self._frameNo:05}_{viewNum:05}.pkl"),
         )
 
+    # def save_image(self, viewNum=None):
+    #     rgb = self._camera.get_current_frame()["rgba"][:, :, :3]
+    #     cv2.imwrite(
+    #         os.path.join(self._data_dir, f"rgb{self._frameNo:05}_{viewNum:05}.jpg"),
+    #         cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR),
+    #     )
+    #     pd.to_pickle(
+    #         self._camera.get_world_pose(),
+    #         os.path.join(self._data_dir, f"camera_info{self._frameNo:05}_{viewNum:05}.pkl"),
+    #     )
+
     def incrementFrameNumber(self):
         self._frameNo += 1
-
-    # def get_bin_state(self):
-    #     prim_path = "/World/_09_gelatin_box/contact_sensor"
-    #     obj = world.scene.get_object(prim_path)
-    #     return obj.get_world_pose()
 
     def convert_to_force_distribution(self, contact_positions, impulse_values, log_scale=False):
         fmap = forcemap.GridForceMap("konbini_shelf")
@@ -717,10 +702,8 @@ class DatasetGenerator(metaclass=ABCMeta):
             self._scene._world.step(render=True)
         # simulation_context.step(render=True)
 
-        # simulation_context.stop()
-        # simulation_app.close()
         self._scene._world.stop()
-        self._scene._world.close()
+        simulation_app.close()
 
 
 # Konbini objects
@@ -728,11 +711,10 @@ class DatasetGenerator(metaclass=ABCMeta):
 # names = [os.path.splitext(usd_file.split("/")[-1])[0] for usd_file in usd_files]
 
 # Seria basket scene (IROS2023, moonshot interim demo.)
-scene = RandomSeriaBasketScene(world, conf)
+# scene = RandomSeriaBasketScene(world, conf)
 
-# scene = RandomTableScene(world, conf)
-
-# # scene = AllObjectTableScene(world, conf)
+# Table-top scene for RAL2024
+scene = RandomTableScene(world, conf)
 
 dataset = DatasetGenerator(scene, output_force=False)
 # dataset.create(5, 3)

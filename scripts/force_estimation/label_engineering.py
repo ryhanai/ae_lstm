@@ -3,6 +3,7 @@ import operator
 import os
 import time
 from concurrent import futures
+from pathlib import Path
 
 import forcemap
 import matplotlib.pyplot as plt
@@ -21,9 +22,6 @@ viewer = force_distribution_viewer.ForceDistributionViewer.get_instance()
 
 data_dir = f"{os.environ['HOME']}/Dataset/forcemap/tabletop240121"
 object_info = ObjectInfo("ycb_conveni_v1")
-
-# table coordinate
-# ([0,0,0.72],[0,0,0,1]), scale = [1,1,0.01]
 
 
 def load(scene_number):
@@ -61,18 +59,34 @@ def normal_distribution(fmap, contact_position):
     return v
 
 
-def sdfs_for_objects(bin_state, scale=1 / 0.2, sigma_d=0.01):
+def get_obj_file(object_name):
+    if object_name == "table":
+        p = Path(object_info.object_dir)
+        obj_file = str(p / "env" / "table_surface.obj")
+        mesh_scale = 1.0
+    else:
+        obj_file, mesh_scale = object_info.obj_file(object_name)
+    return obj_file, mesh_scale
+
+
+def sdfs_for_objects(bin_state, scale=1 / 0.2):
     x, y, z = fmap.get_grid_shape()
     size = max(x, y)
     height = z
     sdfs = {}
-    for object_name, object_pose in bin_state:
-        obj_file, mesh_scale = object_info.obj_file(object_name)
+
+    def sdf_for_object(object_name, object_pose):
+        obj_file, mesh_scale = get_obj_file(object_name)
         mesh = trimesh.load(obj_file, force="mesh")
         mesh.vertices = mesh_scale * mesh.vertices
         sdf = compute_sdf(mesh, object_pose, size=size, scale=scale)
         sdf = sdf[:, :, :height]
-        sdfs[object_name] = sdf
+        return sdf
+
+    object_name = "table"
+    sdfs[object_name] = sdf_for_object(object_name, ([0, 0, 0.68], [0, 0, 0, 1]))
+    for object_name, object_pose in bin_state:
+        sdfs[object_name] = sdf_for_object(object_name, object_pose)
     return sdfs
 
 
@@ -82,8 +96,9 @@ def sdf_for_scene(sdfs):
 
 def compute_density(bin_state, contact_state, scale=1 / 0.2, sigma_d=0.01):
     start_t = time.time()
-    sdfs = sdfs_for_objects(bin_state, scale, sigma_d)
-    message(f"SDF computation: {time.time() - start_t:.2f}[sec], number of SDFs={len(sdfs)}")
+    print(f"computing SDFs [{len(bin_state) + 1} SDFs]: ", end="", flush=True)
+    sdfs = sdfs_for_objects(bin_state, scale)
+    message(f"{time.time() - start_t:.2f}[sec]")
 
     fdists = []
     weighted_fdists = []
@@ -92,11 +107,11 @@ def compute_density(bin_state, contact_state, scale=1 / 0.2, sigma_d=0.01):
         return sdfs[object_name]
 
     start_t = time.time()
+    print(f"processing contact points [{len(contact_state[0])} contacts]: ", end="", flush=True)
     for contact_position, force_value, contact_pair in zip(*contact_state):
         objectA, objectB = contact_pair
-        if objectA == "table" or objectB == "table":
-            continue
-        # print(objectA, objectB)
+        # if objectA == "table" or objectB == "table":
+        #     continue
 
         sdf1 = get_sdf(objectA)
         esdf1 = np.exp(-sdf1 / (sigma_d * scale))
@@ -112,13 +127,13 @@ def compute_density(bin_state, contact_state, scale=1 / 0.2, sigma_d=0.01):
         normalized_wkde = alpha * force_value * unnormalized_wkde
         weighted_fdists.append(normalized_wkde)
 
-    message(f"contact point process: {time.time() - start_t:.2f}[sec], number of contacs={len(contact_state[0])}")
+    message(f"{time.time() - start_t:.2f}[sec]")
 
-    start_t = time.time()
+    # start_t = time.time()
     force_distribution = functools.reduce(operator.add, fdists)
     weighted_force_distribution = functools.reduce(operator.add, weighted_fdists)
     scene_sdf = sdf_for_scene(sdfs)
-    message(f"post process: {time.time() - start_t:.2f}[sec]")
+    # message(f"post process: {time.time() - start_t:.2f}[sec]")
 
     return force_distribution, weighted_force_distribution, scene_sdf
 
