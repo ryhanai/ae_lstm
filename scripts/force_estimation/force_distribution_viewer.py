@@ -49,20 +49,25 @@ class ForceDistributionViewer:
 
     def draw_bin(self, fmap):
         scene = fmap.get_scene()
-        if scene == "seria_basket" or scene == "small_table":
-            mesh_file = "seria_basket.dae"
+        if scene == "seria_basket":
+            mesh_file = "meshes_extra/seria_basket.dae"
             mesh_pose = ([0, 0, 0.73], [0, 0, 0.70711, 0.70711])
             scale = [1, 1, 1]
         elif scene == "konbini_shelf":
-            mesh_file = "simple_shelf.obj"
+            mesh_file = "meshes_extra/simple_shelf.obj"
             mesh_pose = ([0, 0, 0], [0, 0, 0, 1])
             scale = [0.01, 0.01, 0.01]
+        elif scene == "small_table":
+            mesh_file = "meshes/env/table_surface.obj"
+            mesh_pose = ([0, 0, 0.68], [0, 0, 0, 1])
+            scale = [1, 1, 1]
+
         else:
             print(f"[VIEWER] unknown scene: {scene}")
             return
 
         self.rviz_client.draw_mesh(
-            f"package://force_estimation/meshes_extra/{mesh_file}", mesh_pose, rgba=(0.5, 0.5, 0.5, 0.2), scale=scale
+            f"package://force_estimation/{mesh_file}", mesh_pose, rgba=(0.5, 0.5, 0.5, 0.2), scale=scale
         )
 
     def draw_objects(self, bin_state, fmap):

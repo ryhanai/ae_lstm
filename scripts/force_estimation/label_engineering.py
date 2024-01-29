@@ -20,7 +20,7 @@ fmap = forcemap.GridForceMap("small_table", bandwidth=0.03)
 viewer = force_distribution_viewer.ForceDistributionViewer.get_instance()
 
 
-data_dir = f"{os.environ['HOME']}/Dataset/forcemap/tabletop240121"
+data_dir = f"{os.environ['HOME']}/Dataset/forcemap/tabletop240125"
 object_info = ObjectInfo("ycb_conveni_v1")
 
 
@@ -31,10 +31,11 @@ def load(scene_number):
 
 
 def get_obj_position(bin_state, object_name):
-    try:
-        return [o[1] for o in bin_state if o[0] == object_name][0]
-    except IndexError:
-        return (np.array([0, 0, 0.73]), R.from_euler("xyz", [0, 0, 1.57080], degrees=False).as_quat())
+    return [o[1] for o in bin_state if o[0] == object_name][0]
+    # try:
+    #     return [o[1] for o in bin_state if o[0] == object_name][0]
+    # except IndexError:
+    #     return (np.array([0, 0, 0.73]), R.from_euler("xyz", [0, 0, 1.57080], degrees=False).as_quat())
 
 
 def compute_sdf(mesh, state, size, scale):
@@ -42,7 +43,7 @@ def compute_sdf(mesh, state, size, scale):
     r = R.from_quat(q)
     # r.as_matrix()
 
-    vertices = r.apply(mesh.vertices) + p - np.array([0, 0, 0.73 + 0.10])
+    vertices = r.apply(mesh.vertices) + p - np.array([0, 0, 0.73 + 0.20])
     vertices = vertices * scale
 
     sdf = mesh2sdf.compute(vertices, mesh.faces, size, fix=True, level=2 / size, return_mesh=False)
@@ -85,6 +86,7 @@ def sdfs_for_objects(bin_state, scale=1 / 0.2):
 
     object_name = "table"
     sdfs[object_name] = sdf_for_object(object_name, ([0, 0, 0.68], [0, 0, 0, 1]))
+
     for object_name, object_pose in bin_state:
         sdfs[object_name] = sdf_for_object(object_name, object_pose)
     return sdfs
@@ -123,7 +125,8 @@ def compute_density(bin_state, contact_state, scale=1 / 0.2, sigma_d=0.01):
         fdists.append(fdist)
 
         unnormalized_wkde = esdf1 * esdf2 * g
-        alpha = 1.0 / max(np.sum(unnormalized_wkde), 1e-3)
+        sumg = np.sum(g)  #####
+        alpha = 1.0 / max(np.sum(unnormalized_wkde), 1e-4) * sumg  #####
         normalized_wkde = alpha * force_value * unnormalized_wkde
         weighted_fdists.append(normalized_wkde)
 
@@ -133,6 +136,7 @@ def compute_density(bin_state, contact_state, scale=1 / 0.2, sigma_d=0.01):
     force_distribution = functools.reduce(operator.add, fdists)
     weighted_force_distribution = functools.reduce(operator.add, weighted_fdists)
     scene_sdf = sdf_for_scene(sdfs)
+    # print("fdist sum = ", np.sum(force_distribution), "wfdist sum =", np.sum(weighted_force_distribution))
     # message(f"post process: {time.time() - start_t:.2f}[sec]")
 
     return force_distribution, weighted_force_distribution, scene_sdf
@@ -254,7 +258,7 @@ def compute_force_distribution(frameNo, log_scale=False, overwrite=False):
         pd.to_pickle(d, out_file)
 
 
-def compute_force_distribution_for_all(scene_numbers=range(0, 2000)):
+def compute_force_distribution_for_all(scene_numbers=range(0, 10)):
     start_tm = time.time()
     with futures.ProcessPoolExecutor() as executor:
         executor.map(compute_force_distribution, scene_numbers)
@@ -271,4 +275,6 @@ def visualize(bin_state, d, scale=0.4):
 
 if __name__ == "__main__":
     bin_state, contact_state = load(0)
-    compute_density(bin_state, contact_state)
+    d = compute_density(bin_state, contact_state)
+    bs_v = [b for b in bin_state if b[0] != "table"]
+    visualize(bs_v, d[0] * 3e2)

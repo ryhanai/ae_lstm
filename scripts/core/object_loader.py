@@ -66,6 +66,7 @@ class ObjectInfo:
             mesh_file = f"package://force_estimation/meshes/ycb/{name}/google_16k/textured.dae"
         if self.dataset(name) == "conveni":
             mesh_file = f"package://force_estimation/meshes/conveni/{name}/textured.obj"
+
         scale = 1.0
         return mesh_file, scale
 
