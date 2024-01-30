@@ -172,7 +172,7 @@ torch.backends.cudnn.benchmark = True
 
 # argument parser
 parser = argparse.ArgumentParser(description="Learning convolutional autoencoder")
-parser.add_argument("--model", type=str, default="ForceEstimationResNetSeriaBasket")
+parser.add_argument("--model", type=str, default="ForceEstimationResNetTabletop")
 parser.add_argument("--epoch", type=int, default=10000)
 parser.add_argument("--batch_size", type=int, default=32)
 parser.add_argument("--feat_dim", type=int, default=10)
@@ -255,7 +255,7 @@ trainer = Trainer(model, optimizer, device=device)
 
 # training main
 log_dir_path = set_logdir("./" + args.log_dir, args.tag)
-save_name = os.path.join(log_dir_path, "{}.pth".format(args.model))
+save_name = os.path.join(log_dir_path, "best.pth")
 writer = SummaryWriter(log_dir=log_dir_path, flush_secs=30)
 early_stop = EarlyStopping(patience=100000)
 

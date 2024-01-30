@@ -44,7 +44,6 @@ class TabletopRandomSceneDataset(Dataset):
         task_name="tabletop240125",
         num_samples=1000,
         num_views=3,
-        view_index=None,
         method="geometry-aware",
     ):
         self.data_type = data_type
@@ -59,7 +58,6 @@ class TabletopRandomSceneDataset(Dataset):
         self._num_samples = 1000
         self._num_views = 3
         self._load_data()
-        self._view_index = view_index
 
         self._force_bounds = self._compute_force_bounds()
 
@@ -97,11 +95,17 @@ class TabletopRandomSceneDataset(Dataset):
     def __len__(self):
         return len(self._ids)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx, view_idx=None):
+        if view_idx == None:
+            view_idx = np.random.randint(self._num_views)
+        assert (
+            view_idx < self._num_views
+        ), f"the dataset has {self._num_views} views, but view_idx=={view_idx} was specified"
+
         imgs = []
         fmaps = []
         for i in idx:
-            imgs.append(self.load_image(i))
+            imgs.append(self.load_image(i, view_idx))
             fmaps.append(self.load_fmap(i))
         fmaps = np.array(fmaps)
         y_force = torch.from_numpy(fmaps).float()
@@ -119,14 +123,8 @@ class TabletopRandomSceneDataset(Dataset):
         fmap = self._normalization(fmap, np.log(self._force_bounds))
         return fmap
 
-    def load_image(self, idx):
+    def load_image(self, idx, view_idx):
         scene_idx = self._ids[idx]
-        n_views = self._num_views
-        if self._view_index == None:
-            view_idx = np.random.randint(n_views)
-        else:
-            view_idx = self._view_index
-
         rgb = cv2.cvtColor(cv2.imread(str(self._input_dir / f"rgb{idx:05}_{view_idx:05}.jpg")), cv2.COLOR_BGR2RGB)
         if self.img_format == "CWH":
             rgb = rgb.transpose(2, 0, 1)
@@ -143,8 +141,10 @@ class TabletopRandomSceneDataset(Dataset):
         return e
 
     def get_specific_view_and_force(self, idx, view_idx):
-        n_views = self.images.shape[0]
-        assert view_idx < n_views, f"the dataset has {n_views} views, but view_idx=={view_idx} was specified"
+        assert (
+            view_idx < self._num_views
+        ), f"the dataset has {self._num_views} views, but view_idx=={view_idx} was specified"
+
         x_img = self.images[view_idx, idx]
         y_force = self.forces[idx]
         return x_img, y_force

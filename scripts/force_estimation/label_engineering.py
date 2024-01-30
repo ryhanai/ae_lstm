@@ -285,4 +285,4 @@ if __name__ == "__main__":
     bin_state, contact_state = load(0)
     d = compute_density(bin_state, contact_state)
     bs_v = [b for b in bin_state if b[0] != "table"]
-    visualize(bs_v, d[0] * 1e1, draw_range=[0.03, 0.9])
+    visualize(bs_v, d[0], scale=1e1, draw_range=[0.03, 0.9])
