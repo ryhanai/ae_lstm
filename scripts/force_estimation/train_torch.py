@@ -234,7 +234,7 @@ test_loader = DataLoader(train_data, batch_size=None, num_workers=8, pin_memory=
 # model = ForceEstimationDINOv2(device=args.device)
 # model = ForceEstimationDinoRes(fine_tune_encoder=True, device=args.device)
 
-model = ForceEstimationResNetSeriaBasket(fine_tune_encoder=True, device=args.device)
+model = ForceEstimationResNetTabletop(fine_tune_encoder=True, device=args.device)
 
 print(summary(model, input_size=(args.batch_size, 3, 360, 512)))
 # print(summary(model, input_size=(args.batch_size, 3, 336, 672)))
