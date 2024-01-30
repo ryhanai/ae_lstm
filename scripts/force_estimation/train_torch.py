@@ -1,27 +1,30 @@
 #
 # Copyright (c) 2023 Ryo Hanai
-# 
+#
 
+import argparse
 import os
 import time
-import argparse
+
 import numpy as np
-from tqdm import tqdm
+
 # from collections import OrderedDict
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from eipl_arg_utils import check_args
+from eipl_print_func import print_info
+from eipl_utils import set_logdir
+from force_estimation_v4 import *
+
+# from KonbiniForceMapData import *
+# from SeriaBasketForceMapData import *
+from TabletopForceMapData import *
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import BatchSampler, RandomSampler
 from torch.utils.tensorboard import SummaryWriter
 from torchinfo import summary
-from eipl_utils import set_logdir
-from eipl_print_func import print_info
-from eipl_arg_utils import check_args
-
-# from KonbiniForceMapData import *
-from SeriaBasketForceMapData import *
-from force_estimation_v4 import *
+from tqdm import tqdm
 
 
 class EarlyStopping:
@@ -57,7 +60,7 @@ class EarlyStopping:
             self.best_score = score
             self.counter = 0
 
-        return self.save_ckpt, self.stop_flag        
+        return self.save_ckpt, self.stop_flag
 
 
 class Trainer:
@@ -70,26 +73,25 @@ class Trainer:
         optimizer (torch.optim): optimizer
         device (str):
     """
-    def __init__(self,
-                 model,
-                 optimizer,
-                 device='cpu'):
 
+    def __init__(self, model, optimizer, device="cpu"):
         self.device = device
-        self.optimizer = optimizer        
+        self.optimizer = optimizer
         self.model = model.to(self.device)
 
     def save(self, epoch, loss, savename):
-        torch.save({
-                    'epoch': epoch,
-                    'model_state_dict': self.model.state_dict(),
-                    # 'optimizer_state_dict': self.optimizer.state_dict(),
-                    'train_loss': loss[0],
-                    'test_loss': loss[1],
-                    }, savename)
+        torch.save(
+            {
+                "epoch": epoch,
+                "model_state_dict": self.model.state_dict(),
+                # 'optimizer_state_dict': self.optimizer.state_dict(),
+                "train_loss": loss[0],
+                "test_loss": loss[1],
+            },
+            savename,
+        )
 
     def process_epoch(self, data, training=True):
-
         if not training:
             self.model.eval()
 
@@ -136,15 +138,10 @@ class MVELoss(nn.Module):
 
 
 class TrainerMVE(Trainer):
-    def __init__(self,
-                 model,
-                 optimizer,
-                 device='cpu'):
-
+    def __init__(self, model, optimizer, device="cpu"):
         super().__init__(model, optimizer, device=device)
 
     def process_epoch(self, data, training=True):
-
         if not training:
             self.model.eval()
 
@@ -166,27 +163,27 @@ class TrainerMVE(Trainer):
                 loss.backward()
                 self.optimizer.step()
 
-        return total_loss / (n_batch+1), sig_term_loss / (n_batch+1), mu_term_loss / (n_batch+1)
+        return total_loss / (n_batch + 1), sig_term_loss / (n_batch + 1), mu_term_loss / (n_batch + 1)
 
 
 # GPU optimizes and accelerates the network calculations.
-torch.set_float32_matmul_precision('high')
+torch.set_float32_matmul_precision("high")
 torch.backends.cudnn.benchmark = True
 
 # argument parser
-parser = argparse.ArgumentParser(description='Learning convolutional autoencoder')
-parser.add_argument('--model',       type=str, default='ForceEstimationResNetSeriaBasket')
-parser.add_argument('--epoch',       type=int, default=10000    )
-parser.add_argument('--batch_size',  type=int, default=32       )
-parser.add_argument('--feat_dim',    type=int, default=10       )
-parser.add_argument('--stdev',       type=float, default=0.02   )
-parser.add_argument('--lr',          type=float, default=1e-3   )
-parser.add_argument('--optimizer',   type=str, default='adamax' )
-parser.add_argument('--log_dir',     default='log/'             )
-parser.add_argument('--vmin',        type=float, default=0.1    )
-parser.add_argument('--vmax',        type=float, default=0.9    )
-parser.add_argument('--device',      type=int,   default=0      )
-parser.add_argument('--tag',         help='Tag name for snap/log sub directory')
+parser = argparse.ArgumentParser(description="Learning convolutional autoencoder")
+parser.add_argument("--model", type=str, default="ForceEstimationResNetSeriaBasket")
+parser.add_argument("--epoch", type=int, default=10000)
+parser.add_argument("--batch_size", type=int, default=32)
+parser.add_argument("--feat_dim", type=int, default=10)
+parser.add_argument("--stdev", type=float, default=0.02)
+parser.add_argument("--lr", type=float, default=1e-3)
+parser.add_argument("--optimizer", type=str, default="adamax")
+parser.add_argument("--log_dir", default="log/")
+parser.add_argument("--vmin", type=float, default=0.1)
+parser.add_argument("--vmax", type=float, default=0.9)
+parser.add_argument("--device", type=int, default=0)
+parser.add_argument("--tag", help="Tag name for snap/log sub directory")
 args = parser.parse_args()
 
 # check args
@@ -194,47 +191,30 @@ args = check_args(args)
 
 # set device id
 if args.device >= 0:
-    device = 'cuda:{}'.format(args.device)
+    device = "cuda:{}".format(args.device)
 else:
-    device = 'cpu'
+    device = "cpu"
 
 # load dataset
 minmax = [args.vmin, args.vmax]
-print('loading train data ... ', end='')
+print("loading train data ... ", end="")
 t_start = time.time()
 # train_data = KonbiniRandomSceneDataset('train', minmax, stdev=args.stdev)
-train_data = SeriaBasketRandomSceneDataset('train', minmax, stdev=args.stdev)
-print(f'{time.time() - t_start} [sec]')
+# train_data = SeriaBasketRandomSceneDataset("train", minmax, stdev=args.stdev)
+train_data = TabletopRandomSceneDataset("train", minmax)
+print(f"{time.time() - t_start} [sec]")
 
-print('loading test data ... ', end='')
+print("loading test data ... ", end="")
 t_start = time.time()
 # test_data  = KonbiniRandomSceneDataset('validation', minmax, stdev=args.stdev)
-test_data  = SeriaBasketRandomSceneDataset('validation', minmax, stdev=args.stdev)
-print(f'{time.time() - t_start} [sec]')
+# test_data = SeriaBasketRandomSceneDataset("validation", minmax, stdev=args.stdev)
+test_data = TabletopRandomSceneDataset("validation", minmax)
+print(f"{time.time() - t_start} [sec]")
 
-train_sampler = BatchSampler(
-    RandomSampler(train_data),
-    batch_size=args.batch_size,
-    drop_last=False)
-
-train_loader = DataLoader(
-    train_data,
-    batch_size=None,
-    num_workers=8,
-    pin_memory=True,
-    sampler=train_sampler)
-
-test_sampler = BatchSampler(
-    RandomSampler(test_data),
-    batch_size=args.batch_size,
-    drop_last=False)
-
-test_loader = DataLoader(
-    train_data,
-    batch_size=None,
-    num_workers=8,
-    pin_memory=True,
-    sampler=test_sampler)
+train_sampler = BatchSampler(RandomSampler(train_data), batch_size=args.batch_size, drop_last=False)
+train_loader = DataLoader(train_data, batch_size=None, num_workers=8, pin_memory=True, sampler=train_sampler)
+test_sampler = BatchSampler(RandomSampler(test_data), batch_size=args.batch_size, drop_last=False)
+test_loader = DataLoader(train_data, batch_size=None, num_workers=8, pin_memory=True, sampler=test_sampler)
 
 # define model
 
@@ -242,9 +222,10 @@ test_loader = DataLoader(
 # model = ForceEstimationResNetSeriaBasketMVE(mean_network_weights, device=args.device)
 
 
-model_class = globals()[args.model]()
-print_info(f'Model: {model_class}')
-model = model_class(fine_tune_encoder=True, device=args.device)
+# model_class = globals()[args.model]()
+# print_info(f"Model: {model_class}")
+# model = model_class(fine_tune_encoder=True, device=args.device)
+
 # model.load_state_dict(mean_network_weights)
 
 # model = ForceEstimationResNet(fine_tune_encoder=True, device=args.device)
@@ -253,26 +234,28 @@ model = model_class(fine_tune_encoder=True, device=args.device)
 # model = ForceEstimationDINOv2(device=args.device)
 # model = ForceEstimationDinoRes(fine_tune_encoder=True, device=args.device)
 
+model = ForceEstimationResNetSeriaBasket(fine_tune_encoder=True, device=args.device)
+
 print(summary(model, input_size=(args.batch_size, 3, 360, 512)))
 # print(summary(model, input_size=(args.batch_size, 3, 336, 672)))
 
 # set optimizer
-if args.optimizer.casefold() == 'adam':
+if args.optimizer.casefold() == "adam":
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
-elif args.optimizer.casefold() == 'radam':
+elif args.optimizer.casefold() == "radam":
     optimizer = optim.RAdam(model.parameters(), lr=args.lr)
-elif args.optimizer.casefold() == 'adamax':
+elif args.optimizer.casefold() == "adamax":
     optimizer = optim.RAdam(model.parameters(), lr=args.lr, eps=1e-4)
 else:
-    assert False, 'Unknown optimizer name {}. please set Adam or RAdam or Adamax.'.format(args.optimizer)
+    assert False, "Unknown optimizer name {}. please set Adam or RAdam or Adamax.".format(args.optimizer)
 
 # load trainer/tester class
 trainer = Trainer(model, optimizer, device=device)
 # trainer = TrainerMVE(model, optimizer, device=device)
 
 # training main
-log_dir_path = set_logdir('./'+args.log_dir, args.tag)
-save_name = os.path.join(log_dir_path, '{}.pth'.format(args.model) )
+log_dir_path = set_logdir("./" + args.log_dir, args.tag)
+save_name = os.path.join(log_dir_path, "{}.pth".format(args.model))
 writer = SummaryWriter(log_dir=log_dir_path, flush_secs=30)
 early_stop = EarlyStopping(patience=100000)
 
@@ -287,13 +270,15 @@ def initialization_test(n_times, mve=True):
             optimizer = optim.RAdam(model.parameters(), lr=args.lr, eps=1e-4)
             trainer = TrainerMVE(model, optimizer, device=device)
             loss, sig_term, mu_term = trainer.process_epoch(test_loader, training=False)
-            print_info(f'Initialized model performance (test_loss/sig_term/mu_term): {loss}/{sig_term}/{mu_term}')
+            print_info(f"Initialized model performance (test_loss/sig_term/mu_term): {loss}/{sig_term}/{mu_term}")
         else:
             model = ForceEstimationResNetSeriaBasket(fine_tune_encoder=True, device=args.device)
             model.load_state_dict(mean_network_weights)
             optimizer = optim.RAdam(model.parameters(), lr=args.lr, eps=1e-4)
             trainer = Trainer(model, optimizer, device=device)
-            print_info(f'Initialized model performance (train_loss/test_loss): {trainer.process_epoch(train_loader, training=False)}/{trainer.process_epoch(test_loader, training=False)}')
+            print_info(
+                f"Initialized model performance (train_loss/test_loss): {trainer.process_epoch(train_loader, training=False)}/{trainer.process_epoch(test_loader, training=False)}"
+            )
 
 
 def do_train():
@@ -304,17 +289,17 @@ def do_train():
             # test_loss, test_sig_loss, test_mu_loss  = trainer.process_epoch(test_loader, training=False)
             train_loss = trainer.process_epoch(train_loader)
             test_loss = trainer.process_epoch(test_loader, training=False)
-            writer.add_scalar('Loss/train_loss', train_loss, epoch)
-            writer.add_scalar('Loss/test_loss',  test_loss,  epoch)
+            writer.add_scalar("Loss/train_loss", train_loss, epoch)
+            writer.add_scalar("Loss/test_loss", test_loss, epoch)
 
             # early stop
             save_ckpt, _ = early_stop(test_loss)
 
             if save_ckpt:
-                trainer.save(epoch, [train_loss, test_loss], save_name )
+                trainer.save(epoch, [train_loss, test_loss], save_name)
 
             # print process bar
             # postfix = f'train_loss={train_loss:.4e}, test_loss={test_loss:.4e}, train_sig={train_sig_loss:.4e}, test_sig={test_sig_loss:.4e}, train_mu={train_mu_loss:.4e}, test_mu={test_mu_loss:.4e}'
-            postfix = f'train_loss={train_loss:.5e}, test_loss={test_loss:.5e}'
+            postfix = f"train_loss={train_loss:.5e}, test_loss={test_loss:.5e}"
             pbar_epoch.set_postfix_str(postfix)
             # pbar_epoch.set_postfix(OrderedDict(train_loss=train_loss, test_loss=test_loss))

@@ -24,9 +24,15 @@ data_dir = f"{os.environ['HOME']}/Dataset/forcemap/tabletop240125"
 object_info = ObjectInfo("ycb_conveni_v1")
 
 
-def load(scene_number):
+def in_forcemap_area(p):
+    return p[0] > -0.2 and p[0] < 0.2 and p[1] > -0.2 and p[1] < 0.2 and p[2] > 0.73 and p[2] < 1.0
+
+
+def load(scene_number, exclude_protruding_object=True):
     bin_state = pd.read_pickle(f"{data_dir}/bin_state{scene_number:05d}.pkl")
     contact_state = pd.read_pickle(f"{data_dir}/contact_raw_data{scene_number:05d}.pkl")
+    if exclude_protruding_object:
+        bin_state = [s for s in bin_state if in_forcemap_area(s[1][0])]
     return bin_state, contact_state
 
 
@@ -115,20 +121,23 @@ def compute_density(bin_state, contact_state, scale=1 / 0.2, sigma_d=0.01):
         # if objectA == "table" or objectB == "table":
         #     continue
 
-        sdf1 = get_sdf(objectA)
-        esdf1 = np.exp(-sdf1 / (sigma_d * scale))
-        sdf2 = get_sdf(objectB)
-        esdf2 = np.exp(-sdf2 / (sigma_d * scale))
+        try:
+            sdf1 = get_sdf(objectA)
+            esdf1 = np.exp(-sdf1 / (sigma_d * scale))
+            sdf2 = get_sdf(objectB)
+            esdf2 = np.exp(-sdf2 / (sigma_d * scale))
 
-        g = normal_distribution(fmap, contact_position)
-        fdist = force_value * g
-        fdists.append(fdist)
+            g = normal_distribution(fmap, contact_position)
+            fdist = force_value * g
+            fdists.append(fdist)
 
-        unnormalized_wkde = esdf1 * esdf2 * g
-        sumg = np.sum(g)  #####
-        alpha = 1.0 / max(np.sum(unnormalized_wkde), 1e-4) * sumg  #####
-        normalized_wkde = alpha * force_value * unnormalized_wkde
-        weighted_fdists.append(normalized_wkde)
+            unnormalized_wkde = esdf1 * esdf2 * g
+            sumg = np.sum(g)  #####
+            alpha = 1.0 / max(np.sum(unnormalized_wkde), 1e-4) * sumg  #####
+            normalized_wkde = alpha * force_value * unnormalized_wkde
+            weighted_fdists.append(normalized_wkde)
+        except:
+            message("skip a contact point (contacting object is out of bound)")
 
     message(f"{time.time() - start_t:.2f}[sec]")
 
@@ -250,8 +259,7 @@ def compute_force_distribution(frameNo, log_scale=False, overwrite=False):
         print(f"skip [{frameNo}]")
     else:
         print(f"process [{frameNo}], log_scale={log_scale}")
-        bin_state = pd.read_pickle(f"{data_dir}/bin_state{frameNo:05}.pkl")
-        contacts = pd.read_pickle(f"{data_dir}/contact_raw_data{frameNo:05}.pkl")
+        bin_state, contacts = load(frameNo)
         d = compute_density(bin_state, contacts)
         if log_scale:
             d = np.log(1 + d)
@@ -265,9 +273,9 @@ def compute_force_distribution_for_all(scene_numbers=range(0, 10)):
     print(f"compute force distribution took: {time.time() - start_tm} [sec]")
 
 
-def visualize(bin_state, d, scale=0.4):
+def visualize(bin_state, d, scale=1.0, draw_range=[0.3, 0.9]):
     fmap.set_values(d * scale)
-    viewer.publish_bin_state(bin_state, fmap, draw_fmap=True)
+    viewer.publish_bin_state(bin_state, fmap, draw_fmap=True, draw_range=draw_range)
 
 
 # compute_force_distribution_for_all()
@@ -277,4 +285,4 @@ if __name__ == "__main__":
     bin_state, contact_state = load(0)
     d = compute_density(bin_state, contact_state)
     bs_v = [b for b in bin_state if b[0] != "table"]
-    visualize(bs_v, d[0] * 3e2)
+    visualize(bs_v, d[0] * 1e1, draw_range=[0.03, 0.9])
