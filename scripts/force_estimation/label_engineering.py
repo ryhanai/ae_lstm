@@ -25,7 +25,7 @@ object_info = ObjectInfo("ycb_conveni_v1")
 
 
 def in_forcemap_area(p):
-    return p[0] > -0.2 and p[0] < 0.2 and p[1] > -0.2 and p[1] < 0.2 and p[2] > 0.73 and p[2] < 1.0
+    return p[0] > -0.2 and p[0] < 0.2 and p[1] > -0.2 and p[1] < 0.2 and p[2] > 0.735 and p[2] < 1.0
 
 
 def load(scene_number, exclude_protruding_object=True):
