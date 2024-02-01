@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import torch
 from eipl_print_func import *
+from eipl_print_func import print_info
 from torch.utils.data import Dataset
 
 
@@ -61,6 +62,7 @@ class TabletopRandomSceneDataset(Dataset):
 
         self._force_bounds = self._compute_force_bounds()
 
+        print_info(f"label = {method}")
         methods = {
             "isotropic": 0,
             "geometry-aware": 1,
