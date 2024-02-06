@@ -1,3 +1,4 @@
+import glob
 import os
 from pathlib import Path
 
@@ -91,3 +92,131 @@ def gen_polygon_mask(color_file_path, polygon_file_path, save_result=True, view_
             rgb_img = annotate_polygons(rgb_img, polygons)
         plt.imshow(rgb_img)
         plt.show()
+
+
+def polygon_to_mask(polygon_file_path, width=640, height=480):
+    def parse_poly(poly_line):
+        vals = poly_line.split()
+        cls = int(vals[0])
+        confidence = float(vals[-1])
+        vs = [float(val) for val in vals[1:-1]]
+        xs = (np.array(vs[::2]) * width).astype("int32")
+        ys = (np.array(vs[1::2]) * height).astype("int32")
+        poly = np.array(list(zip(xs, ys)))
+        return cls, poly, confidence
+
+    with open(polygon_file_path, "r") as f:
+        poly_strs = f.readlines()
+
+    polys = [parse_poly(poly) for poly in poly_strs]
+    clss = [cls for cls, _, _ in polys]
+    masks = [sv.polygon_to_mask(vs, resolution_wh=[width, height]).astype("uint8") for _, vs, _ in polys]
+    bbs = [sv.polygon_to_xyxy(vs) for _, vs, _ in polys]
+
+    unified_mask = np.zeros((height, width), dtype="uint8")
+    for i in range(len(clss)):
+        unified_mask += clss[i] * masks[i]
+    unified_mask = np.where(np.isin(unified_mask, clss), unified_mask, 0)
+
+    return clss, unified_mask, bbs
+
+
+label_names = (
+    "__background__",
+    "002_master_chef_can",
+    "003_cracker_box",
+    "004_sugar_box",
+    "005_tomato_soup_can",
+    "006_mustard_bottle",
+    "007_tuna_fish_can",
+    "008_pudding_box",
+    "009_gelatin_box",
+    "010_potted_meat_can",
+    "011_banana",
+    "019_pitcher_base",
+    "021_bleach_cleanser",
+    "024_bowl",
+    "025_mug",
+    "035_power_drill",
+    "036_wood_block",
+    "037_scissors",
+    "040_large_marker",
+    "051_large_clamp",
+    "052_extra_large_clamp",
+    "061_foam_brick",
+)
+
+
+meta_data = {
+    "cls_indexes": None,
+    "factor_depth": np.array([[1000]], dtype=np.uint16),  # realsense
+    # "intrinsic_matrix": np.array(
+    #     [
+    #         [1.066778e03, 0.000000e00, 3.129869e02],
+    #         [0.000000e00, 1.067487e03, 2.413109e02],
+    #         [0.000000e00, 0.000000e00, 1.000000e00],
+    #     ]
+    # ),  # YCB video original (Xtion?)
+    "intrinsic_matrix": np.array(
+        [
+            [608.5486450195312, 0.0, 325.8691101074219],
+            [0.0, 608.2636108398438, 232.5676727294922],
+            [0.000000e00, 0.000000e00, 1.000000e00],
+        ]
+    ),  # 640x480
+    # "rotation_translation_matrix": np.array(
+    #     [
+    #         [0.998481, -0.0421787, 0.0354595, 0.05612157],
+    #         [0.00194755, -0.61609, -0.787673, 0.02851242],
+    #         [0.0550693, 0.786545, -0.615072, 0.60312363],
+    #     ]
+    # ),
+    # "vertmap": np.array([]),
+    # "poses": np.array([]),
+    # "center": np.array([[257.84763275, 226.84390407], [414.23978618, 204.16392412], [463.22414406, 317.07572823]]),
+}
+
+
+# realsense D415
+# color
+# height: 480
+# width: 640
+# distortion_model: "plumb_bob"
+# D: [0.0, 0.0, 0.0, 0.0, 0.0]
+# K: [608.5486450195312, 0.0, 325.8691101074219, 0.0, 608.2636108398438, 232.5676727294922, 0.0, 0.0, 1.0]
+# R: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+# P: [608.5486450195312, 0.0, 325.8691101074219, 0.0, 0.0, 608.2636108398438, 232.5676727294922, 0.0, 0.0, 0.0, 1.0, 0.0]
+
+# depth
+# height: 480
+# width: 640
+# distortion_model: "plumb_bob"
+# D: [0.0, 0.0, 0.0, 0.0, 0.0]
+# K: [597.7420654296875, 0.0, 322.5055236816406, 0.0, 597.7420654296875, 242.5670623779297, 0.0, 0.0, 1.0]
+# R: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+# P: [597.7420654296875, 0.0, 322.5055236816406, 0.0, 0.0, 597.7420654296875, 242.5670623779297, 0.0, 0.0, 0.0, 1.0, 0.0]
+
+
+def polygon_to_mask_all(polygon_files_dir, output_dir=None):
+    p = Path(polygon_files_dir)
+    poly_files = glob.glob(str(p / "labels" / "*-color.txt"))
+    if output_dir == None:
+        output_dir = p
+    else:
+        output_dir = Path(output_dir)
+
+    for poly_file in poly_files:
+        print(poly_file)
+        clss, mask, bbs = polygon_to_mask(poly_file)
+        p = Path(poly_file)
+        label_path = output_dir / p.stem.replace("-color", "-label.png")
+        cv2.imwrite(str(label_path), mask)
+
+        bbox_path = output_dir / p.stem.replace("-color", "-box.txt")
+        with open(str(bbox_path), "w") as f:
+            for cls, bb in zip(clss, bbs):
+                f.write(f"{label_names[cls+1]} {bb[0]:0.2f} {bb[1]:0.2f} {bb[2]:0.2f} {bb[3]:0.2f}\n")
+
+        meta_data["cls_indexes"] = np.array(clss).reshape((len(clss), 1))
+        meta_path = output_dir / p.stem.replace("-color", "-meta.mat")
+        scipy.io.savemat(str(meta_path), meta_data)

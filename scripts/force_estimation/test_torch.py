@@ -39,7 +39,7 @@ parser = argparse.ArgumentParser()
 data_dir = f"{os.environ['HOME']}/Dataset/forcemap/tabletop240125"
 
 parser.add_argument("--dataset_path", type=str, default=data_dir)
-parser.add_argument("--weights", type=str, default="log/20240130_1709_46/best.pth")
+parser.add_argument("--weights", type=str, default="log/20240130_1947_53/best.pth")
 
 args = parser.parse_args()
 

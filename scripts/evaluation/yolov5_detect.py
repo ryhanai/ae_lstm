@@ -324,3 +324,5 @@ if __name__ == "__main__":
 #   python segment/train.py --data ../moonshot/ae_lstm/scripts/evaluation/ycb_video-seg.yaml --weights yolov5s-seg.pt --img 640
 # - prediction
 #   python segment/predict.py --weights ~/Program/moonshot/ae_lstm/scripts/evaluation/yolo_runs/exp8/weights/best.pt --source ~/Dataset/ycb_video/yolo_seg/images/test/000000010000.jpg
+#   python segment/predict.py --weights ~/Program/moonshot/ae_lstm/scripts/evaluation/yolo_runs/exp8_12epoch/weights/best.pt --source ~/Dataset/forcemap_evaluation --conf-thres 0.1 --save-txt --save-conf
+# - Segmentation model has not yet supported augmented inference
