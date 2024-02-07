@@ -88,4 +88,47 @@ def do_track(name):
     estimate_pose(name=name)
 
 
+#####
+##### Image-based evaluation
+#####
+
+
+def compute_3d_position(mask, width=640, height=480):
+    xs = np.arange(width) * mask
+    x = np.average(xs[xs != 0])
+    ys = np.arange(height).reshape((height, 1)) * mask
+    y = np.average(ys[ys != 0])
+    return x, y
+
+
+def image_based_tracking(project_dir):
+    trajectories = {}
+    poly_files = sorted(glob.glob(str(Path(project_dir) / "*-color.txt")))
+    for frame_number, poly_file in enumerate(poly_files):
+        n = int(Path(poly_file).stem.replace("-color", ""))
+        clss, masks, bbs = polygon_to_mask(poly_file, unify_mask=False)
+        for cls, mask, bb in zip(clss, masks, bbs):
+            pos = compute_3d_position(mask)
+            label = label_names[cls]
+            # print(label, pos)
+            try:
+                traj = trajectories[label]
+            except KeyError:
+                traj = {}
+                trajectories[label] = traj
+            trajectories[label][frame_number] = pos
+
+    return trajectories
+
+
+def plot_trajectory(traj):
+    ts = np.array(list(traj.keys()))
+    xs, ys = zip(*np.array(list(traj.values())))
+    fig, ax = plt.subplots()
+    ax.plot(ts, xs, "o-", label="x")
+    ax.plot(ts, ys, "o-", label="y")
+    ax.legend(loc="upper left")
+    plt.show()
+
+
 # ffmpeg -r 30 -i %06d-color.jpg -vcodec libx264 -pix_fmt yuv420p out.mp4

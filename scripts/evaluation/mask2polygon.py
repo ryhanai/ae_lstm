@@ -94,7 +94,7 @@ def gen_polygon_mask(color_file_path, polygon_file_path, save_result=True, view_
         plt.show()
 
 
-def polygon_to_mask(polygon_file_path, width=640, height=480):
+def polygon_to_mask(polygon_file_path, unify_mask=True, width=640, height=480):
     def parse_poly(poly_line):
         vals = poly_line.split()
         cls = int(vals[0]) + 1
@@ -113,12 +113,14 @@ def polygon_to_mask(polygon_file_path, width=640, height=480):
     masks = [sv.polygon_to_mask(vs, resolution_wh=[width, height]).astype("uint8") for _, vs, _ in polys]
     bbs = [sv.polygon_to_xyxy(vs) for _, vs, _ in polys]
 
-    unified_mask = np.zeros((height, width), dtype="uint8")
-    for i in range(len(clss)):
-        unified_mask += clss[i] * masks[i]
-    unified_mask = np.where(np.isin(unified_mask, clss), unified_mask, 0)
-
-    return clss, unified_mask, bbs
+    if unify_mask:
+        unified_mask = np.zeros((height, width), dtype="uint8")
+        for i in range(len(clss)):
+            unified_mask += clss[i] * masks[i]
+        unified_mask = np.where(np.isin(unified_mask, clss), unified_mask, 0)
+        return clss, unified_mask, bbs
+    else:
+        return clss, masks, bbs
 
 
 # definitions in YOLO
