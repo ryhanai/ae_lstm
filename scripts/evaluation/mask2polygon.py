@@ -97,7 +97,7 @@ def gen_polygon_mask(color_file_path, polygon_file_path, save_result=True, view_
 def polygon_to_mask(polygon_file_path, width=640, height=480):
     def parse_poly(poly_line):
         vals = poly_line.split()
-        cls = int(vals[0])
+        cls = int(vals[0]) + 1
         confidence = float(vals[-1])
         vs = [float(val) for val in vals[1:-1]]
         xs = (np.array(vs[::2]) * width).astype("int32")
@@ -121,11 +121,12 @@ def polygon_to_mask(polygon_file_path, width=640, height=480):
     return clss, unified_mask, bbs
 
 
+# definitions in YOLO
 label_names = (
     "__background__",
-    "002_master_chef_can",
-    "003_cracker_box",
-    "004_sugar_box",
+    "002_master_chef_can",  # 0
+    "003_cracker_box",  # 1
+    "004_sugar_box",  # 2
     "005_tomato_soup_can",
     "006_mustard_bottle",
     "007_tuna_fish_can",
@@ -146,6 +147,35 @@ label_names = (
     "061_foam_brick",
 )
 
+# definitions in DenseFusion
+df_label_names = {
+    "002_master_chef_can": 1,
+    "003_cracker_box": 2,
+    "004_sugar_box": 3,
+    "005_tomato_soup_can": 4,
+    "006_mustard_bottle": 5,
+    "007_tuna_fish_can": 6,
+    "008_pudding_box": 7,
+    "009_gelatin_box": 8,
+    "010_potted_meat_can": 9,
+    "011_banana": 10,
+    "019_pitcher_base": 11,
+    "021_bleach_cleanser": 12,
+    "024_bowl": 13,
+    "025_mug": 14,
+    "035_power_drill": 15,
+    "036_wood_block": 16,
+    "037_scissors": 17,
+    "040_large_marker": 18,
+    "051_large_clamp": 19,
+    "052_extra_large_clamp": 20,
+    "061_foam_brick": 21,
+}
+
+
+def cls_yolo2df(cls):
+    return df_label_names[label_names[cls + 1]]
+
 
 meta_data = {
     "cls_indexes": None,
@@ -157,9 +187,16 @@ meta_data = {
     #         [0.000000e00, 0.000000e00, 1.000000e00],
     #     ]
     # ),  # YCB video original (Xtion?)
+    # "intrinsic_matrix": np.array(
+    #     [
+    #         [608.5486450195312, 0.0, 325.8691101074219],
+    #         [0.0, 608.2636108398438, 232.5676727294922],
+    #         [0.000000e00, 0.000000e00, 1.000000e00],
+    #     ]
+    # ),  # 640x480
     "intrinsic_matrix": np.array(
         [
-            [608.5486450195312, 0.0, 325.8691101074219],
+            [597.7420654296875, 0.0, 322.5055236816406],
             [0.0, 608.2636108398438, 232.5676727294922],
             [0.000000e00, 0.000000e00, 1.000000e00],
         ]
@@ -215,8 +252,9 @@ def polygon_to_mask_all(polygon_files_dir, output_dir=None):
         bbox_path = output_dir / p.stem.replace("-color", "-box.txt")
         with open(str(bbox_path), "w") as f:
             for cls, bb in zip(clss, bbs):
-                f.write(f"{label_names[cls+1]} {bb[0]:0.2f} {bb[1]:0.2f} {bb[2]:0.2f} {bb[3]:0.2f}\n")
+                f.write(f"{label_names[cls]} {bb[0]:0.2f} {bb[1]:0.2f} {bb[2]:0.2f} {bb[3]:0.2f}\n")
 
-        meta_data["cls_indexes"] = np.array(clss).reshape((len(clss), 1))
+        cls_indexes = np.array(clss)
+        meta_data["cls_indexes"] = cls_indexes.reshape((len(clss), 1))
         meta_path = output_dir / p.stem.replace("-color", "-meta.mat")
         scipy.io.savemat(str(meta_path), meta_data)

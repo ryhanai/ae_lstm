@@ -1,4 +1,5 @@
 import glob
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -17,15 +18,17 @@ def bag_to_images():
     subprocess.run(cmd, shell=True)
 
 
-def gen_bb_and_mask(project="~/Dataset/forcemap_evaluation", name="20240131_191917", conf_thres=0.1):
+def gen_bb_and_mask(project="~/Dataset/forcemap_evaluation", name="20240131_191917", conf_thres=0.15):
     # use YOLO
     # anaconda, densefusion env
     # go to Program/yolov5
     predict = "~/Program/yolov5/segment/predict.py"
     weights = "~/Program/moonshot/ae_lstm/scripts/evaluation/yolo_runs/exp8_12epoch/weights/best.pt"
-    source = f"{project}/{name}"
+    source = Path(f"{project}/{name}").expanduser()
+
+    source_pattern = str(source / "*-color.jpg")
     # cmd = f"python {predict} --weights {weights} --source {source} --conf-thres {conf_thres} --save-txt --save-conf --project {project} --name {name} --exist-ok --nosave"
-    cmd = f"python {predict} --weights {weights} --source {source} --conf-thres {conf_thres} --save-txt --save-conf --project {project} --name {name} --exist-ok"
+    cmd = f"python {predict} --weights {weights} --source '{source_pattern}' --conf-thres {conf_thres} --save-txt --save-conf --project {project} --name {name} --exist-ok --nosave"
     print(cmd)
     try:
         subprocess.run(cmd, shell=True, check=True)
@@ -34,15 +37,27 @@ def gen_bb_and_mask(project="~/Dataset/forcemap_evaluation", name="20240131_1919
         return
 
     # generate (masks, bbs, meta-data) from polygons
-    source = str(Path(source).expanduser())
-    mask2polygon.polygon_to_mask_all(polygon_files_dir=source, output_dir=source)
+    mask2polygon.polygon_to_mask_all(polygon_files_dir=str(source), output_dir=str(source))
 
 
-def estimate_pose():
+def estimate_pose(project="~/Dataset/forcemap_evaluation", name="20240131_191917"):
     # use DenseFusion
     # anaconda, densefusion env
-    cmd = f"densefusion"
-    subprocess.run(cmd, shell=True)
+    proj_dir = str(Path(f"{project}/{name}").expanduser())
+    print(proj_dir)
+
+    print("generate config file for densefusion: {}")
+    gen_densefusion_config_file(proj_dir)
+
+    os.environ["YCB_VIDEO_DATASET_PATH"] = proj_dir
+    predict = "~/Program/dense-fusion/examples/eval_ycb.py"
+    cmd = f"python {predict}"
+    print(cmd)
+    try:
+        subprocess.run(cmd, shell=True, check=True)
+    except subprocess.CalledProcessError:
+        print("failed to execute DenseFusion", file=sys.stderr)
+        return
 
 
 def gen_densefusion_config_file(
@@ -50,16 +65,27 @@ def gen_densefusion_config_file(
     densefusion_config_dir="~/anaconda3/envs/densefusion/lib/python3.8/site-packages/dense_fusion/datasets/ycb/config",
 ):
     imgs = glob.glob(str(Path(data_dir).expanduser() / "*.jpg"))
+    list.sort(imgs)
     print(imgs)
     # max_index = max([int(Path(p).stem.replace('-color', '')) for p in imgs])
 
     data_list_file = Path(densefusion_config_dir) / "test_data_list.txt"
     with open(data_list_file.expanduser(), "w") as f:
-        for name in [Path(img).stem.replace("-color", "") for img in imgs]:
-            f.write(f"{name}\n")
+        iter_name = iter([Path(img).stem.replace("-color", "") for img in imgs])
+        try:
+            name = next(iter_name)
+            f.write(f"{name}")
+            while True:
+                name = next(iter_name)
+                f.write(f"\n{name}")
+        except StopIteration:
+            pass
 
 
-def do_track():
-    bag_to_images()
-    gen_bb_and_mask()
-    estimate_pose()
+def do_track(name):
+    # bag_to_images()
+    gen_bb_and_mask(name=name)
+    estimate_pose(name=name)
+
+
+# ffmpeg -r 30 -i %06d-color.jpg -vcodec libx264 -pix_fmt yuv420p out.mp4
