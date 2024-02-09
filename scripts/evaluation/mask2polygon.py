@@ -203,6 +203,7 @@ meta_data = {
             [0.000000e00, 0.000000e00, 1.000000e00],
         ]
     ),  # 640x480
+    "image_size": np.array([640, 480]),
     # "rotation_translation_matrix": np.array(
     #     [
     #         [0.998481, -0.0421787, 0.0354595, 0.05612157],

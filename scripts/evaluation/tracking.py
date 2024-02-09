@@ -4,7 +4,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-import mask2polygon
+import cameramodels
+from mask2polygon import *
 
 bag_file = "~/Documents/20240131_191917.bag"
 output_dir = "~/Dataset/forcemap_evaluation"
@@ -37,7 +38,7 @@ def gen_bb_and_mask(project="~/Dataset/forcemap_evaluation", name="20240131_1919
         return
 
     # generate (masks, bbs, meta-data) from polygons
-    mask2polygon.polygon_to_mask_all(polygon_files_dir=str(source), output_dir=str(source))
+    polygon_to_mask_all(polygon_files_dir=str(source), output_dir=str(source))
 
 
 def estimate_pose(project="~/Dataset/forcemap_evaluation", name="20240131_191917"):
@@ -93,22 +94,34 @@ def do_track(name):
 #####
 
 
-def compute_3d_position(mask, width=640, height=480):
-    xs = np.arange(width) * mask
-    x = np.average(xs[xs != 0])
-    ys = np.arange(height).reshape((height, 1)) * mask
-    y = np.average(ys[ys != 0])
-    return x, y
+# def compute_3d_position(mask, width=640, height=480):
+#     xs = np.arange(width) * mask
+#     x = np.average(xs[xs != 0])
+#     ys = np.arange(height).reshape((height, 1)) * mask
+#     y = np.average(ys[ys != 0])
+#     return x, y
 
 
-def image_based_tracking(project_dir):
+def compute_3d_position(mask, points):
+    msk = mask[:, :, np.newaxis]
+    masked_points = points * msk
+    n_valid_points = np.count_nonzero(masked_points[:, :, 2])
+    return [np.sum(masked_points[:, :, i]) / n_valid_points for i in range(3)]
+
+
+def image_based_tracking(project_dir="~/Program/yolov5/runs/predict-seg/20240131_193129"):
+    p = Path(project_dir)
+    p = p.expanduser()
     trajectories = {}
-    poly_files = sorted(glob.glob(str(Path(project_dir) / "*-color.txt")))
+    poly_files = sorted(glob.glob(str(p / "labels" / "*-color.txt")))
     for frame_number, poly_file in enumerate(poly_files):
         n = int(Path(poly_file).stem.replace("-color", ""))
         clss, masks, bbs = polygon_to_mask(poly_file, unify_mask=False)
+        depth_path = f"/home/ryo/Dataset/forcemap_evaluation/20240131_193129/{n:06d}-depth.png"
+        depth_img = cv2.imread(depth_path, cv2.IMREAD_ANYDEPTH)
+        points = back_project(depth_img)
         for cls, mask, bb in zip(clss, masks, bbs):
-            pos = compute_3d_position(mask)
+            pos = compute_3d_position(mask, points)
             label = label_names[cls]
             # print(label, pos)
             try:
@@ -121,13 +134,32 @@ def image_based_tracking(project_dir):
     return trajectories
 
 
-def plot_trajectory(traj):
-    ts = np.array(list(traj.keys()))
-    xs, ys = zip(*np.array(list(traj.values())))
+def back_project(depth_img):
+    intrinsic_matrix = meta_data["intrinsic_matrix"]
+    depth_scale = meta_data["factor_depth"]
+    width, height = meta_data["image_size"]
+    cm = cameramodels.PinholeCameraModel.from_intrinsic_matrix(intrinsic_matrix, height, width)
+
+    uv = np.hstack([np.tile(np.arange(width), height)[:, None], np.repeat(np.arange(height), width)[:, None]])
+    depth = np.array(depth_img / depth_scale, "f")
+    points = cm.batch_project_pixel_to_3d_ray(uv) * depth.reshape(-1, 1)
+    points = points.reshape(height, width, 3)
+    return points
+
+
+def plot_trajectory(trajs, object_name, z_offset=-0.8):
+    traj = trajs[object_name]
+    indices = np.array(list(traj.keys()))
+    xs, ys, zs = zip(*np.array(list(traj.values())))
+    ts = indices * 0.033  # convert index to second
     fig, ax = plt.subplots()
     ax.plot(ts, xs, "o-", label="x")
     ax.plot(ts, ys, "o-", label="y")
-    ax.legend(loc="upper left")
+    ax.plot(ts, np.array(zs) + z_offset, "o-", label=f"z{z_offset}")
+    ax.set_title(object_name)
+    ax.set_xlabel("[sec]")
+    ax.set_ylabel("[m]")
+    ax.legend(loc="upper right")
     plt.show()
 
 
