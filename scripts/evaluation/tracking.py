@@ -2,10 +2,13 @@ import glob
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import cameramodels
 from mask2polygon import *
+from sklearn import mixture
+from sklearn.cluster import DBSCAN
 
 bag_file = "~/Documents/20240131_191917.bag"
 output_dir = "~/Dataset/forcemap_evaluation"
@@ -102,11 +105,51 @@ def do_track(name):
 #     return x, y
 
 
-def compute_3d_position(mask, points):
-    msk = mask[:, :, np.newaxis]
-    masked_points = points * msk
-    n_valid_points = np.count_nonzero(masked_points[:, :, 2])
-    return [np.sum(masked_points[:, :, i]) / n_valid_points for i in range(3)]
+# def compute_3d_position(mask, points):
+#     msk = mask[:, :, np.newaxis]
+#     masked_points = points * msk
+#     n_valid_points = np.count_nonzero(masked_points[:, :, 2])
+#     return [np.sum(masked_points[:, :, i]) / n_valid_points for i in range(3)]
+
+
+def compute_3d_position(mask, points, outlier_removal="dbscan", n_components=1, n_sigma=1.5, eps=0.01, min_samples=10):
+    # outlier_removal := 'gm' | 'std'
+    masked_points = apply_mask(points, mask)
+
+    assert outlier_removal == "gm" or outlier_removal == "std" or outlier_removal == "dbscan"
+    if outlier_removal == "std":
+        m = masked_points.mean(axis=0)
+        s = masked_points.std(axis=0)
+        lb = m - n_sigma * s
+        ub = m + n_sigma * s
+        points_without_outliers = masked_points[np.all(lb < masked_points, axis=1)]
+        points_without_outliers = points_without_outliers[np.all(points_without_outliers < ub, axis=1)]
+        ret = np.average(points_without_outliers, axis=0)
+    elif outlier_removal == "gm":
+        g = mixture.GaussianMixture(n_components=n_components, covariance_type="full")
+        g.fit(masked_points)
+        ret = g.means_[np.argmax(g.weights_)]
+    else:
+        db = DBSCAN(eps=eps, min_samples=min_samples).fit(masked_points)
+        labels = db.labels_
+
+        # Number of clusters in labels, ignoring noise if present.
+        # n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+        # n_noise = list(labels).count(-1)
+
+        unique_labels = set(labels)
+        core_samples_mask = np.zeros_like(labels, dtype=bool)
+        core_samples_mask[db.core_sample_indices_] = True
+
+        largest_cluster = np.zeros((1, 3))
+        for k in unique_labels:
+            if k != -1:
+                class_member_mask = labels == k
+                cluster = masked_points[class_member_mask & core_samples_mask]
+                if cluster.shape[0] > largest_cluster.shape[0]:
+                    largest_cluster = cluster
+        ret = largest_cluster.mean(axis=0)
+    return ret
 
 
 def image_based_tracking(project_dir="~/Program/yolov5/runs/predict-seg/20240131_193129"):
@@ -147,7 +190,7 @@ def back_project(depth_img):
     return points
 
 
-def plot_trajectory(trajs, object_name, z_offset=-0.8):
+def plot_trajectory(trajs, object_name, z_offset=-0.7):
     traj = trajs[object_name]
     indices = np.array(list(traj.keys()))
     xs, ys, zs = zip(*np.array(list(traj.values())))
@@ -161,6 +204,42 @@ def plot_trajectory(trajs, object_name, z_offset=-0.8):
     ax.set_ylabel("[m]")
     ax.legend(loc="upper right")
     plt.show()
+
+
+def apply_mask(points, mask):
+    msk = mask[:, :, np.newaxis]
+    points = points * msk
+    masked_points = points[np.all(points != 0.0, axis=2)]  # instance mask & valid depth
+    return masked_points
+
+
+def plot_distribution(depth, object_name, frame_no, n_bins=50, range=(0.5, 1.5)):
+    h = np.histogram(depth, bins=n_bins, range=range)
+    plt.title("depth distribution")
+    plt.xlabel("[m]")
+    plt.ylabel("number of points")
+    plt.title(f"{object_name}, frame={frame_no}")
+    plt.grid(True)
+
+    w = h[1][1] - h[1][0]
+    plt.bar(h[1][:-1], h[0], width=w, alpha=0.5, color="c")
+    # plt.hist(depth, bins=n_bins, alpha=0.5, color="c")
+    plt.show()
+
+
+def depth_distribution(object_name, frame_no, n_bins=50):
+    poly_path = f"/home/ryo/Program/yolov5/runs/predict-seg/20240131_193129/labels/{frame_no:06d}-color.txt"
+    clss, masks, bbs = polygon_to_mask(poly_path, unify_mask=False)
+    depth_path = f"/home/ryo/Dataset/forcemap_evaluation/20240131_193129/{frame_no:06d}-depth.png"
+    depth_img = cv2.imread(depth_path, cv2.IMREAD_ANYDEPTH)
+
+    points = back_project(depth_img)
+    j = [i for i, c in enumerate(clss) if label_names[c] == object_name][0]  # find the mask of object_name
+    msk = masks[j]
+    masked_points = apply_mask(points, msk)
+    depth = masked_points[:, 2]
+    plot_distribution(depth, object_name, frame_no, n_bins=n_bins)
+    return masked_points, depth_img
 
 
 # ffmpeg -r 30 -i %06d-color.jpg -vcodec libx264 -pix_fmt yuv420p out.mp4
