@@ -46,10 +46,18 @@ class GridForceMap:
             self.bandwidth = bandwidth
         elif name == "small_table":
             self.grid = np.mgrid[-0.2:0.2:80j, -0.2:0.2:80j, 0.73:0.93:40j]
+            # self.grid = np.mgrid[-0.2:0.2:80j, -0.2:0.2:80j, 0.71:0.93:40j]
             X, Y, Z = self.grid
-            self._xrange = X.max() - X.min()
-            self._yrange = Y.max() - Y.min()
-            self._zrange = Z.max() - Z.min()
+            self._xmax = X.max()
+            self._xmin = X.min()
+            self._xrange = self._xmax - self._xmin
+            self._ymax = Y.max()
+            self._ymin = Y.min()
+            self._yrange = self._ymax - self._ymin
+            self._zmax = Z.max()
+            self._zmin = Z.min()
+            self._zrange = self._zmax - self._zmin
+
             self._nx, self._ny, self._nz = X.shape
             self.dV = self._xrange * self._yrange * self._zrange / (self._nx * self._ny * self._nz)
             positions = np.vstack([X.ravel(), Y.ravel(), Z.ravel()])

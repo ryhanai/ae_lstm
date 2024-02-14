@@ -44,18 +44,20 @@ def get_obj_position(bin_state, object_name):
     #     return (np.array([0, 0, 0.73]), R.from_euler("xyz", [0, 0, 1.57080], degrees=False).as_quat())
 
 
-def compute_sdf(mesh, state, size, scale):
+def compute_sdf(mesh, state, size, scale, fmap, zero_fill=False):
     p, q = state
     r = R.from_quat(q)
     # r.as_matrix()
 
-    vertices = r.apply(mesh.vertices) + p - np.array([0, 0, 0.73 + 0.20])
+    vertices = r.apply(mesh.vertices) + p - np.array([0, 0, fmap._zmin + fmap._zrange])
     vertices = vertices * scale
 
     sdf = mesh2sdf.compute(vertices, mesh.faces, size, fix=True, level=2 / size, return_mesh=False)
-    # m.export('hoge.obj')
-    df = np.where(sdf >= 0, sdf, 0)
-    return df
+
+    if zero_fill:  # fill zeros to the inside of the object
+        return np.where(sdf >= 0, sdf, 0)
+    else:
+        return sdf
 
 
 def normal_distribution(fmap, contact_position):
@@ -70,7 +72,8 @@ def get_obj_file(object_name):
     if object_name == "table":
         p = Path(object_info.object_dir)
         obj_file = str(p / "env" / "table_surface.obj")
-        mesh_scale = 1.0
+        # mesh_scale = 1.0
+        mesh_scale = np.array([0.35, 0.35, 1.0])
     else:
         obj_file, mesh_scale = object_info.obj_file(object_name)
     return obj_file, mesh_scale
@@ -86,20 +89,26 @@ def sdfs_for_objects(bin_state, scale=1 / 0.2):
         obj_file, mesh_scale = get_obj_file(object_name)
         mesh = trimesh.load(obj_file, force="mesh")
         mesh.vertices = mesh_scale * mesh.vertices
-        sdf = compute_sdf(mesh, object_pose, size=size, scale=scale)
+        sdf = compute_sdf(mesh, object_pose, size=size, scale=scale, fmap=fmap)
         sdf = sdf[:, :, :height]
         return sdf
 
     object_name = "table"
-    sdfs[object_name] = sdf_for_object(object_name, ([0, 0, 0.68], [0, 0, 0, 1]))
+    # sdfs[object_name] = sdf_for_object(object_name, ([0, 0, 0.68], [0, 0, 0, 1]))
+    sdfs[object_name] = sdf_for_object(object_name, ([0, 0, 0.69], [0, 0, 0, 1]))
 
     for object_name, object_pose in bin_state:
         sdfs[object_name] = sdf_for_object(object_name, object_pose)
     return sdfs
 
 
-def sdf_for_scene(sdfs):
+def unsigned_sdf_for_scene(unsigned_sdfs):
     return functools.reduce(lambda x, y: np.minimum(x, y), sdfs.values())
+
+
+def sdf_for_inside_objects(sdfs):
+    nsdf = [np.where(sdf <= 0, sdf, 0) for sdf in sdfs.values()]
+    return functools.reduce(lambda x, y: np.minimum(x, y), nsdf)
 
 
 def compute_density(bin_state, contact_state, scale=1 / 0.2, sigma_d=0.01):
@@ -123,9 +132,9 @@ def compute_density(bin_state, contact_state, scale=1 / 0.2, sigma_d=0.01):
 
         try:
             sdf1 = get_sdf(objectA)
-            esdf1 = np.exp(-sdf1 / (sigma_d * scale))
+            esdf1 = np.exp(-np.abs(sdf1) / (sigma_d * scale))
             sdf2 = get_sdf(objectB)
-            esdf2 = np.exp(-sdf2 / (sigma_d * scale))
+            esdf2 = np.exp(-np.abs(sdf2) / (sigma_d * scale))
 
             g = normal_distribution(fmap, contact_position)
             fdist = force_value * g
