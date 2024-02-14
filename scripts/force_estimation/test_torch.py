@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch._dynamo
+from app.pick_planning import LiftingDirectionPlanner
 from eipl_print_func import print_info
 from eipl_utils import tensor2numpy
 from force_estimation import force_distribution_viewer
@@ -37,22 +38,22 @@ parser = argparse.ArgumentParser()
 # parser.add_argument("--dataset_path", type=str, default="./basket-filling3-c-1k")
 
 data_dir = f"{os.environ['HOME']}/Dataset/forcemap/tabletop240125"
-
 parser.add_argument("--dataset_path", type=str, default=data_dir)
-parser.add_argument("--weights", type=str, default="log/20240130_1947_53/best.pth")
-
+parser.add_argument("--weights", type=str, default="log/20240130_1947_53")  # geometry-guided model
+parser.add_argument("--baseline_weights", type=str, default="log/20240201_1847_01")  # iso-tropic model
 args = parser.parse_args()
 
 
-def setup_model(args):
-    with open(Path(args.weights).parent / "args.json", "r") as f:
+def setup_model(weights):
+    with open(Path(weights) / "args.json", "r") as f:
         model_params = json.load(f)
 
-    print_info(f"loading pretrained weight [{args.weights}]")
-    ckpt = torch.load(args.weights)
+    model_class = model_params["model"]
+    weight_file = f"{weights}/{model_class}.pth"
+    print_info(f"loading pretrained weight [{weight_file}]")
+    ckpt = torch.load(f"{weight_file}")
     # ckpt = torch.load(args.weights, map_location=torch.device('cpu'))
 
-    model_class = model_params["model"]
     print_info(f"building model [{model_class}]")
     model = globals()[model_class]()
     model.load_state_dict(ckpt["model_state_dict"])
@@ -70,22 +71,37 @@ def setup_dataloader(args):
     return test_data, dataset_params
 
 
-model = setup_model(args)
+model = setup_model(args.weights)
+
+if args.baseline_weights != "":
+    baseline_models = [setup_model(args.baseline_weights)]
+else:
+    baseline_models = []
+
 test_data, dataset_params = setup_dataloader(args)
+fmap = forcemap.GridForceMap(dataset_params["forcemap"])
+planner = LiftingDirectionPlanner(fmap)
 
 
 class Tester:
-    def __init__(self, test_data, model, dataset_params):
+    def __init__(self, test_data, model, fmap, planner=None, baseline_models=[]):
         self._device = "cuda"
         self.test_data = test_data
+
         self._model = model
         self._model.to(self._device)
         self._model.eval()
+
+        self._baseline_models = []
+        for bm in baseline_models:
+            bm.to(self._device)
+            bm.eval()
+            self._baseline_models.append(bm)
+
         print(summary(self._model, input_size=(16, 3, 336, 672)))
         # self._model = torch.compile(self._model)
-        forcemap_scene = dataset_params["forcemap"]
-        self._fmap = forcemap.GridForceMap(forcemap_scene)
-
+        self._fmap = fmap
+        self._planner = planner
         self._draw_range = [0.5, 0.9]
 
     def load_bin_state(self, idx):
@@ -94,24 +110,7 @@ class Tester:
             bs = pd.read_pickle(p)
         return bs
 
-    def predict(self, idx, view_idx=0, log_scale=True):
-        x_batch, f_batch = self.test_data.__getitem__([idx], view_idx)
-        x_batch = x_batch.to(self._device)
-
-        # x = self.test_data.get_specific_view_and_force(idx, view_idx)[0]
-        # batch = torch.unsqueeze(x, 0).to(self._device)
-        t1 = time.time()
-        y = self._model(x_batch)
-        t2 = time.time()
-        print_info(f"inference: {t2-t1} [sec]")
-
-        if type(y) == tuple:  # MVE model
-            means, vars = y
-            mean = means[0]
-            var = vars[0]
-        else:
-            mean = y[0]
-
+    def predict(self, idx, view_idx=0, log_scale=True, planning=True, object_radius=0.05):
         def post_process(y, log_scale=True):
             y = tensor2numpy(y)
             y = y.transpose(1, 2, 0)
@@ -119,61 +118,138 @@ class Tester:
                 y = np.exp((y - 0.1) / 0.8) - 1.0
             return y
 
-        if type(y) == tuple:
-            return post_process(mean, log_scale=log_scale), post_process(var, log_scale=log_scale)
-        else:
-            return post_process(mean, log_scale=log_scale)
+        # prepare data
+        x_batch, f_batch = self.test_data.__getitem__([idx], view_idx)
+        x_batch = x_batch.to(self._device)
 
-    def predict_with_multiple_views(self, idx, view_indices=range(3), ord=1, eps=1e-7):
-        def error_fn(x, y):
-            return (np.abs(x - y) ** ord).mean()
+        # force prediction
+        t1 = time.time()
+        y = self._model(x_batch)[0]
+        t2 = time.time()
+        print_info(f"inference: {t2-t1} [sec]")
+        y = post_process(y, log_scale=log_scale)
 
-        ms, vs = zip(*[self.predict(idx, view_idx) for view_idx in view_indices])
-        ws = [1 / (v + eps) for v in vs]
-        total_weight = functools.reduce(operator.add, ws)
-        w_average = functools.reduce(operator.add, [ws[i] * ms[i] for i in view_indices]) / total_weight
-        average = functools.reduce(operator.add, ms) / len(view_indices)
+        # force prediction using baseline models
+        bm_results = []
+        for bm in self._baseline_models:
+            yb = bm(x_batch)[0]
+            yb = post_process(yb, log_scale=log_scale)
+            bm_results.append(yb)
 
-        label = tensor2numpy(tester.test_data[idx][1]).transpose(1, 2, 0)
-        print(f"W_AVERAGE: {error_fn(label, w_average)}")
-        print(f"AVERAGE: {error_fn(label, average)}")
-        for i in view_indices:
-            print(f"VIEW{i}: {error_fn(label, ms[i])}")
-        return w_average, average, ms
+        # lifting direction planning
+        if planning:
+            object_center = viewer.rviz_client.getObjectPosition()
+            print_info(f"object center: {object_center}")
+            force_bounds = self.test_data._compute_force_bounds()
 
-    def show_mean(self, idx, view_idx=0, log_scale=True, show_bin_state=True, draw_range=[0.4, 0.9]):
-        y = self.predict(idx, view_idx, log_scale)
+            predicted_force_map = np.exp(normalization(y, test_data.minmax, np.log(force_bounds)))
+            print_info(f"AVERAGE predicted force: {np.average(predicted_force_map)}")
+            v_omega = self._planner.pick_direction_plan(predicted_force_map, object_center, object_radius=object_radius)
+            print_info(f"planning result: {v_omega[0]}, {v_omega[1]}")
+            planning_result = v_omega
 
-        if type(y) == tuple:  # MVE
-            y = y[0]
+            bm_planning_results = []
+            for yb in bm_results:
+                print_info("BASELINES:")
+                predicted_force_map = np.exp(normalization(yb, test_data.minmax, np.log(force_bounds)))
+                print_info(f"AVERAGE predicted force: {np.average(predicted_force_map)}")
+                v_omega = self._planner.pick_direction_plan(
+                    predicted_force_map, object_center, object_radius=object_radius
+                )
+                print_info(f"planning result: {v_omega[0]}, {v_omega[1]}")
+                bm_planning_results.append(v_omega)
 
+        return idx, y, object_center, planning_result, bm_results, bm_planning_results
+
+    def show_result(
+        self,
+        idx,
+        y,
+        object_center=None,
+        planning_result=None,
+        bm_results=[],
+        bm_planning_results=[],
+        show_bin_state=True,
+    ):
         if show_bin_state:
             bs = self.load_bin_state(idx)
         else:
             bs = None
-        self.show_forcemap(y, bs, draw_range=draw_range)
+        self.show_forcemap(y, bs, draw_range=self._draw_range)
 
-    def show_variance(self, idx, view_idx=None, show_bin_state=True, scale=2):
-        y = self.predict(idx, view_idx)
+        arrow_scale = [0.005, 0.01, 0.004]
+        if planning_result:
+            pick_direction = planning_result[0]
+            planner.draw_result(viewer, object_center, pick_direction, rgba=[1, 0, 1, 1], arrow_scale=arrow_scale)
+        for bm_planning_result in bm_planning_results:
+            pick_direction = bm_planning_result[0]
+            planner.draw_result(viewer, object_center, pick_direction, rgba=[1, 1, 0, 1], arrow_scale=arrow_scale)
 
-        assert type(y) == tuple and len(y) == 2, "the model is not MVE model"
-        y = y[1]
+        viewer.rviz_client.show()
 
-        if show_bin_state:
-            bs = self.load_bin_state(idx)
-        else:
-            bs = None
-        self.show_forcemap(y / np.max(y) * scale, bs)
+    # def predict_with_multiple_views(self, idx, view_indices=range(3), ord=1, eps=1e-7):
+    #     def error_fn(x, y):
+    #         return (np.abs(x - y) ** ord).mean()
 
-    def show_prediction_error(self, idx, predicted_force, ord=1, scale=1.0):
-        def error_fn(x, y):
-            return np.abs(x - y) ** ord
+    #     ms, vs = zip(*[self.predict(idx, view_idx) for view_idx in view_indices])
+    #     ws = [1 / (v + eps) for v in vs]
+    #     total_weight = functools.reduce(operator.add, ws)
+    #     w_average = functools.reduce(operator.add, [ws[i] * ms[i] for i in view_indices]) / total_weight
+    #     average = functools.reduce(operator.add, ms) / len(view_indices)
 
-        force_label = tensor2numpy(self.test_data[idx][1]).transpose(1, 2, 0)
-        bs = self.load_bin_state(idx)
-        error = error_fn(force_label, predicted_force)
-        self.show_forcemap(error * scale, bs)
-        return error
+    #     label = tensor2numpy(tester.test_data[idx][1]).transpose(1, 2, 0)
+    #     print(f"W_AVERAGE: {error_fn(label, w_average)}")
+    #     print(f"AVERAGE: {error_fn(label, average)}")
+    #     for i in view_indices:
+    #         print(f"VIEW{i}: {error_fn(label, ms[i])}")
+    #     return w_average, average, ms
+
+    # def show_mean(self, idx, view_idx=0, log_scale=True, show_bin_state=True, draw_range=[0.4, 0.9], planning=True):
+    #     y = self.predict(idx, view_idx, log_scale)
+
+    #     if type(y) == tuple:  # MVE
+    #         y = y[0]
+
+    #     if show_bin_state:
+    #         bs = self.load_bin_state(idx)
+    #     else:
+    #         bs = None
+    #     self.show_forcemap(y, bs, draw_range=draw_range)
+    #     if planning:
+    #         # predicted_force_map = y
+    #         force_bounds = self.test_data._compute_force_bounds()
+    #         predicted_force_map = np.exp(normalization(y, test_data.minmax, np.log(force_bounds)))
+    #         print_info(f"AVERAGE predicted force: {np.average(predicted_force_map)}")
+
+    #         object_center = viewer.rviz_client.getObjectPosition()
+    #         print_info(f"object center: {object_center}")
+
+    #         v, omega = self._planner.pick_direction_plan(
+    #             predicted_force_map, object_center, object_radius=0.05, viewer=viewer
+    #         )
+    #         print_info(f"planning result: {v}, {omega}")
+
+    # def show_variance(self, idx, view_idx=None, show_bin_state=True, scale=2):
+    #     y = self.predict(idx, view_idx)
+
+    #     assert type(y) == tuple and len(y) == 2, "the model is not MVE model"
+    #     y = y[1]
+
+    #     if show_bin_state:
+    #         bs = self.load_bin_state(idx)
+    #     else:
+    #         bs = None
+    #     self.show_forcemap(y / np.max(y) * scale, bs)
+
+    # def show_prediction_error(self, idx, predicted_force, ord=1, scale=1.0):
+    #     def error_fn(x, y):
+    #         return np.abs(x - y) ** ord
+
+    #     force_label = tensor2numpy(self.test_data[idx][1]).transpose(1, 2, 0)
+    #     bs = self.load_bin_state(idx)
+    #     error = error_fn(force_label, predicted_force)
+    #     self.show_forcemap(error * scale, bs)
+    #     return error
 
     def label(self, idx, log_scale=True):
         force_label = tensor2numpy(self.test_data[idx][1]).transpose(1, 2, 0)
@@ -186,9 +262,6 @@ class Tester:
         bs = self.load_bin_state(idx)
         self.show_forcemap(force_label, bs)
 
-    # def load_bin_state(self, idx):
-    #     return self._bin_states[idx]
-
     def show_forcemap(self, fmap_values, bin_state, draw_range=[0.4, 0.9]):
         self._fmap.set_values(fmap_values)
         viewer.publish_bin_state(bin_state, self._fmap, draw_range=draw_range)
@@ -196,20 +269,20 @@ class Tester:
     def set_draw_range(self, values):
         self._draw_range = values
 
-    def predict_force_with_multiviews(self, idx):
-        eps = 1e-8
-        ys = [self.predict_force(idx, view, with_variance=True) for view in range(3)]
-        return ys
-        # a = 0
-        # s = 0
-        # for mean, var in ys:
-        #     var = var + eps
-        #     a = a + mean / var
-        #     s = s +
-        # return a
+    # def predict_force_with_multiviews(self, idx):
+    #     eps = 1e-8
+    #     ys = [self.predict_force(idx, view, with_variance=True) for view in range(3)]
+    #     return ys
+    #     # a = 0
+    #     # s = 0
+    #     # for mean, var in ys:
+    #     #     var = var + eps
+    #     #     a = a + mean / var
+    #     #     s = s +
+    #     # return a
 
 
-tester = Tester(test_data, model, dataset_params)
+tester = Tester(test_data, model, fmap, planner, baseline_models=baseline_models)
 
 
 # Predict force (mean)
