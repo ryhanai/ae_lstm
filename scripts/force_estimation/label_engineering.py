@@ -44,15 +44,22 @@ def get_obj_position(bin_state, object_name):
     #     return (np.array([0, 0, 0.73]), R.from_euler("xyz", [0, 0, 1.57080], degrees=False).as_quat())
 
 
-def compute_sdf(mesh, state, size, scale, fmap, zero_fill=False):
+def compute_sdf(mesh, state, fmap, zero_fill=False):
+    # mesh_scale = 0.8
+    mesh_scale = 1.0
     p, q = state
     r = R.from_quat(q)
     # r.as_matrix()
+    vertices = r.apply(mesh.vertices) + p
 
-    vertices = r.apply(mesh.vertices) + p - np.array([0, 0, fmap._zmin + fmap._zrange])
-    vertices = vertices * scale
+    size = max(fmap.get_grid_shape())
+    center = np.array([0, 0, fmap._zmin + fmap._zrange])
+    scale = 2.0 * mesh_scale / max(fmap._xrange, fmap._yrange, fmap._zrange)
+    vertices = (vertices - center) * scale
+    # print(size, center, scale)
 
     sdf = mesh2sdf.compute(vertices, mesh.faces, size, fix=True, level=2 / size, return_mesh=False)
+    sdf = sdf / scale
 
     if zero_fill:  # fill zeros to the inside of the object
         return np.where(sdf >= 0, sdf, 0)
@@ -73,29 +80,26 @@ def get_obj_file(object_name):
         p = Path(object_info.object_dir)
         obj_file = str(p / "env" / "table_surface.obj")
         # mesh_scale = 1.0
-        mesh_scale = np.array([0.35, 0.35, 1.0])
+        scale = np.array([0.38, 0.38, 1.0])
     else:
-        obj_file, mesh_scale = object_info.obj_file(object_name)
-    return obj_file, mesh_scale
+        obj_file, scale = object_info.obj_file(object_name)
+    return obj_file, scale
 
 
-def sdfs_for_objects(bin_state, scale=1 / 0.2):
-    x, y, z = fmap.get_grid_shape()
-    size = max(x, y)
-    height = z
+def sdfs_for_objects(bin_state):
+    _, _, height = fmap.get_grid_shape()
     sdfs = {}
 
     def sdf_for_object(object_name, object_pose):
-        obj_file, mesh_scale = get_obj_file(object_name)
+        obj_file, scale = get_obj_file(object_name)
         mesh = trimesh.load(obj_file, force="mesh")
-        mesh.vertices = mesh_scale * mesh.vertices
-        sdf = compute_sdf(mesh, object_pose, size=size, scale=scale, fmap=fmap)
+        mesh.vertices = scale * mesh.vertices
+        sdf = compute_sdf(mesh, object_pose, fmap=fmap)
         sdf = sdf[:, :, :height]
         return sdf
 
     object_name = "table"
-    # sdfs[object_name] = sdf_for_object(object_name, ([0, 0, 0.68], [0, 0, 0, 1]))
-    sdfs[object_name] = sdf_for_object(object_name, ([0, 0, 0.69], [0, 0, 0, 1]))
+    sdfs[object_name] = sdf_for_object(object_name, ([0, 0, 0.68], [0, 0, 0, 1]))
 
     for object_name, object_pose in bin_state:
         sdfs[object_name] = sdf_for_object(object_name, object_pose)

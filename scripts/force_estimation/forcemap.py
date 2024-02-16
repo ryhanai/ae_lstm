@@ -45,8 +45,8 @@ class GridForceMap:
             self.positions = positions.T  # [number of points, 3]
             self.bandwidth = bandwidth
         elif name == "small_table":
-            self.grid = np.mgrid[-0.2:0.2:80j, -0.2:0.2:80j, 0.73:0.93:40j]
-            # self.grid = np.mgrid[-0.2:0.2:80j, -0.2:0.2:80j, 0.71:0.93:40j]
+            # self.grid = np.mgrid[-0.2:0.2:80j, -0.2:0.2:80j, 0.73:0.93:40j]
+            self.grid = np.mgrid[-0.2:0.2:80j, -0.2:0.2:80j, 0.71:0.91:40j]
             X, Y, Z = self.grid
             self._xmax = X.max()
             self._xmin = X.min()
