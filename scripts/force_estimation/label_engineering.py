@@ -115,10 +115,10 @@ def sdf_for_inside_objects(sdfs):
     return functools.reduce(lambda x, y: np.minimum(x, y), nsdf)
 
 
-def compute_density(bin_state, contact_state, scale=1 / 0.2, sigma_d=0.01):
+def compute_density(bin_state, contact_state, sigma_d=0.01):
     start_t = time.time()
     print(f"computing SDFs [{len(bin_state) + 1} SDFs]: ", end="", flush=True)
-    sdfs = sdfs_for_objects(bin_state, scale)
+    sdfs = sdfs_for_objects(bin_state)
     message(f"{time.time() - start_t:.2f}[sec]")
 
     fdists = []
@@ -136,9 +136,9 @@ def compute_density(bin_state, contact_state, scale=1 / 0.2, sigma_d=0.01):
 
         try:
             sdf1 = get_sdf(objectA)
-            esdf1 = np.exp(-np.abs(sdf1) / (sigma_d * scale))
+            esdf1 = np.exp(-np.abs(sdf1) / (sigma_d))
             sdf2 = get_sdf(objectB)
-            esdf2 = np.exp(-np.abs(sdf2) / (sigma_d * scale))
+            esdf2 = np.exp(-np.abs(sdf2) / (sigma_d))
 
             g = normal_distribution(fmap, contact_position)
             fdist = force_value * g
@@ -157,7 +157,7 @@ def compute_density(bin_state, contact_state, scale=1 / 0.2, sigma_d=0.01):
     # start_t = time.time()
     force_distribution = functools.reduce(operator.add, fdists)
     weighted_force_distribution = functools.reduce(operator.add, weighted_fdists)
-    scene_sdf = sdf_for_scene(sdfs)
+    scene_sdf = sdf_for_inside_objects(sdfs)
     # print("fdist sum = ", np.sum(force_distribution), "wfdist sum =", np.sum(weighted_force_distribution))
     # message(f"post process: {time.time() - start_t:.2f}[sec]")
 
