@@ -119,10 +119,16 @@ class TabletopRandomSceneDataset(Dataset):
         scene_idx = self._ids[idx]
         fmap = pd.read_pickle(self._input_dir / f"force_zip{scene_idx:05}.pkl")[self._method]
         fmap = fmap[:, :, :30].astype("float32")
-        fmap = np.clip(fmap, self._force_bounds[0], self._force_bounds[1])
-        fmap = np.log(fmap)  # force_raw (in log scale)
-        fmap = fmap.transpose(2, 0, 1)
-        fmap = self._normalization(fmap, np.log(self._force_bounds))
+
+        if self._method == 0 or self._method == 1:
+            fmap = np.clip(fmap, self._force_bounds[0], self._force_bounds[1])
+            fmap = np.log(fmap)  # force_raw (in log scale)
+            fmap = fmap.transpose(2, 0, 1)
+            fmap = self._normalization(fmap, np.log(self._force_bounds))
+        else:
+            dist_bounds = [0, 0.03]
+            fmap = np.clip(fmap, -dist_bounds[1], dist_bounds[0])
+            fmap = self._normalization(-fmap, dist_bounds)
         return fmap
 
     def load_image(self, idx, view_idx):
