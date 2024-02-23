@@ -39,9 +39,12 @@ parser = argparse.ArgumentParser()
 
 data_dir = f"{os.environ['HOME']}/Dataset/forcemap/tabletop240125"
 parser.add_argument("--dataset_path", type=str, default=data_dir)
-parser.add_argument("--weights", type=str, default="log/20240130_1947_53")  # geometry-guided model
-parser.add_argument("--baseline_weights", type=str, default="log/20240201_1847_01")  # iso-tropic model
+parser.add_argument("--weights", type=str, default="log/20240221_0015_58 log/20240221_1851_57/ log/20240222_1649_39")
 args = parser.parse_args()
+
+# previous result
+# geometry-guided: "log/20240130_1947_53"
+# isotropic: "log/20240201_1847_01"
 
 
 def setup_model(weights):
@@ -71,12 +74,7 @@ def setup_dataloader(args):
     return test_data, dataset_params
 
 
-model = setup_model(args.weights)
-
-if args.baseline_weights != "":
-    baseline_models = [setup_model(args.baseline_weights)]
-else:
-    baseline_models = []
+models = [setup_model(w) for w in args.weights.split()]
 
 test_data, dataset_params = setup_dataloader(args)
 fmap = forcemap.GridForceMap(dataset_params["forcemap"])
@@ -84,21 +82,17 @@ planner = LiftingDirectionPlanner(fmap)
 
 
 class Tester:
-    def __init__(self, test_data, model, fmap, planner=None, baseline_models=[]):
+    def __init__(self, test_data, models, fmap, planner=None):
         self._device = "cuda"
         self.test_data = test_data
 
-        self._model = model
-        self._model.to(self._device)
-        self._model.eval()
+        self._models = []
+        for m in models:
+            m.to(self._device)
+            m.eval()
+            self._models.append(m)
 
-        self._baseline_models = []
-        for bm in baseline_models:
-            bm.to(self._device)
-            bm.eval()
-            self._baseline_models.append(bm)
-
-        print(summary(self._model, input_size=(16, 3, 336, 672)))
+        print(summary(self._models[0], input_size=(16, 3, 336, 672)))
         # self._model = torch.compile(self._model)
         self._fmap = fmap
         self._planner = planner
@@ -123,18 +117,14 @@ class Tester:
         x_batch = x_batch.to(self._device)
 
         # force prediction
-        t1 = time.time()
-        y = self._model(x_batch)[0]
-        t2 = time.time()
-        print_info(f"inference: {t2-t1} [sec]")
-        y = post_process(y, log_scale=log_scale)
-
-        # force prediction using baseline models
-        bm_results = []
-        for bm in self._baseline_models:
-            yb = bm(x_batch)[0]
-            yb = post_process(yb, log_scale=log_scale)
-            bm_results.append(yb)
+        results = []
+        for m in self._models:
+            t1 = time.time()
+            y = m(x_batch)[0]
+            y = post_process(y, log_scale=log_scale)
+            t2 = time.time()
+            print_info(f"inference: {t2-t1} [sec]")
+            results.append(y)
 
         # lifting direction planning
         if planning:
@@ -142,48 +132,39 @@ class Tester:
             print_info(f"object center: {object_center}")
             force_bounds = self.test_data._compute_force_bounds()
 
-            predicted_force_map = np.exp(normalization(y, test_data.minmax, np.log(force_bounds)))
-            print_info(f"AVERAGE predicted force: {np.average(predicted_force_map)}")
-            v_omega = self._planner.pick_direction_plan(predicted_force_map, object_center, object_radius=object_radius)
-            print_info(f"planning result: {v_omega[0]}, {v_omega[1]}")
-            planning_result = v_omega
-
-            bm_planning_results = []
-            for yb in bm_results:
-                print_info("BASELINES:")
-                predicted_force_map = np.exp(normalization(yb, test_data.minmax, np.log(force_bounds)))
+            planning_results = []
+            for y in results:
+                predicted_force_map = np.exp(normalization(y, test_data.minmax, np.log(force_bounds)))
                 print_info(f"AVERAGE predicted force: {np.average(predicted_force_map)}")
                 v_omega = self._planner.pick_direction_plan(
                     predicted_force_map, object_center, object_radius=object_radius
                 )
                 print_info(f"planning result: {v_omega[0]}, {v_omega[1]}")
-                bm_planning_results.append(v_omega)
+                planning_results.append(v_omega)
 
-        return idx, y, object_center, planning_result, bm_results, bm_planning_results
+        return idx, object_center, results, planning_results
 
     def show_result(
         self,
         idx,
-        y,
         object_center=None,
-        planning_result=None,
-        bm_results=[],
-        bm_planning_results=[],
+        results=None,
+        planning_results=None,
         show_bin_state=True,
+        visualize_idx=0,
     ):
         if show_bin_state:
             bs = self.load_bin_state(idx)
         else:
             bs = None
-        self.show_forcemap(y, bs, draw_range=self._draw_range)
+
+        self.show_forcemap(results[visualize_idx], bs, draw_range=self._draw_range)
 
         arrow_scale = [0.005, 0.01, 0.004]
-        if planning_result:
+        arrow_colors = [[1, 0, 1, 1], [1, 1, 0, 1], [0, 1, 1, 1]]
+        for c, planning_result in zip(arrow_colors, planning_results):
             pick_direction = planning_result[0]
-            planner.draw_result(viewer, object_center, pick_direction, rgba=[1, 0, 1, 1], arrow_scale=arrow_scale)
-        for bm_planning_result in bm_planning_results:
-            pick_direction = bm_planning_result[0]
-            planner.draw_result(viewer, object_center, pick_direction, rgba=[1, 1, 0, 1], arrow_scale=arrow_scale)
+            planner.draw_result(viewer, object_center, pick_direction, rgba=c, arrow_scale=arrow_scale)
 
         viewer.rviz_client.show()
 
@@ -282,7 +263,7 @@ class Tester:
     #     # return a
 
 
-tester = Tester(test_data, model, fmap, planner, baseline_models=baseline_models)
+tester = Tester(test_data, models, fmap, planner)
 
 
 # Predict force (mean)
