@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
 
+import numpy as np
 import rospy
-from visualization_msgs.msg import Marker, MarkerArray, InteractiveMarker, InteractiveMarkerControl
-from std_msgs.msg import ColorRGBA
 from geometry_msgs.msg import Point, Vector3
 from interactive_markers.interactive_marker_server import InteractiveMarkerServer
-import numpy as np
+from std_msgs.msg import ColorRGBA
+from visualization_msgs.msg import InteractiveMarker, InteractiveMarkerControl, Marker, MarkerArray
 
 
 def normalizeQuaternion(quaternion_msg):
     norm = quaternion_msg.x**2 + quaternion_msg.y**2 + quaternion_msg.z**2 + quaternion_msg.w**2
-    s = norm**(-0.5)
+    s = norm ** (-0.5)
     quaternion_msg.x *= s
     quaternion_msg.y *= s
     quaternion_msg.z *= s
@@ -28,13 +28,13 @@ class RVizClient:
         rospy.init_node(self._node_name)
         self._pub = rospy.Publisher("scene_objects", MarkerArray, queue_size=1)
 
-        self._interactive_marker_server = InteractiveMarkerServer('simple_marker')
+        self._interactive_marker_server = InteractiveMarkerServer("simple_marker")
         int_marker = InteractiveMarker()
         int_marker.header.frame_id = self._base_frame_id
-        int_marker.name = 'object_center'
-        int_marker.description = 'Object Center'
-        int_marker.pose.position = Point(0.0, 0.0, 0.78)
-        int_marker.scale = 0.03
+        int_marker.name = "object_center"
+        int_marker.description = "Object Center"
+        int_marker.pose.position = Point(0.0, 0.0, 0.80)
+        int_marker.scale = 0.04
         box_marker = self._make_marker(Marker.SPHERE)
         box_marker.pose = int_marker.pose
         box_marker.scale = Vector3(0.005, 0.005, 0.005)
@@ -46,7 +46,7 @@ class RVizClient:
         int_marker.controls.append(control)
 
         control = InteractiveMarkerControl()
-        control.name = 'move_x'
+        control.name = "move_x"
         control.orientation.w = 1
         control.orientation.x = 1
         control.orientation.y = 0
@@ -57,7 +57,7 @@ class RVizClient:
         int_marker.controls.append(control)
 
         control = InteractiveMarkerControl()
-        control.name = 'move_y'
+        control.name = "move_y"
         control.orientation.w = 1
         control.orientation.x = 0
         control.orientation.y = 1
@@ -68,7 +68,7 @@ class RVizClient:
         int_marker.controls.append(control)
 
         control = InteractiveMarkerControl()
-        control.name = 'move_z'
+        control.name = "move_z"
         control.orientation.w = 1
         control.orientation.x = 0
         control.orientation.y = 0
@@ -77,7 +77,7 @@ class RVizClient:
         control.interaction_mode = InteractiveMarkerControl.MOVE_AXIS
         control.orientation_mode = InteractiveMarkerControl.FIXED
         int_marker.controls.append(control)
-        
+
         self._interactive_marker_server.insert(int_marker, self.processInteractiveMarkerFeedback)
         self._interactive_marker_server.applyChanges()
 
@@ -104,7 +104,7 @@ class RVizClient:
         self._markerArray = MarkerArray()
         self._markerArray.markers.append(markerD)
 
-    def draw_mesh(self, mesh_file, pose, rgba, scale=[1., 1., 1.]):
+    def draw_mesh(self, mesh_file, pose, rgba, scale=[1.0, 1.0, 1.0]):
         marker = self._make_marker(Marker.MESH_RESOURCE)
         marker.mesh_resource = mesh_file
         marker.mesh_use_embedded_materials = True
@@ -141,7 +141,10 @@ class RVizClient:
         marker.scale.y = point_size
         marker.scale.z = point_size
 
-        for position, rgba, in zip(points, rgbas):
+        for (
+            position,
+            rgba,
+        ) in zip(points, rgbas):
             marker.points.append(Point(*position))
             marker.colors.append(ColorRGBA(*rgba))
 
@@ -170,7 +173,7 @@ class RVizClient:
 
     def draw_arrows(self, tails, tips, rgba=[0.2, 0.5, 1.0, 0.3], scale=[0.001, 0.001, 0.000]):
         """
-            This methods is very slow because it sends a topic for each arrow.
+        This methods is very slow because it sends a topic for each arrow.
         """
         for tail, tip in zip(tails, tips):
             self.draw_arrow(tail, tip, rgba, scale)
@@ -182,6 +185,18 @@ class RVizClient:
         marker.pose.orientation.y = 0.0
         marker.pose.orientation.z = 0.0
         marker.pose.orientation.w = 1.0
+        marker.scale = Point(*scale)
+        marker.color = ColorRGBA(*rgba)
+        self._markerArray.markers.append(marker)
+        marker.scale = Point(*scale)
+        marker.color = ColorRGBA(*rgba)
+        self._markerArray.markers.append(marker)
+        marker.scale = Point(*scale)
+        marker.color = ColorRGBA(*rgba)
+        self._markerArray.markers.append(marker)
+        marker.scale = Point(*scale)
+        marker.color = ColorRGBA(*rgba)
+        self._markerArray.markers.append(marker)
         marker.scale = Point(*scale)
         marker.color = ColorRGBA(*rgba)
         self._markerArray.markers.append(marker)

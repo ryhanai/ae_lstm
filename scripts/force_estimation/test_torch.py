@@ -98,12 +98,6 @@ class Tester:
         self._planner = planner
         self._draw_range = [0.5, 0.9]
 
-    def load_bin_state(self, idx):
-        p = Path(self.test_data.root_dir) / self.test_data.task_name / f"bin_state{idx:05d}.pkl"
-        if os.path.exists(p):
-            bs = pd.read_pickle(p)
-        return bs
-
     def predict(self, idx, view_idx=0, log_scale=True, planning=True, object_radius=0.05):
         def post_process(y, log_scale=True):
             y = tensor2numpy(y)
@@ -149,12 +143,12 @@ class Tester:
         idx,
         object_center=None,
         results=None,
-        planning_results=None,
+        planning_results=[],
         show_bin_state=True,
         visualize_idx=0,
     ):
         if show_bin_state:
-            bs = self.load_bin_state(idx)
+            bs = self.test_data.load_bin_state(idx)
         else:
             bs = None
 
@@ -167,6 +161,13 @@ class Tester:
             planner.draw_result(viewer, object_center, pick_direction, rgba=c, arrow_scale=arrow_scale)
 
         viewer.rviz_client.show()
+
+    def show_force_label(self, idx, method=2, view_idx=0):
+        m = self.test_data._method
+        self.test_data._method = method
+        x_batch, f_batch = self.test_data.__getitem__([idx], view_idx)
+        self.test_data._method = m
+        self.show_result(idx, results=[None, None, f_batch[0]], visualize_idx=method)
 
     # def predict_with_multiple_views(self, idx, view_indices=range(3), ord=1, eps=1e-7):
     #     def error_fn(x, y):

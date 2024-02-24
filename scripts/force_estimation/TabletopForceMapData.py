@@ -133,7 +133,7 @@ class TabletopRandomSceneDataset(Dataset):
 
     def load_image(self, idx, view_idx):
         scene_idx = self._ids[idx]
-        rgb = cv2.cvtColor(cv2.imread(str(self._input_dir / f"rgb{idx:05}_{view_idx:05}.jpg")), cv2.COLOR_BGR2RGB)
+        rgb = cv2.cvtColor(cv2.imread(str(self._input_dir / f"rgb{scene_idx:05}_{view_idx:05}.jpg")), cv2.COLOR_BGR2RGB)
         if self.img_format == "CWH":
             rgb = rgb.transpose(2, 0, 1)
         rbg = rgb.astype("float32")
@@ -148,11 +148,16 @@ class TabletopRandomSceneDataset(Dataset):
         e[:, :, :30] = d
         return e
 
-    def get_specific_view_and_force(self, idx, view_idx):
-        assert (
-            view_idx < self._num_views
-        ), f"the dataset has {self._num_views} views, but view_idx=={view_idx} was specified"
+    def load_bin_state(self, idx):
+        scene_idx = self._ids[idx]
+        p = Path(self.root_dir) / self.task_name / f"bin_state{scene_idx:05d}.pkl"
+        return pd.read_pickle(p)
 
-        x_img = self.images[view_idx, idx]
-        y_force = self.forces[idx]
-        return x_img, y_force
+    # def get_specific_view_and_force(self, idx, view_idx):
+    #     assert (
+    #         view_idx < self._num_views
+    #     ), f"the dataset has {self._num_views} views, but view_idx=={view_idx} was specified"
+
+    #     x_img = self.images[view_idx, idx]
+    #     y_force = self.forces[idx]
+    #     return x_img, y_force
