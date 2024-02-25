@@ -14,6 +14,7 @@ import trimesh
 from core.object_loader import ObjectInfo
 from core.utils import message
 from force_estimation import force_distribution_viewer
+from mesh_to_sdf import mesh_to_voxels
 from scipy.spatial.transform import Rotation as R
 
 fmap = forcemap.GridForceMap("small_table", bandwidth=0.03)
@@ -24,8 +25,13 @@ data_dir = f"{os.environ['HOME']}/Dataset/forcemap/tabletop240125"
 object_info = ObjectInfo("ycb_conveni_v1")
 
 
-def in_forcemap_area(p):
+def in_forcemap_area_mesh2sdf(p):
+    """need to remove objects outside of the forcemap strictly in case of mesh2sdf"""
     return p[0] > -0.2 and p[0] < 0.2 and p[1] > -0.2 and p[1] < 0.2 and p[2] > 0.735 and p[2] < 1.0
+
+
+def in_forcemap_area(p):
+    return p[0] > -0.25 and p[0] < 0.25 and p[1] > -0.25 and p[1] < 0.25 and p[2] > 0.685 and p[2] < 1.05
 
 
 def load(scene_number, exclude_protruding_object=True):
@@ -44,7 +50,7 @@ def get_obj_position(bin_state, object_name):
     #     return (np.array([0, 0, 0.73]), R.from_euler("xyz", [0, 0, 1.57080], degrees=False).as_quat())
 
 
-def compute_sdf(mesh, state, fmap, zero_fill=False):
+def compute_sdf_with_mesh2sdf(mesh, state, fmap, zero_fill=False):
     # mesh_scale = 0.8
     mesh_scale = 1.0
     p, q = state
@@ -56,7 +62,6 @@ def compute_sdf(mesh, state, fmap, zero_fill=False):
     center = np.array([0, 0, fmap._zmin + fmap._zrange])
     scale = 2.0 * mesh_scale / max(fmap._xrange, fmap._yrange, fmap._zrange)
     vertices = (vertices - center) * scale
-    # print(size, center, scale)
 
     sdf = mesh2sdf.compute(vertices, mesh.faces, size, fix=True, level=2 / size, return_mesh=False)
     sdf = sdf / scale
@@ -65,6 +70,59 @@ def compute_sdf(mesh, state, fmap, zero_fill=False):
         return np.where(sdf >= 0, sdf, 0)
     else:
         return sdf
+
+
+def compute_sdf(mesh, state, fmap, zero_fill=False):
+    mesh_scale = 1.0
+    p, q = state
+    r = R.from_quat(q)
+    vertices = r.apply(mesh.vertices) + p
+
+    size = max(fmap.get_grid_shape())
+    center = np.array([0, 0, fmap._zmin + fmap._zrange])
+    scale = 2.0 * mesh_scale / max(fmap._xrange, fmap._yrange, fmap._zrange)
+    vertices = (vertices - center) * scale
+
+    mesh.vertices = vertices
+    sdf = mesh_to_voxels(mesh, size)
+    sdf = sdf / scale
+
+    if zero_fill:  # fill zeros to the inside of the object
+        return np.where(sdf >= 0, sdf, 0)
+    else:
+        return sdf
+
+
+def test(bs, fmap):
+    def transform_mesh(objname_and_state):
+        objname, state = objname_and_state
+        mesh = trimesh.load(get_obj_file(objname)[0], force="mesh")
+        p, q = state
+        r = R.from_quat(q)
+        vertices = r.apply(mesh.vertices) + p
+        mesh.vertices = vertices
+        return mesh
+
+    transformed_meshes = [transform_mesh(os) for os in bs]
+
+    start_t = time.time()
+    print(f"merging meshes [{len(transformed_meshes) + 1} meshes]: ", end="", flush=True)
+    scene_mesh = trimesh.util.concatenate(transformed_meshes)
+    print(f"# of vertices = {len(scene_mesh.vertices)}")
+
+    vertices = scene_mesh.vertices
+    center = np.array([0, 0, fmap._zmin + fmap._zrange])
+    scale = 2.0 / max(fmap._xrange, fmap._yrange, fmap._zrange)
+    vertices = (vertices - center) * scale
+    scene_mesh.vertices = vertices
+    message(f"{time.time() - start_t:.2f}[sec]")
+
+    start_t = time.time()
+    print(f"computing SDF: ", end="", flush=True)
+    sdf = mesh_to_voxels(scene_mesh, 80)
+    message(f"{time.time() - start_t:.2f}[sec]")
+
+    return sdf
 
 
 def normal_distribution(fmap, contact_position):
@@ -94,6 +152,7 @@ def sdfs_for_objects(bin_state):
         obj_file, scale = get_obj_file(object_name)
         mesh = trimesh.load(obj_file, force="mesh")
         mesh.vertices = scale * mesh.vertices
+        print(f"{object_name}")
         sdf = compute_sdf(mesh, object_pose, fmap=fmap)
         sdf = sdf[:, :, :height]
         return sdf
@@ -107,6 +166,10 @@ def sdfs_for_objects(bin_state):
 
 
 def unsigned_sdf_for_scene(unsigned_sdfs):
+    return functools.reduce(lambda x, y: np.minimum(x, y), sdfs.values())
+
+
+def sdf_for_scene(sdfs):
     return functools.reduce(lambda x, y: np.minimum(x, y), sdfs.values())
 
 
@@ -157,7 +220,7 @@ def compute_density(bin_state, contact_state, sigma_d=0.01):
     # start_t = time.time()
     force_distribution = functools.reduce(operator.add, fdists)
     weighted_force_distribution = functools.reduce(operator.add, weighted_fdists)
-    scene_sdf = sdf_for_inside_objects(sdfs)
+    scene_sdf = sdf_for_scene(sdfs)
     # print("fdist sum = ", np.sum(force_distribution), "wfdist sum =", np.sum(weighted_force_distribution))
     # message(f"post process: {time.time() - start_t:.2f}[sec]")
 
