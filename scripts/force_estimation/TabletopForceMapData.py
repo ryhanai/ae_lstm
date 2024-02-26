@@ -126,9 +126,10 @@ class TabletopRandomSceneDataset(Dataset):
             fmap = fmap.transpose(2, 0, 1)
             fmap = self._normalization(fmap, np.log(self._force_bounds))
         else:
-            dist_bounds = [0, 0.03]
-            fmap = np.clip(fmap, -dist_bounds[1], dist_bounds[0])
-            fmap = self._normalization(-fmap, dist_bounds)
+            dist_bounds = [-0.001, 0.02]
+            fmap = np.clip(-fmap, dist_bounds[0], dist_bounds[1])
+            fmap = fmap.transpose(2, 0, 1)
+            fmap = self._normalization(fmap, dist_bounds)
         return fmap
 
     def load_image(self, idx, view_idx):
