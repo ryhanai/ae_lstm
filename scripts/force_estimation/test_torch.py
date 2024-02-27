@@ -39,12 +39,17 @@ parser = argparse.ArgumentParser()
 
 data_dir = f"{os.environ['HOME']}/Dataset/forcemap/tabletop240125"
 parser.add_argument("--dataset_path", type=str, default=data_dir)
-parser.add_argument("--weights", type=str, default="log/20240221_0015_58 log/20240221_1851_57/ log/20240222_1649_39")
+parser.add_argument("--weights", type=str, default="log/20240221_0015_58 log/20240227_1431_21 log/20240226_2003_57")
 args = parser.parse_args()
 
 # previous result
 # geometry-guided: "log/20240130_1947_53"
 # isotropic: "log/20240201_1847_01"
+
+# mesh2sdf result
+# geometry-guided: "log/20240221_0015_58
+# isotropic: "log/20240221_1851_57"
+# SDF: "log/20240222_1649_39"
 
 
 def setup_model(weights):
@@ -162,12 +167,14 @@ class Tester:
 
         viewer.rviz_client.show()
 
-    def show_force_label(self, idx, method=2, view_idx=0):
+    def show_force_label(self, idx, method=2):
         m = self.test_data._method
         self.test_data._method = method
-        x_batch, f_batch = self.test_data.__getitem__([idx], view_idx)
+        f = self.test_data.load_fmap(idx)
         self.test_data._method = m
-        self.show_result(idx, results=[None, None, f_batch[0]], visualize_idx=method)
+        results = [None, None, None]
+        results[method] = f.transpose(1, 2, 0)
+        self.show_result(idx, results=results, visualize_idx=method)
 
     # def predict_with_multiple_views(self, idx, view_indices=range(3), ord=1, eps=1e-7):
     #     def error_fn(x, y):
