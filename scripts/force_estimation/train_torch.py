@@ -3,8 +3,10 @@
 #
 
 import argparse
+import json
 import os
 import time
+from pathlib import Path
 
 import numpy as np
 
@@ -241,8 +243,13 @@ print(summary(model, input_size=(args.batch_size, 3, 360, 512)))
 # print(summary(model, input_size=(args.batch_size, 3, 336, 672)))
 
 if args.weights != "":
-    weight_file = args.weights
-    print(f"load pre-trained weights from '{weight_file}'")
+    with open(Path(args.weights) / "args.json", "r") as f:
+        model_params = json.load(f)
+
+    assert args.method == model_params["method"]
+
+    weight_file = Path(args.weights) / f"{model.__class__.__name__}.pth"
+    print_info(f"load pre-trained weights from '{weight_file}'")
     ckpt = torch.load(weight_file)
     model.load_state_dict(ckpt["model_state_dict"])
 
