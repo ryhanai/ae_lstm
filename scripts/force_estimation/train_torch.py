@@ -185,6 +185,7 @@ parser.add_argument("--vmax", type=float, default=0.9)
 parser.add_argument("--device", type=int, default=0)
 parser.add_argument("--tag", help="Tag name for snap/log sub directory")
 parser.add_argument("--method", help="geometry-aware | isotropic | sdf", type=str, default="geometry-aware")
+parser.add_argument("--weights", help="use pre-trained weight", type=str, default="")
 args = parser.parse_args()
 
 # check args
@@ -236,9 +237,14 @@ test_loader = DataLoader(train_data, batch_size=None, num_workers=8, pin_memory=
 # model = ForceEstimationDinoRes(fine_tune_encoder=True, device=args.device)
 
 model = ForceEstimationResNetTabletop(fine_tune_encoder=True, device=args.device)
-
 print(summary(model, input_size=(args.batch_size, 3, 360, 512)))
 # print(summary(model, input_size=(args.batch_size, 3, 336, 672)))
+
+if args.weights != "":
+    weight_file = args.weights
+    print(f"load pre-trained weights from '{weight_file}'")
+    ckpt = torch.load(weight_file)
+    model.load_state_dict(ckpt["model_state_dict"])
 
 # set optimizer
 if args.optimizer.casefold() == "adam":
@@ -256,7 +262,7 @@ trainer = Trainer(model, optimizer, device=device)
 
 # training main
 log_dir_path = set_logdir("./" + args.log_dir, args.tag)
-save_name = os.path.join(log_dir_path, "best.pth")
+save_name = os.path.join(log_dir_path, f"{trainer.model.__class__.__name__}.pth")
 writer = SummaryWriter(log_dir=log_dir_path, flush_secs=30)
 early_stop = EarlyStopping(patience=100000)
 
