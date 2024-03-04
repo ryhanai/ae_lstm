@@ -39,7 +39,7 @@ parser = argparse.ArgumentParser()
 
 data_dir = f"{os.environ['HOME']}/Dataset/forcemap/tabletop240125"
 parser.add_argument("--dataset_path", type=str, default=data_dir)
-parser.add_argument("--weights", type=str, default="log/20240221_0015_58 log/20240227_1431_21 log/20240226_2003_57")
+parser.add_argument("--weights", type=str, default="log/20240221_0015_58 log/20240227_1431_21 log/20240301_1431_11")
 args = parser.parse_args()
 
 # previous result
@@ -75,7 +75,7 @@ def setup_dataloader(args):
     data_loader = dataset_params["data loader"]
     print_info(f"loading test data [{data_loader}]")
     test_data = globals()[data_loader]("test")
-    # test_data = globals()[data_loader]("validation", view_index=0)
+    # test_data = globals()[data_loader]("validation")
     return test_data, dataset_params
 
 

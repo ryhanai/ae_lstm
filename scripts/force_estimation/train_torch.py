@@ -218,7 +218,7 @@ print(f"{time.time() - t_start} [sec]")
 train_sampler = BatchSampler(RandomSampler(train_data), batch_size=args.batch_size, drop_last=False)
 train_loader = DataLoader(train_data, batch_size=None, num_workers=8, pin_memory=True, sampler=train_sampler)
 test_sampler = BatchSampler(RandomSampler(test_data), batch_size=args.batch_size, drop_last=False)
-test_loader = DataLoader(train_data, batch_size=None, num_workers=8, pin_memory=True, sampler=test_sampler)
+test_loader = DataLoader(test_data, batch_size=None, num_workers=8, pin_memory=True, sampler=test_sampler)
 
 # define model
 
