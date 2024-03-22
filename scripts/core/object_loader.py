@@ -8,12 +8,12 @@ class ObjectInfo:
     object_dir = f"{os.environ['HOME']}/Dataset/ycb_conveni"
     config_dir = f"{os.environ['HOME']}/Program/moonshot/ae_lstm/specification/config"
 
-    def __init__(self, dataset="ycb_conveni"):
-        self.load_config(ObjectInfo.object_dir, ObjectInfo.config_dir, dataset)
+    def __init__(self, dataset="ycb_conveni", split="train"):
+        self.load_config(ObjectInfo.object_dir, ObjectInfo.config_dir, dataset, split)
 
-    def load_config(self, object_dir, config_dir, dataset):
+    def load_config(self, object_dir, config_dir, dataset, split):
         with open(os.path.join(config_dir, f"dataset_{dataset}.yaml")) as f:
-            dataset_def = yaml.safe_load(f)["train"]
+            dataset_def = yaml.safe_load(f)[split]
 
         with open(os.path.join(f"{config_dir}", "objects.yaml")) as f:
             obj_def = yaml.safe_load(f)

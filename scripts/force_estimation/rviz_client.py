@@ -22,6 +22,8 @@ class RVizClient:
         self._message_id = 0
         self._node_name = "force_distribution_publisher"
         self._base_frame_id = "map"
+        self._6dof = True
+        self._interactive_marker_size = 0.08
         self.start_ros_node()
 
     def start_ros_node(self):
@@ -34,7 +36,7 @@ class RVizClient:
         int_marker.name = "object_center"
         int_marker.description = "Object Center"
         int_marker.pose.position = Point(0.0, 0.0, 0.80)
-        int_marker.scale = 0.04
+        int_marker.scale = self._interactive_marker_size
         box_marker = self._make_marker(Marker.SPHERE)
         box_marker.pose = int_marker.pose
         box_marker.scale = Vector3(0.005, 0.005, 0.005)
@@ -78,20 +80,60 @@ class RVizClient:
         control.orientation_mode = InteractiveMarkerControl.FIXED
         int_marker.controls.append(control)
 
+        if self._6dof:
+            control = InteractiveMarkerControl()
+            control.orientation.w = 1
+            control.orientation.x = 1
+            control.orientation.y = 0
+            control.orientation.z = 0
+            control.name = "rotate_x"
+            control.interaction_mode = InteractiveMarkerControl.ROTATE_AXIS
+            control.orientation_mode = InteractiveMarkerControl.FIXED
+            int_marker.controls.append(control)
+
+            control = InteractiveMarkerControl()
+            control.orientation.w = 1
+            control.orientation.x = 0
+            control.orientation.y = 1
+            control.orientation.z = 0
+            control.name = "rotate_y"
+            control.interaction_mode = InteractiveMarkerControl.ROTATE_AXIS
+            control.orientation_mode = InteractiveMarkerControl.FIXED
+            int_marker.controls.append(control)
+
+            control = InteractiveMarkerControl()
+            control.orientation.w = 1
+            control.orientation.x = 0
+            control.orientation.y = 0
+            control.orientation.z = 1
+            control.name = "rotate_z"
+            control.interaction_mode = InteractiveMarkerControl.ROTATE_AXIS
+            control.orientation_mode = InteractiveMarkerControl.FIXED
+            int_marker.controls.append(control)
+
         self._interactive_marker_server.insert(int_marker, self.processInteractiveMarkerFeedback)
         self._interactive_marker_server.applyChanges()
+        self._interactiveMarkerCallback = None
 
-        self._object_position = np.array([0, 0, 0.78])
-
+        self._interactive_marker_pose = (np.array([0, 0, 0.78]), np.array([0, 0, 0, 1]))
         self.rate = rospy.Rate(30)
 
     def processInteractiveMarkerFeedback(self, feedback):
         #  print(feedback.pose.position.x, ', ', feedback.pose.position.y, ', ', feedback.pose.position.z)
         p = feedback.pose.position
-        self._object_position = np.array([p.x, p.y, p.z])
+        q = feedback.pose.orientation
+        self._interactive_marker_pose = (np.array([p.x, p.y, p.z]), np.array([q.x, q.y, q.z, q.w]))
+        if self._interactiveMarkerCallback != None:
+            self._interactiveMarkerCallback()
 
     def getObjectPosition(self):
-        return self._object_position
+        return self._interactive_marker_pose[0]
+
+    def getInteractiveMarkerPose(self):
+        return self._interactive_marker_pose
+
+    def addInteractiveMarkerCallback(self, func):
+        self._interactiveMarkerCallback = func
 
     def show(self):
         self._pub.publish(self._markerArray)

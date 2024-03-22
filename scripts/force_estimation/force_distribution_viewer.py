@@ -7,8 +7,6 @@ import scipy.linalg
 from core.object_loader import ObjectInfo
 from force_estimation import forcemap, rviz_client
 
-object_info = ObjectInfo("ycb_conveni_v1")
-
 
 class ForceDistributionViewer:
     """
@@ -30,7 +28,11 @@ class ForceDistributionViewer:
         if not cls._unique_instance:
             cls._unique_instance = cls.__internal_new__()
             cls.rviz_client = rviz_client.RVizClient()
+            cls._unique_instance._object_info = ObjectInfo(dataset='ycb_conveni_v1', split='train')
         return cls._unique_instance
+
+    def set_object_info(self, object_info):
+        self._object_info = object_info
 
     def publish_bin_state(self, bin_state, fmap, draw_fmap=True, draw_force_gradient=False, draw_range=[0.5, 0.9]):
         self.rviz_client.delete_all()
@@ -74,13 +76,13 @@ class ForceDistributionViewer:
         for object_state in bin_state:
             name, pose = object_state
 
-            mesh_file, scale = object_info.rviz_mesh_file(name)
+            mesh_file, scale = self._object_info.rviz_mesh_file(name)
             assert mesh_file, f"mesh file for {name} not found"
 
             self.rviz_client.draw_mesh(
                 mesh_file,
                 pose,
-                (0.5, 0.5, 0.5, 0.3),
+                (0.5, 0.5, 0.5, 0.4),
             )
 
     def draw_force_distribution(self, positions, fvals, draw_range=[0.5, 0.9]):
