@@ -21,7 +21,7 @@ fmap = forcemap.GridForceMap("small_table", bandwidth=0.03)
 viewer = force_distribution_viewer.ForceDistributionViewer.get_instance()
 
 
-data_dir = f"{os.environ['HOME']}/Dataset/forcemap/tabletop240125"
+data_dir = f"{os.environ['HOME']}/Dataset/forcemap/tabletop240304"
 object_info = ObjectInfo("ycb_conveni_v1")
 
 

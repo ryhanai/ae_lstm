@@ -39,8 +39,11 @@ parser = argparse.ArgumentParser()
 
 data_dir = f"{os.environ['HOME']}/Dataset/forcemap/tabletop240125"
 parser.add_argument("--dataset_path", type=str, default=data_dir)
-parser.add_argument("--weights", type=str, default="log/20240221_0015_58 log/20240227_1431_21 log/20240301_1431_11")
+# parser.add_argument("--weights", type=str, default="log/20240221_0015_58 log/20240227_1431_21 log/20240301_1431_11")
+# parser.add_argument("--weights", type=str, default="log/20240221_0015_58 log/20240304_1834_24 log/20240304_2000_11")
+parser.add_argument("--weights", type=str, default="log/20240221_0015_58 log/20240304_1834_24")
 args = parser.parse_args()
+
 
 # previous result
 # geometry-guided: "log/20240130_1947_53"
@@ -103,7 +106,34 @@ class Tester:
         self._planner = planner
         self._draw_range = [0.5, 0.9]
 
-    def predict(self, idx, view_idx=0, log_scale=True, planning=True, object_radius=0.05):
+    def predict_from_image(
+        self, image_file, log_scale=True, planning=True, object_radius=0.05, show_result=True, visualize_idx=1
+    ):
+        rgb = cv2.cvtColor(cv2.imread(image_file), cv2.COLOR_BGR2RGB)
+        roi = self.crop_center_d415(rgb)
+        roi = roi.transpose(2, 0, 1).astype("float32")
+        roi = normalization(roi, (0.0, 255.0), [0.1, 0.9])
+        x_batch = np.expand_dims(roi, axis=0)
+        x_batch = torch.from_numpy(x_batch).float()
+        result = self.do_predict(x_batch, log_scale=True, planning=True, object_radius=0.05)
+        if show_result:
+            self.show_result(None, *result, show_bin_state=False, visualize_idx=visualize_idx)
+        return result
+
+    def crop_center_d415(self, img, c=(20, 10), crop=64):
+        return img[180 + c[0] : 540 + c[0], 320 + c[1] + crop : 960 + c[1] - crop]
+
+    def predict(
+        self, idx, view_idx=0, log_scale=True, planning=True, object_radius=0.05, show_result=True, visualize_idx=1
+    ):
+        # prepare data
+        x_batch, f_batch = self.test_data.__getitem__([idx], view_idx)
+        result = self.do_predict(x_batch, log_scale=True, planning=True, object_radius=0.05)
+        if show_result:
+            self.show_result(idx, *result, visualize_idx=visualize_idx)
+        return result
+
+    def do_predict(self, x_batch, log_scale=True, planning=True, object_radius=0.05):
         def post_process(y, log_scale=True):
             y = tensor2numpy(y)
             y = y.transpose(1, 2, 0)
@@ -111,8 +141,6 @@ class Tester:
                 y = np.exp((y - 0.1) / 0.8) - 1.0
             return y
 
-        # prepare data
-        x_batch, f_batch = self.test_data.__getitem__([idx], view_idx)
         x_batch = x_batch.to(self._device)
 
         # force prediction
@@ -141,7 +169,7 @@ class Tester:
                 print_info(f"planning result: {v_omega[0]}, {v_omega[1]}")
                 planning_results.append(v_omega)
 
-        return idx, object_center, results, planning_results
+        return object_center, results, planning_results
 
     def show_result(
         self,
