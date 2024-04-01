@@ -10,20 +10,19 @@ import os
 import time
 from pathlib import Path
 
-import forcemap
 import numpy as np
 import pandas as pd
 import torch
 import torch._dynamo
 from app.pick_planning import LiftingDirectionPlanner
-from eipl_print_func import print_info
-from eipl_utils import tensor2numpy
-from force_estimation import force_distribution_viewer
-from force_estimation_v4 import *
+from force_estimation import force_distribution_viewer, forcemap
+from force_estimation.eipl_print_func import print_info
+from force_estimation.eipl_utils import tensor2numpy
+from force_estimation.force_estimation_v4 import *
 
 # from KonbiniForceMapData import *
 # from SeriaBasketForceMapData import *
-from TabletopForceMapData import *
+from force_estimation.TabletopForceMapData import *
 from torchinfo import summary
 
 torch._dynamo.config.verbose = True
@@ -41,7 +40,11 @@ data_dir = f"{os.environ['HOME']}/Dataset/forcemap/tabletop240125"
 parser.add_argument("--dataset_path", type=str, default=data_dir)
 # parser.add_argument("--weights", type=str, default="log/20240221_0015_58 log/20240227_1431_21 log/20240301_1431_11")
 # parser.add_argument("--weights", type=str, default="log/20240221_0015_58 log/20240304_1834_24 log/20240304_2000_11")
-parser.add_argument("--weights", type=str, default="log/20240221_0015_58 log/20240304_1834_24")
+parser.add_argument(
+    "--weights",
+    type=str,
+    default=f"{os.environ['HOME']}/Program/moonshot/ae_lstm/scripts/force_estimation/log/20240221_0015_58 {os.environ['HOME']}/Program/moonshot/ae_lstm/scripts/force_estimation/log/20240304_1834_24",
+)
 args = parser.parse_args()
 
 
@@ -106,11 +109,20 @@ class Tester:
         self._planner = planner
         self._draw_range = [0.5, 0.9]
 
-    def predict_from_image(
+    def predict_from_image_file(
         self, image_file, log_scale=True, planning=True, object_radius=0.05, show_result=True, visualize_idx=1
     ):
-        rgb = cv2.cvtColor(cv2.imread(image_file), cv2.COLOR_BGR2RGB)
-        roi = self.crop_center_d415(rgb)
+        img = cv2.imread(image_file)
+        rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        return self.predict_from_image(img, log_scale, planning, object_radius, show_result, visualize_idx)
+
+    def crop_center_d415(self, img, c=(20, 10), crop=64):
+        return img[180 + c[0] : 540 + c[0], 320 + c[1] + crop : 960 + c[1] - crop]
+
+    def predict_from_image(
+        self, rgb_image, log_scale=True, planning=True, object_radius=0.05, show_result=True, visualize_idx=1
+    ):
+        roi = self.crop_center_d415(rgb_image)
         roi = roi.transpose(2, 0, 1).astype("float32")
         roi = normalization(roi, (0.0, 255.0), [0.1, 0.9])
         x_batch = np.expand_dims(roi, axis=0)
@@ -119,9 +131,6 @@ class Tester:
         if show_result:
             self.show_result(None, *result, show_bin_state=False, visualize_idx=visualize_idx)
         return result
-
-    def crop_center_d415(self, img, c=(20, 10), crop=64):
-        return img[180 + c[0] : 540 + c[0], 320 + c[1] + crop : 960 + c[1] - crop]
 
     def predict(
         self, idx, view_idx=0, log_scale=True, planning=True, object_radius=0.05, show_result=True, visualize_idx=1
