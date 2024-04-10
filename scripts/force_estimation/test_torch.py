@@ -295,6 +295,9 @@ class Tester:
     def set_draw_range(self, values):
         self._draw_range = values
 
+    def get_draw_range(self):
+        return self._draw_range
+
     # def predict_force_with_multiviews(self, idx):
     #     eps = 1e-8
     #     ys = [self.predict_force(idx, view, with_variance=True) for view in range(3)]
