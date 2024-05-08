@@ -93,9 +93,9 @@ def extract_rgb(bag, msg_seqs=[]):
     return rgbs
 
 
-seqs = [27060, 27232, 27310, 27406, 27543, 27688, 28010, 28290, 28427, 28856, 29051, 29288, 29506, 29700, 29847]
-print(len(extract_rgb(bag, seqs)))
+# seqs = [27060, 27232, 27310, 27406, 27543, 27688, 28010, 28290, 28427, 28856, 29051, 29288, 29506, 29700, 29847]
+# print(len(extract_rgb(bag, seqs)))
 
-# if __name__ == "__main__":
-#     data = bag_to_images(bag)
-#     write_data(data)
+if __name__ == "__main__":
+    data = bag_to_images(bag)
+    write_data(data)

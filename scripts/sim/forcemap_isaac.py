@@ -592,6 +592,7 @@ class Recorder:
         Record bin-state and force
         """
         contact_positions = []
+        contact_normals = []
         impulse_values = []
         contacting_objects = []
         bin_state = []
@@ -605,6 +606,7 @@ class Recorder:
                     objectA = scene.get_object_name_by_primitive_name(contact["body0"])
                     objectB = scene.get_object_name_by_primitive_name(contact["body1"])
                     contact_positions.append(contact["position"])
+                    contact_normals.append(contact["normal"])
                     impulse_values.append(scipy.linalg.norm(contact["impulse"]))
                     contacting_objects.append((objectA, objectB))
 
@@ -619,12 +621,13 @@ class Recorder:
 
         # remove duplicated contacts
         contact_positions, uidx = np.unique(contact_positions, axis=0, return_index=True)
+        contact_normals = [contact_normals[idx] for idx in uidx]
         impulse_values = [impulse_values[idx] for idx in uidx]
         contacting_objects = [contacting_objects[idx] for idx in uidx]
 
         pd.to_pickle(bin_state, os.path.join(self._data_dir, "bin_state{:05d}.pkl".format(self._frameNo)))
         pd.to_pickle(
-            (contact_positions, impulse_values, contacting_objects),
+            (contact_positions, impulse_values, contacting_objects, contact_normals),
             os.path.join(self._data_dir, "contact_raw_data{:05d}.pkl".format(self._frameNo)),
         )
 
@@ -717,4 +720,4 @@ class DatasetGenerator(metaclass=ABCMeta):
 scene = RandomTableScene(world, conf)
 
 dataset = DatasetGenerator(scene, output_force=False)
-# dataset.create(5, 3)
+dataset.create(5, 4)

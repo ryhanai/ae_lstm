@@ -127,7 +127,7 @@ class Tester:
         roi = normalization(roi, (0.0, 255.0), [0.1, 0.9])
         x_batch = np.expand_dims(roi, axis=0)
         x_batch = torch.from_numpy(x_batch).float()
-        result = self.do_predict(x_batch, log_scale=True, planning=True, object_radius=0.05)
+        result = self.do_predict(x_batch, log_scale=True, planning=planning, object_radius=0.05)
         if show_result:
             self.show_result(None, *result, show_bin_state=False, visualize_idx=visualize_idx)
         return result
@@ -164,11 +164,11 @@ class Tester:
 
         # lifting direction planning
         if planning:
+            planning_results = []
             object_center = viewer.rviz_client.getObjectPosition()
             print_info(f"object center: {object_center}")
             force_bounds = self.test_data._compute_force_bounds()
 
-            planning_results = []
             for y in results:
                 predicted_force_map = np.exp(normalization(y, test_data.minmax, np.log(force_bounds)))
                 print_info(f"AVERAGE predicted force: {np.average(predicted_force_map)}")
@@ -178,7 +178,9 @@ class Tester:
                 print_info(f"planning result: {v_omega[0]}, {v_omega[1]}")
                 planning_results.append(v_omega)
 
-        return object_center, results, planning_results
+            return object_center, results, planning_results
+        else:
+            return None, results, []
 
     def show_result(
         self,
@@ -196,11 +198,12 @@ class Tester:
 
         self.show_forcemap(results[visualize_idx], bs, draw_range=self._draw_range)
 
-        arrow_scale = [0.005, 0.01, 0.004]
-        arrow_colors = [[1, 0, 1, 1], [1, 1, 0, 1], [0, 1, 1, 1]]
-        for c, planning_result in zip(arrow_colors, planning_results):
-            pick_direction = planning_result[0]
-            planner.draw_result(viewer, object_center, pick_direction, rgba=c, arrow_scale=arrow_scale)
+        if len(planning_results) > 0:
+            arrow_scale = [0.005, 0.01, 0.004]
+            arrow_colors = [[1, 0, 1, 1], [1, 1, 0, 1], [0, 1, 1, 1]]
+            for c, planning_result in zip(arrow_colors, planning_results):
+                pick_direction = planning_result[0]
+                planner.draw_result(viewer, object_center, pick_direction, rgba=c, arrow_scale=arrow_scale)
 
         viewer.rviz_client.show()
 

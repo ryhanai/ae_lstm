@@ -1,3 +1,4 @@
+import argparse
 import glob
 import os
 import subprocess
@@ -10,10 +11,10 @@ from mask2polygon import *
 from sklearn import mixture
 from sklearn.cluster import DBSCAN
 
-bag_file = "~/Documents/20240131_191917.bag"
-output_dir = "~/Dataset/forcemap_evaluation"
-start_index = 160
-end_index = 300
+# bag_file = "~/Documents/20240131_191917.bag"
+# output_dir = "~/Dataset/forcemap_evaluation"
+# start_index = 160
+# end_index = 300
 
 
 def bag_to_images():
@@ -22,17 +23,18 @@ def bag_to_images():
     subprocess.run(cmd, shell=True)
 
 
-def gen_bb_and_mask(project="~/Dataset/forcemap_evaluation", name="20240131_191917", conf_thres=0.15):
+def gen_bb_and_mask_with_YOLO(project="~/Dataset/forcemap_evaluation/01_GAFS_1", conf_thres=0.15):
     # use YOLO
     # anaconda, densefusion env
     # go to Program/yolov5
     predict = "~/Program/yolov5/segment/predict.py"
     weights = "~/Program/moonshot/ae_lstm/scripts/evaluation/yolo_runs/exp8_12epoch/weights/best.pt"
-    source = Path(f"{project}/{name}").expanduser()
-
+    source = Path(project).expanduser()
     source_pattern = str(source / "*-color.jpg")
+
+    name = "yolo_out"
     # cmd = f"python {predict} --weights {weights} --source {source} --conf-thres {conf_thres} --save-txt --save-conf --project {project} --name {name} --exist-ok --nosave"
-    cmd = f"python {predict} --weights {weights} --source '{source_pattern}' --conf-thres {conf_thres} --save-txt --save-conf --project {project} --name {name} --exist-ok --nosave"
+    cmd = f"python {predict} --weights {weights} --source '{source_pattern}' --conf-thres {conf_thres} --save-txt --save-conf --project {project} --name {name} --exist-ok"
     print(cmd)
     try:
         subprocess.run(cmd, shell=True, check=True)
@@ -41,10 +43,10 @@ def gen_bb_and_mask(project="~/Dataset/forcemap_evaluation", name="20240131_1919
         return
 
     # generate (masks, bbs, meta-data) from polygons
-    polygon_to_mask_all(polygon_files_dir=str(source), output_dir=str(source))
+    polygon_to_mask_all(polygon_files_dir=str(source / name), output_dir=str(source))
 
 
-def estimate_pose(project="~/Dataset/forcemap_evaluation", name="20240131_191917"):
+def estimate_pose_with_densefusion(project="~/Dataset/forcemap_evaluation", name="20240131_191917"):
     # use DenseFusion
     # anaconda, densefusion env
     proj_dir = str(Path(f"{project}/{name}").expanduser())
@@ -86,12 +88,6 @@ def gen_densefusion_config_file(
             pass
 
 
-def do_track(name):
-    # bag_to_images()
-    gen_bb_and_mask(name=name)
-    estimate_pose(name=name)
-
-
 #####
 ##### Image-based evaluation
 #####
@@ -130,6 +126,7 @@ def compute_3d_position(mask, points, outlier_removal="dbscan", n_components=1, 
         g.fit(masked_points)
         ret = g.means_[np.argmax(g.weights_)]
     else:
+        # https://scikit-learn.org/stable/modules/clustering.html#dbscan
         db = DBSCAN(eps=eps, min_samples=min_samples).fit(masked_points)
         labels = db.labels_
 
@@ -152,17 +149,18 @@ def compute_3d_position(mask, points, outlier_removal="dbscan", n_components=1, 
     return ret
 
 
-def image_based_tracking(project_dir="~/Program/yolov5/runs/predict-seg/20240131_193129"):
-    p = Path(project_dir)
-    p = p.expanduser()
+def image_based_tracking(project="~/Dataset/forcemap_evaluation/01_GAFS_1"):
+    p = Path(project).expanduser()
     trajectories = {}
-    poly_files = sorted(glob.glob(str(p / "labels" / "*-color.txt")))
+    poly_files = sorted(glob.glob(str(p / "yolo_out" / "labels" / "*-color.txt")))
+
     for frame_number, poly_file in enumerate(poly_files):
         n = int(Path(poly_file).stem.replace("-color", ""))
         clss, masks, bbs = polygon_to_mask(poly_file, unify_mask=False)
-        depth_path = f"/home/ryo/Dataset/forcemap_evaluation/20240131_193129/{n:06d}-depth.png"
-        depth_img = cv2.imread(depth_path, cv2.IMREAD_ANYDEPTH)
+        depth_path = p / f"{n:06d}-depth.png"
+        depth_img = cv2.imread(str(depth_path), cv2.IMREAD_ANYDEPTH)
         points = back_project(depth_img)
+
         for cls, mask, bb in zip(clss, masks, bbs):
             pos = compute_3d_position(mask, points)
             label = label_names[cls]
@@ -190,7 +188,7 @@ def back_project(depth_img):
     return points
 
 
-def plot_trajectory(trajs, object_name, z_offset=-0.7):
+def plot_trajectory(trajs, object_name, z_offset=-0.7, out_file=None):
     traj = trajs[object_name]
     indices = np.array(list(traj.keys()))
     xs, ys, zs = zip(*np.array(list(traj.values())))
@@ -203,7 +201,10 @@ def plot_trajectory(trajs, object_name, z_offset=-0.7):
     ax.set_xlabel("[sec]")
     ax.set_ylabel("[m]")
     ax.legend(loc="upper right")
-    plt.show()
+    if out_file != None:
+        plt.savefig(out_file)
+    else:
+        plt.show()
 
 
 def apply_mask(points, mask):
@@ -243,3 +244,11 @@ def depth_distribution(object_name, frame_no, n_bins=50):
 
 
 # ffmpeg -r 30 -i %06d-color.jpg -vcodec libx264 -pix_fmt yuv420p out.mp4
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--project", type=str)
+parser.add_argument("--conf_thres", type=float, default=0.15)
+args = parser.parse_args()
+
+if __name__ == "__main__":
+    gen_bb_and_mask_with_YOLO(args.project, args.conf_thres)

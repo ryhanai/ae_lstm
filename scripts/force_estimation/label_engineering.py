@@ -135,7 +135,7 @@ def normal_distribution(fmap, contact_position):
 
 def get_obj_file(object_name):
     if object_name == "table":
-        p = Path(object_info.object_dir)
+        p = Path(object_info._object_dir)
         obj_file = str(p / "env" / "table_surface.obj")
         # mesh_scale = 1.0
         scale = np.array([0.38, 0.38, 1.0])
@@ -192,7 +192,7 @@ def compute_density(bin_state, contact_state, sigma_d=0.01):
 
     start_t = time.time()
     print(f"processing contact points [{len(contact_state[0])} contacts]: ", end="", flush=True)
-    for contact_position, force_value, contact_pair in zip(*contact_state):
+    for contact_position, force_value, contact_pair, contact_normal in zip(*contact_state):
         objectA, objectB = contact_pair
         # if objectA == "table" or objectB == "table":
         #     continue

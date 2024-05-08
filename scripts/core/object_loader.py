@@ -5,17 +5,18 @@ import yaml
 
 
 class ObjectInfo:
-    object_dir = f"{os.environ['HOME']}/Dataset/ycb_conveni"
-    config_dir = f"{os.environ['HOME']}/Program/moonshot/ae_lstm/specification/config"
-
     def __init__(self, dataset="ycb_conveni", split="train"):
-        self.load_config(ObjectInfo.object_dir, ObjectInfo.config_dir, dataset, split)
+        # self._object_dir = f"{os.environ['HOME']}/Dataset/ycb_conveni"
+        # self._config_dir = f"{os.environ['HOME']}/Program/moonshot/ae_lstm/specification/config"
+        self._object_dir = "/home/ryo/Dataset/ycb_conveni"
+        self._config_dir = "/home/ryo/Program/moonshot/ae_lstm/specification/config"
+        self.load_config(dataset, split)
 
-    def load_config(self, object_dir, config_dir, dataset, split):
-        with open(os.path.join(config_dir, f"dataset_{dataset}.yaml")) as f:
+    def load_config(self, dataset, split):
+        with open(os.path.join(self._config_dir, f"dataset_{dataset}.yaml")) as f:
             dataset_def = yaml.safe_load(f)[split]
 
-        with open(os.path.join(f"{config_dir}", "objects.yaml")) as f:
+        with open(os.path.join(f"{self._config_dir}", "objects.yaml")) as f:
             obj_def = yaml.safe_load(f)
 
         self._info = {}
@@ -24,7 +25,7 @@ class ObjectInfo:
                 prop = obj_def["ycb"][name]
                 self._info[name] = {
                     "mass": prop["mass"],
-                    "usd_file": f"{object_dir}/ycb/{name}/google_16k/textured/textured.usd",
+                    "usd_file": f"{self._object_dir}/ycb/{name}/google_16k/textured/textured.usd",
                     "dataset": "ycb",
                 }
         except:
@@ -35,7 +36,7 @@ class ObjectInfo:
                 prop = obj_def["conveni"][name]
                 self._info[name] = {
                     "mass": prop["mass"],
-                    "usd_file": f"{object_dir}/conveni/{name}/{name}/{name}.usd",
+                    "usd_file": f"{self._object_dir}/conveni/{name}/{name}/{name}.usd",
                     "dataset": "conveni",
                 }
         except:

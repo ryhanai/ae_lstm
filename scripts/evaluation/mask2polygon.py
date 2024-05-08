@@ -237,7 +237,7 @@ meta_data = {
 # P: [597.7420654296875, 0.0, 322.5055236816406, 0.0, 0.0, 597.7420654296875, 242.5670623779297, 0.0, 0.0, 0.0, 1.0, 0.0]
 
 
-def polygon_to_mask_all(polygon_files_dir, output_dir=None):
+def polygon_to_mask_all(polygon_files_dir, output_dir=None, unify_mask=False):
     p = Path(polygon_files_dir)
     poly_files = glob.glob(str(p / "labels" / "*-color.txt"))
     if output_dir == None:
@@ -247,10 +247,18 @@ def polygon_to_mask_all(polygon_files_dir, output_dir=None):
 
     for poly_file in poly_files:
         print(poly_file)
-        clss, mask, bbs = polygon_to_mask(poly_file)
-        p = Path(poly_file)
-        label_path = output_dir / p.stem.replace("-color", "-label.png")
-        cv2.imwrite(str(label_path), mask)
+        if unify_mask:
+            clss, mask, bbs = polygon_to_mask(poly_file, unify_mask=True)
+            p = Path(poly_file)
+            label_path = output_dir / p.stem.replace("-color", "-label.png")
+            cv2.imwrite(str(label_path), mask)
+        else:
+            clss, masks, bbs = polygon_to_mask(poly_file, unify_mask=False)
+            for cls, msk, bb in zip(clss, masks, bbs):
+                object_name = label_names[cls]
+                p = Path(poly_file)
+                label_path = output_dir / p.stem.replace("-color", f"-label-{object_name}.png")
+                cv2.imwrite(str(label_path), 255 * msk)
 
         bbox_path = output_dir / p.stem.replace("-color", "-box.txt")
         with open(str(bbox_path), "w") as f:
