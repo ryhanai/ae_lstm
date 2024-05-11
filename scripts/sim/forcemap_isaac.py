@@ -31,8 +31,6 @@ from omni.isaac.sensor import Camera, ContactSensor
 from omni.physx.scripts import utils
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdLux, UsdPhysics, UsdShade
 
-conf = ObjectInfo("ycb_conveni_v1")
-
 world = World(stage_units_in_meters=1.0)
 simulation_context = SimulationContext()
 
@@ -716,8 +714,16 @@ class DatasetGenerator(metaclass=ABCMeta):
 # Seria basket scene (IROS2023, moonshot interim demo.)
 # scene = RandomSeriaBasketScene(world, conf)
 
-# Table-top scene for RAL2024
-scene = RandomTableScene(world, conf)
+# Table-top scene for T-RO, '24
+# conf = ObjectInfo("ycb_conveni_v1")
+# scene = RandomTableScene(world, conf)
+
+
+# Basket scene for demo
+# env_usd_file = f'{os.environ["HOME"]}/Dataset/scenes/ycb_piled_scene.usd'
+conf = ObjectInfo("ycb_conveni_v1_small")
+scene = RandomSeriaBasketScene(world, conf)
+
 
 dataset = DatasetGenerator(scene, output_force=False)
-dataset.create(5, 4)
+dataset.create(400, 3)

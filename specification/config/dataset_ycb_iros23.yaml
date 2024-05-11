@@ -1,0 +1,40 @@
+train: # train set and test set are the same in this dataset
+  ycb:
+    - 004_sugar_box
+    - 005_tomato_soup_can
+    - 007_tuna_fish_can
+    - 008_pudding_box
+    - 009_gelatin_box
+    - 010_potted_meat_can
+    - 011_banana
+    - 012_strawberry
+    - 013_apple
+    - 014_lemon
+    - 016_pear
+    - 017_orange
+    - 026_sponge
+    - 040_large_marker
+    - 055_baseball
+    - 056_tennis_ball
+    - 061_foam_brick
+
+test:
+  ycb:
+    - 004_sugar_box
+    - 005_tomato_soup_can
+    - 007_tuna_fish_can
+    - 008_pudding_box
+    - 009_gelatin_box
+    - 010_potted_meat_can
+    - 011_banana
+    - 012_strawberry
+    - 013_apple
+    - 014_lemon
+    - 016_pear
+    - 017_orange
+    - 026_sponge
+    - 040_large_marker
+    - 055_baseball
+    - 056_tennis_ball
+    - 061_foam_brick
+  

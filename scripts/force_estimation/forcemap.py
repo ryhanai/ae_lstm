@@ -26,43 +26,44 @@ class GridForceMap:
         assert name == "seria_basket" or "konbini_shelf" or "small_table"
         if name == "seria_basket":  # IROS2023, moonshot interim review
             self.grid = np.mgrid[-0.13:0.13:40j, -0.13:0.13:40j, 0.73:0.99:40j]
-            X, Y, Z = self.grid
-            self.dV = 0.26 * 0.26 * 0.26 / (40**3)
-            positions = np.vstack([X.ravel(), Y.ravel(), Z.ravel()])
-            self.positions = positions.T  # [number of points, 3]
-            self.bandwidth = bandwidth
+            # X, Y, Z = self.grid
+            # self.dV = 0.26 * 0.26 * 0.26 / (40**3)
+            # positions = np.vstack([X.ravel(), Y.ravel(), Z.ravel()])
+            # self.positions = positions.T  # [number of points, 3]
+            # self.bandwidth = bandwidth
         elif name == "seria_basket_old":
             self.grid = np.mgrid[-0.095:0.095:40j, -0.13:0.13:40j, 0.73:0.92:40j]
-            X, Y, Z = self.grid
-            self.dV = 0.19 * 0.26 * 0.20 / (40**3)
-            positions = np.vstack([X.ravel(), Y.ravel(), Z.ravel()])
-            self.positions = positions.T  # [number of points, 3]
-            self.bandwidth = bandwidth
+            # X, Y, Z = self.grid
+            # self.dV = 0.19 * 0.26 * 0.20 / (40**3)
+            # positions = np.vstack([X.ravel(), Y.ravel(), Z.ravel()])
+            # self.positions = positions.T  # [number of points, 3]
+            # self.bandwidth = bandwidth
         elif name == "konbini_shelf":
             self.grid = np.mgrid[-0.3:0.3:120j, -0.4:0.4:160j, 0.73:0.93:40j]
-            X, Y, Z = self.grid
-            positions = np.vstack([X.ravel(), Y.ravel(), Z.ravel()])
-            self.positions = positions.T  # [number of points, 3]
-            self.bandwidth = bandwidth
+            # X, Y, Z = self.grid
+            # positions = np.vstack([X.ravel(), Y.ravel(), Z.ravel()])
+            # self.positions = positions.T  # [number of points, 3]
+            # self.bandwidth = bandwidth
         elif name == "small_table":
             # self.grid = np.mgrid[-0.2:0.2:80j, -0.2:0.2:80j, 0.73:0.93:40j]
             self.grid = np.mgrid[-0.2:0.2:80j, -0.2:0.2:80j, 0.71:0.91:40j]
-            X, Y, Z = self.grid
-            self._xmax = X.max()
-            self._xmin = X.min()
-            self._xrange = self._xmax - self._xmin
-            self._ymax = Y.max()
-            self._ymin = Y.min()
-            self._yrange = self._ymax - self._ymin
-            self._zmax = Z.max()
-            self._zmin = Z.min()
-            self._zrange = self._zmax - self._zmin
 
-            self._nx, self._ny, self._nz = X.shape
-            self.dV = self._xrange * self._yrange * self._zrange / (self._nx * self._ny * self._nz)
-            positions = np.vstack([X.ravel(), Y.ravel(), Z.ravel()])
-            self.positions = positions.T  # [number of points, 3]
-            self.bandwidth = bandwidth
+        X, Y, Z = self.grid
+        self._xmax = X.max()
+        self._xmin = X.min()
+        self._xrange = self._xmax - self._xmin
+        self._ymax = Y.max()
+        self._ymin = Y.min()
+        self._yrange = self._ymax - self._ymin
+        self._zmax = Z.max()
+        self._zmin = Z.min()
+        self._zrange = self._zmax - self._zmin
+
+        self._nx, self._ny, self._nz = X.shape
+        self.dV = self._xrange * self._yrange * self._zrange / (self._nx * self._ny * self._nz)
+        positions = np.vstack([X.ravel(), Y.ravel(), Z.ravel()])
+        self.positions = positions.T  # [number of points, 3]
+        self.bandwidth = bandwidth
 
         # 'sony_box'
         # self.grid = np.mgrid[-0.115:0.115:40j, -0.115:0.115:40j, 0.93:1.16:40j]

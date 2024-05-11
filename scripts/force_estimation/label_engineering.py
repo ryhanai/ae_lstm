@@ -17,21 +17,30 @@ from force_estimation import force_distribution_viewer
 from mesh_to_sdf import mesh_to_voxels
 from scipy.spatial.transform import Rotation as R
 
-fmap = forcemap.GridForceMap("small_table", bandwidth=0.03)
+## config for T-RO '24, piling on the table, train with YCB+Conveni-v1
+# data_dir = f"{os.environ['HOME']}/Dataset/forcemap/tabletop240304"
+# object_info = ObjectInfo("ycb_conveni_v1")
+# fmap = forcemap.GridForceMap("small_table", bandwidth=0.03)
+# def in_forcemap_area(p):
+#     return p[0] > -0.25 and p[0] < 0.25 and p[1] > -0.25 and p[1] < 0.25 and p[2] > 0.685 and p[2] < 1.05
+
+
+## config for the latest basket scene
+data_dir = f"{os.environ['HOME']}/Dataset/forcemap/basket240511"
+object_info = ObjectInfo("ycb_conveni_v1_small")
+fmap = forcemap.GridForceMap("seria_basket", bandwidth=0.03)
+
 viewer = force_distribution_viewer.ForceDistributionViewer.get_instance()
+viewer.set_object_info(object_info)
 
 
-data_dir = f"{os.environ['HOME']}/Dataset/forcemap/tabletop240304"
-object_info = ObjectInfo("ycb_conveni_v1")
+def in_forcemap_area(p):
+    return p[0] > -0.18 and p[0] < 0.18 and p[1] > -0.18 and p[1] < 0.18 and p[2] > 0.70 and p[2] < 1.05
 
 
 def in_forcemap_area_mesh2sdf(p):
     """need to remove objects outside of the forcemap strictly in case of mesh2sdf"""
     return p[0] > -0.2 and p[0] < 0.2 and p[1] > -0.2 and p[1] < 0.2 and p[2] > 0.735 and p[2] < 1.0
-
-
-def in_forcemap_area(p):
-    return p[0] > -0.25 and p[0] < 0.25 and p[1] > -0.25 and p[1] < 0.25 and p[2] > 0.685 and p[2] < 1.05
 
 
 def load(scene_number, exclude_protruding_object=True):
@@ -72,14 +81,35 @@ def compute_sdf_with_mesh2sdf(mesh, state, fmap, zero_fill=False):
         return sdf
 
 
+# def compute_sdf(mesh, state, fmap, zero_fill=False):
+#     mesh_scale = 1.0
+#     p, q = state
+#     r = R.from_quat(q)
+#     vertices = r.apply(mesh.vertices) + p
+
+#     size = max(fmap.get_grid_shape())
+#     center = np.array([0, 0, fmap._zmin + fmap._zrange])
+#     scale = 2.0 * mesh_scale / max(fmap._xrange, fmap._yrange, fmap._zrange)
+#     vertices = (vertices - center) * scale
+
+#     mesh.vertices = vertices
+#     sdf = mesh_to_voxels(mesh, size)
+#     sdf = sdf / scale
+
+#     if zero_fill:  # fill zeros to the inside of the object
+#         return np.where(sdf >= 0, sdf, 0)
+#     else:
+#         return sdf
+
+
 def compute_sdf(mesh, state, fmap, zero_fill=False):
-    mesh_scale = 1.0
+    mesh_scale = 0.8
     p, q = state
     r = R.from_quat(q)
     vertices = r.apply(mesh.vertices) + p
 
     size = max(fmap.get_grid_shape())
-    center = np.array([0, 0, fmap._zmin + fmap._zrange])
+    center = np.array([0, 0, fmap._zmin + fmap._zrange / 2.0])
     scale = 2.0 * mesh_scale / max(fmap._xrange, fmap._yrange, fmap._zrange)
     vertices = (vertices - center) * scale
 
@@ -139,6 +169,10 @@ def get_obj_file(object_name):
         obj_file = str(p / "env" / "table_surface.obj")
         # mesh_scale = 1.0
         scale = np.array([0.38, 0.38, 1.0])
+    elif object_name == "basket":
+        p = Path(object_info._object_dir)
+        obj_file = str(p / "env" / "seria_basket2.obj")
+        scale = np.array([1.0, 1.0, 1.0])
     else:
         obj_file, scale = object_info.obj_file(object_name)
     return obj_file, scale
@@ -157,8 +191,13 @@ def sdfs_for_objects(bin_state):
         sdf = sdf[:, :, :height]
         return sdf
 
-    object_name = "table"
-    sdfs[object_name] = sdf_for_object(object_name, ([0, 0, 0.68], [0, 0, 0, 1]))
+    # generate SDF for the environment
+    if fmap.get_scene() == "small_table":
+        object_name = "table"
+        sdfs[object_name] = sdf_for_object(object_name, ([0, 0, 0.68], [0, 0, 0, 1]))
+    if fmap.get_scene() == "seria_basket":
+        object_name = "basket"
+        sdfs[object_name] = sdf_for_object(object_name, ([0, 0, 0.73], [0, 0, 0.70711, 0.70711]))
 
     for object_name, object_pose in bin_state:
         sdfs[object_name] = sdf_for_object(object_name, object_pose)
@@ -358,7 +397,7 @@ def visualize(bin_state, d, scale=1.0, draw_range=[0.3, 0.9]):
 
 
 if __name__ == "__main__":
-    bin_state, contact_state = load(0)
+    bin_state, contact_state = load(81)
     d = compute_density(bin_state, contact_state)
     bs_v = [b for b in bin_state if b[0] != "table"]
     visualize(bs_v, d[0], scale=1e1, draw_range=[0.03, 0.9])

@@ -1,0 +1,153 @@
+train:  
+  ycb:
+    - 004_sugar_box
+    - 008_pudding_box
+    - 010_potted_meat_can
+    - 012_strawberry
+    - 013_apple
+    - 014_lemon
+    - 016_pear
+    - 026_sponge
+    - 015_peach
+    - 018_plum
+    - 025_mug
+    - 030_fork
+    - 032_knife
+    - 042_adjustable_wrench
+    - 043_phillips_screwdriver
+    - 050_medium_clamp
+    - 054_softball
+    - 057_racquetball
+    - 058_golf_ball
+    - 077_rubiks_cube
+    - 005_tomato_soup_can # trackable
+    - 007_tuna_fish_can # trackable
+    - 009_gelatin_box # trackable
+    - 011_banana # trackable
+    - 017_orange
+    - 040_large_marker # trackable
+    - 055_baseball
+    - 056_tennis_ball
+    - 061_foam_brick # trackable
+    - 021_bleach_cleanser # trackable
+    - 031_spoon
+    - 037_scissors # trackable
+    - 044_flat_screwdriver
+    - 051_large_clamp # trackable
+
+  conveni:
+    - xylitol
+    - toppo
+    - kinokonoyama
+    - chip_star
+    - chocoball
+    - gogotea_straight
+    - oi_ocha_350ml
+    - calorie_mate_cheese
+    - xylitol_7assort
+    - cupnoodle_curry    
+    - creap
+    - ginger_tube
+    - java_curry_chukara
+    - kikkoman_soysauce_gennenn
+    - kizami_aojiso_tube
+    - canned_iwashi_kabayaki
+    - pan_meat
+    - vermont_curry_amakuchi
+    - 7i_handsoap
+    - clinica_ad_hamigaki
+    - clinica_advantage
+    - nonio_strong_energy
+    - clorets
+    - koalas_march
+    - takenoko
+    - coca_cola_300ml
+    - calorie_mate_fruit
+    - xylitol_freshmint
+    - golden_curry_chukara
+    - stew_cream_box
+    - kikkoman_soysauce
+    - pepper_steak
+    - honwasabi_tube
+    - vermont_curry_chukara
+    - clinica_quick_wash
+    - gum_paste
+    - kao_soap
+    - nonio_mintpaste
+
+test:
+  ycb:
+    - 004_sugar_box
+    - 008_pudding_box
+    - 010_potted_meat_can
+    - 012_strawberry
+    - 013_apple
+    - 014_lemon
+    - 016_pear
+    - 026_sponge
+    - 015_peach
+    - 018_plum
+    - 025_mug
+    - 030_fork
+    - 032_knife
+    - 042_adjustable_wrench
+    - 043_phillips_screwdriver
+    - 050_medium_clamp
+    - 054_softball
+    - 057_racquetball
+    - 058_golf_ball
+    - 077_rubiks_cube
+    - 005_tomato_soup_can # trackable
+    - 007_tuna_fish_can # trackable
+    - 009_gelatin_box # trackable
+    - 011_banana # trackable
+    - 017_orange
+    - 040_large_marker # trackable
+    - 055_baseball
+    - 056_tennis_ball
+    - 061_foam_brick # trackable
+    - 021_bleach_cleanser # trackable
+    - 031_spoon
+    - 037_scissors # trackable
+    - 044_flat_screwdriver
+    - 051_large_clamp # trackable
+
+  conveni:
+    - xylitol
+    - toppo
+    - kinokonoyama
+    - chip_star
+    - chocoball
+    - gogotea_straight
+    - oi_ocha_350ml
+    - calorie_mate_cheese
+    - xylitol_7assort
+    - cupnoodle_curry    
+    - creap
+    - ginger_tube
+    - java_curry_chukara
+    - kikkoman_soysauce_gennenn
+    - kizami_aojiso_tube
+    - canned_iwashi_kabayaki
+    - pan_meat
+    - vermont_curry_amakuchi
+    - 7i_handsoap
+    - clinica_ad_hamigaki
+    - clinica_advantage
+    - nonio_strong_energy
+    - clorets
+    - koalas_march
+    - takenoko
+    - coca_cola_300ml
+    - calorie_mate_fruit
+    - xylitol_freshmint
+    - golden_curry_chukara
+    - stew_cream_box
+    - kikkoman_soysauce
+    - pepper_steak
+    - honwasabi_tube
+    - vermont_curry_chukara
+    - clinica_quick_wash
+    - gum_paste
+    - kao_soap
+    - nonio_mintpaste

@@ -39,6 +39,7 @@ class TabletopRandomSceneDataset(Dataset):
         self,
         data_type,
         minmax=[0.1, 0.9],
+        fminmax=[1e-5, 1e-0],
         img_format="CWH",
         root_dir=Path(os.path.expanduser("~")) / "Dataset/forcemap/",
         task_name="tabletop240125",
@@ -48,6 +49,7 @@ class TabletopRandomSceneDataset(Dataset):
     ):
         self.data_type = data_type
         self.minmax = minmax
+        self.fminmax = np.array(fminmax)
         self.img_format = img_format
         self.task_name = task_name
         self.root_dir = root_dir
@@ -55,8 +57,8 @@ class TabletopRandomSceneDataset(Dataset):
 
         self._input_dir = root_dir / task_name
 
-        self._num_samples = 1000
-        self._num_views = 3
+        self._num_samples = num_samples
+        self._num_views = num_views
         self._load_data()
 
         self._force_bounds = self._compute_force_bounds()
@@ -72,10 +74,10 @@ class TabletopRandomSceneDataset(Dataset):
     # def get_data(self, device=None):
     #     return self.images.to(device), self.forces.to(device)
 
-    def _load_data(self):
+    def _load_data(self, split=[0.75, 0.875]):
         self._all_ids = range(self._num_samples)
         self._train_ids, self._validation_ids, self._test_ids = np.split(
-            self._all_ids, [int(len(self._all_ids) * 0.75), int(len(self._all_ids) * 0.875)]
+            self._all_ids, [int(len(self._all_ids) * split[0]), int(len(self._all_ids) * split[1])]
         )
         if self.data_type == "train":
             self._ids = self._train_ids
@@ -85,7 +87,7 @@ class TabletopRandomSceneDataset(Dataset):
             self._ids = self._test_ids
 
     def _compute_force_bounds(self):
-        return np.array([1e-5, 1e-0])  # currently,, we use a fixed force range
+        return self.fminmax
 
     def _normalization(self, data, bounds):
         return normalization(data, bounds, self.minmax)
