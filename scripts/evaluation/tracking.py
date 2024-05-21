@@ -17,12 +17,6 @@ from sklearn.cluster import DBSCAN
 # end_index = 300
 
 
-def bag_to_images():
-    # No anaconda env
-    cmd = f"python bag_to_images.py --bag_file {bag_file} --output_dir {output_dir} --start_index {start_index} --end_index {end_index}"
-    subprocess.run(cmd, shell=True)
-
-
 def gen_bb_and_mask_with_YOLO(project="~/Dataset/forcemap_evaluation/01_GAFS_1", conf_thres=0.15):
     # use YOLO
     # anaconda, densefusion env

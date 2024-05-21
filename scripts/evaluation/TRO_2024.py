@@ -85,8 +85,65 @@ start_end_displ = {
     "08_UP": [0.061, 0.109, 0.128],
 }
 
+scenes = {
+    "01_UP": [(50, 110), (40, 100), (25, 85)],
+    "01_IFS": [(85, 160), (20, 70), (25, 85)],
+    "01_GAFS": [(70, 140), (35, 130), (30, 100)],
+    "02_UP": [(70, 120), (35, 90), (30, 80)],
+    "02_IFS": [(25, 85), (20, 70), (20, 80)],
+    "02_GAFS": [(40, 90), (30, 80), (40, 95)],
+    "03_UP": [(15, 68), (20, 75), (20, 75)],
+    "03_IFS": [(20, 120), (20, 85), (30, 90)],
+    "03_GAFS": [(25, 80), (20, 75), (15, 80)],
+    "04_UP": [(25, 80), (15, 80), (15, 70)],
+    "04_IFS": [(25, 100), (20, 100), (20, 100)],
+    "04_GAFS": [(40, 130), (30, 115), (30, 110)],
+    "05_UP": [(20, 90), (15, 85), (15, 80)],
+    "05_IFS": [(25, 105), (25, 105), (20, 125)],
+    "05_GAFS": [(30, 110), (40, 110), (25, 90)],
+    "06_UP": [(25, 130), (15, 155), (15, 160)],
+    "06_IFS": [(25, 160), (20, 95), (20, 160)],
+    "06_GAFS": [(40, 228), (25, 165), (25, 150)],
+    "08_UP": [(15, 75), (15, 70), (15, 75)],
+    "08_IFS": [(30, 95), (15, 70), (20, 75)],
+    "08_GAFS": [(20, 120), (40, 100), (20, 75)],
+}
+
+
+def bag_to_images_for_all(bag_dir, output_dir):
+    # No anaconda env
+    for scene, frames in scenes.items():
+        for i, (start_index, end_index) in enumerate(frames):
+            bag_file = f"{bag_dir}/{scene}_{i+1}.bag"
+            cmd = f"python bag_to_images_rs.py --bag_file {bag_file} --output_dir {output_dir} --start_index {start_index} --end_index {end_index}"
+            print(cmd)
+            subprocess.run(cmd, shell=True)
+
+
+def yolo_tracking_for_all(project_dir):
+    for scene, frames in scenes.items():
+        for i, (_, _) in enumerate(frames):
+            project = f"{project_dir}/{scene}_{i+1}"
+            cmd = f"python tracking.py --project {project}"
+            print(cmd)
+            subprocess.run(cmd, shell=True)
+
+
+def generate_movies_for_all(project_dir):
+    for scene, frames in scenes.items():
+        for i, (_, _) in enumerate(frames):
+            project = f"{project_dir}/{scene}_{i+1}/yolo_out"
+            cmd = f"ffmpeg -r 20 -i {project}/%06d-color.jpg -vcodec libx264 {project}/yolo_out.mp4"
+            print(cmd)
+            subprocess.run(cmd, shell=True)
+
+
+project_dir = "/home/ryo/Dataset/forcemap_evaluation"
 
 if __name__ == "__main__":
-    # image_based_tracking_for_all_scenes("/home/ryo/Dataset/forcemap_evaluation/")
-    # eval_traj_for_all_scenes("/home/ryo/Dataset/forcemap_evaluation/")
-    print_latex_table(start_end_displ)
+    # bag_to_images_for_all(bag_dir="/home/ryo/Dataset/bags/exp", project_dir)
+    # yolo_tracking_for_all(project_dir)
+    # image_based_tracking_for_all_scenes(project_dir)
+    generate_movies_for_all(project_dir)
+    # eval_traj_for_all_scenes("/home/ryo/Dataset/forcemap_evaluation/")  # YOLO + backprojection + pointcloud clustering
+    # print_latex_table(start_end_displ)
