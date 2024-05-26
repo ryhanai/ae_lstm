@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 import cameramodels
+import quaternion
 from mask2polygon import *
 from sklearn import mixture
 from sklearn.cluster import DBSCAN
@@ -15,6 +16,10 @@ from sklearn.cluster import DBSCAN
 # output_dir = "~/Dataset/forcemap_evaluation"
 # start_index = 160
 # end_index = 300
+
+
+def unzip(x):
+    return zip(*x)
 
 
 def gen_bb_and_mask_with_YOLO(project="~/Dataset/forcemap_evaluation/01_GAFS_1", conf_thres=0.15):
@@ -185,8 +190,11 @@ def back_project(depth_img):
 def plot_trajectory(trajs, object_name, z_offset=-0.7, out_file=None):
     traj = trajs[object_name]
     indices = np.array(list(traj.keys()))
-    xs, ys, zs = zip(*np.array(list(traj.values())))
+    poss, oris = unzip(traj.values())
+
     ts = indices * 0.033  # convert index to second
+
+    xs, ys, zs = unzip(np.array(poss))
     fig, ax = plt.subplots()
     ax.plot(ts, xs, "o-", label="x")
     ax.plot(ts, ys, "o-", label="y")
@@ -194,6 +202,21 @@ def plot_trajectory(trajs, object_name, z_offset=-0.7, out_file=None):
     ax.set_title(object_name)
     ax.set_xlabel("[sec]")
     ax.set_ylabel("[m]")
+    ax.legend(loc="upper right")
+    if out_file != None:
+        plt.savefig(out_file)
+    else:
+        plt.show()
+
+    qw, qx, qy, qz = unzip([quaternion.as_float_array(ori) for ori in oris])
+    fig, ax = plt.subplots()
+    ax.plot(ts, qw, "o-", label="qw")
+    ax.plot(ts, qx, "o-", label="qx")
+    ax.plot(ts, qy, "o-", label="qy")
+    ax.plot(ts, qz, "o-", label="qz")
+    ax.set_title(object_name)
+    ax.set_xlabel("[sec]")
+    # ax.set_ylabel("[m]")
     ax.legend(loc="upper right")
     if out_file != None:
         plt.savefig(out_file)

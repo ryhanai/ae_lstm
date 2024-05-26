@@ -7,41 +7,60 @@ import pandas as pd
 from scipy.linalg import norm
 from tracking import *
 
+# def eval_traj(traj):
+#     a = np.array(list(traj.values()))
+#     if a.shape[0] < 5:
+#         return 0.0
+#     # return np.max(norm(a - a[0], axis=1, ord=2))  # outlier removal is needed
+#     return norm(a[-1] - a[4], ord=2)
 
-def eval_traj(traj):
-    a = np.array(list(traj.values()))
-    if a.shape[0] < 5:
-        return 0.0
-    # return np.max(norm(a - a[0], axis=1, ord=2))  # outlier removal is needed
-    return norm(a[-1] - a[4], ord=2)
+# def eval_trajectories_for_all_scenes(project):
+#     p = Path(project)
+#     scene_dirs = sorted(glob.glob(str(p / "04_IFS_1")))
 
-
-def eval_traj_for_all_scenes(project):
-    p = Path(project)
-    scene_dirs = sorted(glob.glob(str(p / "04_IFS_1")))
-
-    for scene_dir in scene_dirs:
-        print(scene_dir)
-        trajs = pd.read_pickle(str(Path(scene_dir) / "yolo_clustering" / "trajectories.pkl"))
-        for name, traj in trajs.items():
-            print(scene_dir, name, eval_traj(traj))
+#     for scene_dir in scene_dirs:
+#         print(scene_dir)
+#         trajs = pd.read_pickle(str(Path(scene_dir) / "yolo_clustering" / "trajectories.pkl"))
+#         for name, traj in trajs.items():
+#             print(scene_dir, name, eval_traj(traj))
 
 
-def print_latex_table(scores):
-    def print_latex_table_line(scores, method):
+def print_latex_table(scores, unit="cm"):
+    scene_numbers = [1, 2, 3, 4, 5, 6, 8]
+    methods = ["UP", "IFS", "GAFS"]
+    scale = 1.0
+    if unit == "cm" or unit == "cm/s" or unit == "$cm/s^2$":
+        scale = 100.0
+
+    def print_header():
+        for scene in scene_numbers:
+            print(f" & scene{scene} ({unit})$\downarrow$", end="")
+        print(f" & All ({unit})$\downarrow$")
+        print("\\\\ \hline\hline")
+
+    def print_latex_table_line(method):
         print(method, end="")
         means = []
         stds = []
-        for scene in [1, 2, 3, 4, 5, 6, 8]:
+        for scene in scene_numbers:
             v = np.array(scores[f"{scene:02d}_{method}"])
-            print(f" & {v.mean()*100:.2f} $\pm$ {v.std()*100:.2f}", end="")
+            if is_best(scene, method):
+                print(f" & {{\\bf {v.mean()*scale:.2f} $\pm$ {v.std()*scale:.2f}}}", end="")
+            else:
+                print(f" & {v.mean()*scale:.2f} $\pm$ {v.std()*scale:.2f}", end="")
             means.append(v.mean())
             stds.append(v.std())
-        print(f" & {np.array(means).mean()*100: .2f} $\pm$ {np.array(stds).mean()*100:.2f}", end="")
+        print(f" & {np.array(means).mean()*scale: .2f} $\pm$ {np.array(stds).mean()*scale:.2f}", end="")
         print("\\\\ \hline")
 
-    for method in ["UP", "IFS", "GAFS"]:
-        print_latex_table_line(scores, method)
+    def is_best(scene, method):
+        vals = [(m, np.average(scores[f"{scene:02d}_{m}"])) for m in methods]
+        best_method = sorted(vals, key=lambda x: x[1])[0][0]
+        return best_method == method
+
+    print_header()
+    for method in methods:
+        print_latex_table_line(method)
 
 
 def image_based_tracking_for_all_scenes(project):
@@ -71,7 +90,7 @@ start_end_displ = {
     "03_GAFS": [0.015, 0.009, 0.008],
     "03_IFS": [0.007, 0.008, 0.009],
     "03_UP": [0.009, 0.009, 0.009],
-    "04_GAFS": [0.041, 0.03, 0.045],  ## 04_GAFS_2 is strange
+    "04_GAFS": [0.041, 0.03, 0.045],
     "04_IFS": [0.055, 0.032, 0.061],
     "04_UP": [0.036, 0.038, 0.033],
     "05_GAFS": [0.010, 0.026, 0.020],
@@ -138,12 +157,167 @@ def generate_movies_for_all(project_dir):
             subprocess.run(cmd, shell=True)
 
 
+# surrounding objects
+scene_and_targets = {
+    "01": ["061_foam_brick"],
+    "02": ["007_tuna_fish_can"],
+    "03": ["009_gelatin_box"],
+    # "04": ["051_large_clamp", "052_extra_large_clamp", "061_foam_brick"],
+    "04": ["051_large_clamp", "061_foam_brick"],
+    "05": ["009_gelatin_box"],
+    "06": ["005_tomato_soup_can"],
+    "08": ["007_tuna_fish_can", "009_gelatin_box"],
+}
+
+import glob
+import re
+
+import quaternion
+import scipy.linalg
+
+
+def fpose_load_trajectories(project_dir, scene="01", method="GAFS", trial=1):
+    trajs = {}
+    targets = scene_and_targets[scene]
+    for target in targets:
+        traj = {}
+        files = sorted(glob.glob(f"{project_dir}/{scene}_{method}_{trial}/ob_in_cam/*{target}.bb.txt"))
+        last_q = np.zeros(4)
+        for file in files:
+            frame_num = int(re.search("\d\d\d\d\d\d", file)[0])
+            m = np.loadtxt(file)
+            q = quaternion.from_rotation_matrix(m[:3, :3])
+            qq = quaternion.as_float_array(q)
+            d1 = scipy.linalg.norm(last_q - qq)
+            d2 = scipy.linalg.norm(last_q + qq)
+            if d1 > d2:
+                q = -q
+            last_q = quaternion.as_float_array(q)
+            waypoint = pose = m[:3, 3], q
+            traj[frame_num] = waypoint
+        trajs[target] = traj
+    return trajs
+
+
+def eval_trajectories_for_all_scenes(project_dir, eval_fn):
+    scores = {}
+    methods = ["GAFS", "IFS", "UP"]
+    for scene in scene_and_targets.keys():
+        for method in methods:
+            s = []
+            key = f"{scene}_{method}"
+            print(key)
+            for trial in range(1, 4):
+                trajs = fpose_load_trajectories(project_dir, scene, method, trial)
+                s.append(eval_fn(trajs))
+            scores[key] = s
+    return scores
+
+
+def total_distance_translation(trajs):
+    total_distance = 0.0
+    for traj in trajs.values():
+        frames = sorted(traj.keys())
+        for i in range(len(frames) - 1):
+            wp1 = traj[frames[i]]
+            wp2 = traj[frames[i + 1]]
+            pos1 = wp1[0]
+            pos2 = wp2[0]
+            total_distance += scipy.linalg.norm(pos1 - pos2, ord=2)
+    return total_distance
+
+
+def max_velocity_translation(trajs, dt=0.033):
+    max_velocity = 0.0
+    for traj in trajs.values():
+        frames = sorted(traj.keys())
+        for i in range(len(frames) - 1):
+            wp1 = traj[frames[i]]
+            wp2 = traj[frames[i + 1]]
+            pos1 = wp1[0]
+            pos2 = wp2[0]
+            v = scipy.linalg.norm(pos1 - pos2, ord=2) / dt
+            if v > max_velocity:
+                max_velocity = v
+    return max_velocity
+
+
+def max_acceleration_translation(trajs, dt=0.033):
+    max_acceleration = 0.0
+    for traj in trajs.values():
+        frames = sorted(traj.keys())
+        for i in range(1, len(frames) - 1):
+            wp1 = traj[frames[i - 1]]
+            wp2 = traj[frames[i]]
+            wp3 = traj[frames[i + 1]]
+            pos1 = wp1[0]
+            pos2 = wp2[0]
+            pos3 = wp3[0]
+            a = scipy.linalg.norm(pos1 - 2.0 * pos2 + pos3, ord=2) / dt**2
+            if a > max_acceleration:
+                max_acceleration = a
+    return max_acceleration
+
+
+def rot_distance(q1, q2, axis=None):
+    if axis == None:
+        d = 2 * np.arccos(np.dot(quaternion.as_float_array(q1), quaternion.as_float_array(q2)))
+    else:
+        axes = {"x": 0, "y": 1, "z": 2}
+        axis_idx = axes[axis]
+        v1 = quaternion.as_rotation_matrix(q1)[:, axis_idx]
+        v2 = quaternion.as_rotation_matrix(q2)[:, axis_idx]
+        d = np.arccos(np.dot(v1, v2))
+    return d
+
+
+def get_axis(target):
+    if target == "007_tuna_fish_can":
+        axis = "x"
+    elif target == "005_tomato_soup_can":
+        axis = "z"
+    else:
+        axis = None
+    return axis
+
+
+def total_distance_rotation(trajs):
+    total_distance = 0.0
+    for target, traj in trajs.items():
+        frames = sorted(traj.keys())
+        for i in range(len(frames) - 1):
+            wp1 = traj[frames[i]]
+            wp2 = traj[frames[i + 1]]
+            q1 = wp1[1]
+            q2 = wp2[1]
+            total_distance += rot_distance(q1, q2, axis=get_axis(target))
+    return total_distance
+
+
+def max_velocity_rotation(trajs, dt=0.033):
+    max_velocity = 0.0
+    for target, traj in trajs.items():
+        frames = sorted(traj.keys())
+        for i in range(len(frames) - 1):
+            wp1 = traj[frames[i]]
+            wp2 = traj[frames[i + 1]]
+            q1 = wp1[1]
+            q2 = wp2[1]
+            omega = rot_distance(q1, q2, axis=get_axis(target)) / dt
+            if omega > max_velocity:
+                max_velocity = omega
+    return max_velocity
+
+
 project_dir = "/home/ryo/Dataset/forcemap_evaluation"
 
 if __name__ == "__main__":
     # bag_to_images_for_all(bag_dir="/home/ryo/Dataset/bags/exp", project_dir)
     # yolo_tracking_for_all(project_dir)
     # image_based_tracking_for_all_scenes(project_dir)
-    generate_movies_for_all(project_dir)
+
+    foundationpose_eval_traj_for_all_scenes(project_dir)
+
+    # generate_movies_for_all(project_dir)
     # eval_traj_for_all_scenes("/home/ryo/Dataset/forcemap_evaluation/")  # YOLO + backprojection + pointcloud clustering
     # print_latex_table(start_end_displ)
