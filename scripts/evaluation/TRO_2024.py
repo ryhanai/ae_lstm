@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from PIL import Image
 from scipy.linalg import norm
 from tracking import *
 
@@ -80,6 +81,48 @@ def image_based_tracking_for_all_scenes(project):
             plot_trajectory(trajs, target_name, out_file=out_dir / f"{target_name}.png")
 
 
+def plot_fpose_trajectories_for_all_scenes(project):
+    p = Path(project)
+    scene_dirs = glob.glob(str(p / "*"))
+
+    for scene_dir in scene_dirs:
+        print(scene_dir)
+        sd = scene_dir.split("/")[-1]
+        scene, method, trial = sd.split("_")
+        trial = int(trial)
+        trajs = fpose_load_trajectories(project, scene, method, trial)
+
+        out_dir = Path(scene_dir) / "fpose_out"
+        if not out_dir.exists():
+            out_dir.mkdir()
+
+        for target_name in trajs.keys():
+            plot_trajectory(trajs, target_name, z_offset=0.0, out_file=out_dir / f"{target_name}.png")
+
+
+def gen_fpose_anims_for_all_scenes(project):
+    p = Path(project)
+    scene_dirs = glob.glob(str(p / "*"))
+
+    for scene_dir in scene_dirs:
+        print(scene_dir)
+        fpose_img_dir = Path(scene_dir) / "track_vis"
+        traj_dirs = glob.glob(str(fpose_img_dir / "*"))
+        for traj_dir in traj_dirs:
+            print(traj_dir)
+            img_files = sorted(glob.glob(traj_dir + "/*"))
+            images = [Image.open(img_file) for img_file in img_files]
+            target = traj_dir.split("/")[-1]
+            images[0].save(
+                str(Path(scene_dir) / f"fpose_out/{target}.gif"),
+                save_all=True,
+                append_images=images[1:],
+                optimize=False,
+                duration=33,
+                loop=0,
+            )
+
+
 start_end_displ = {
     "01_GAFS": [0.035, 0.032, 0.031],
     "01_IFS": [0.061, 0.034, 0.064],
@@ -148,7 +191,16 @@ def yolo_tracking_for_all(project_dir):
             subprocess.run(cmd, shell=True)
 
 
-def generate_movies_for_all(project_dir):
+def generate_YOLO_movies_for_all(project_dir):
+    for scene, frames in scenes.items():
+        for i, (_, _) in enumerate(frames):
+            project = f"{project_dir}/{scene}_{i+1}/yolo_out"
+            cmd = f"ffmpeg -r 20 -i {project}/%06d-color.jpg -vcodec libx264 {project}/yolo_out.mp4"
+            print(cmd)
+            subprocess.run(cmd, shell=True)
+
+
+def generate_FPOSE_movies_for_all(project_dir):
     for scene, frames in scenes.items():
         for i, (_, _) in enumerate(frames):
             project = f"{project_dir}/{scene}_{i+1}/yolo_out"
@@ -316,8 +368,10 @@ if __name__ == "__main__":
     # yolo_tracking_for_all(project_dir)
     # image_based_tracking_for_all_scenes(project_dir)
 
-    foundationpose_eval_traj_for_all_scenes(project_dir)
+    # foundationpose_eval_traj_for_all_scenes(project_dir)
 
-    # generate_movies_for_all(project_dir)
+    # plot_fpose_trajectories_for_all_scenes(project_dir)
+    gen_fpose_anims_for_all_scenes(project_dir)
+
     # eval_traj_for_all_scenes("/home/ryo/Dataset/forcemap_evaluation/")  # YOLO + backprojection + pointcloud clustering
     # print_latex_table(start_end_displ)

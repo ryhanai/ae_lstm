@@ -198,13 +198,18 @@ def plot_trajectory(trajs, object_name, z_offset=-0.7, out_file=None):
     fig, ax = plt.subplots()
     ax.plot(ts, xs, "o-", label="x")
     ax.plot(ts, ys, "o-", label="y")
-    ax.plot(ts, np.array(zs) + z_offset, "o-", label=f"z{z_offset}")
+    if z_offset == 0.0:
+        ax.plot(ts, zs, "o-", label="z")
+    else:
+        ax.plot(ts, np.array(zs) + z_offset, "o-", label=f"z{z_offset}")
     ax.set_title(object_name)
     ax.set_xlabel("[sec]")
     ax.set_ylabel("[m]")
     ax.legend(loc="upper right")
     if out_file != None:
-        plt.savefig(out_file)
+        of = out_file.parent / (out_file.stem + "_trans.png")
+        print(of)
+        plt.savefig(of)
     else:
         plt.show()
 
@@ -219,7 +224,9 @@ def plot_trajectory(trajs, object_name, z_offset=-0.7, out_file=None):
     # ax.set_ylabel("[m]")
     ax.legend(loc="upper right")
     if out_file != None:
-        plt.savefig(out_file)
+        of = out_file.parent / (out_file.stem + "_rot.png")
+        print(of)
+        plt.savefig(of)
     else:
         plt.show()
 
