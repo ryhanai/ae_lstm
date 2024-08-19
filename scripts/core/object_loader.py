@@ -6,10 +6,10 @@ import yaml
 
 class ObjectInfo:
     def __init__(self, dataset="ycb_conveni", split="train"):
-        # self._object_dir = f"{os.environ['HOME']}/Dataset/ycb_conveni"
-        # self._config_dir = f"{os.environ['HOME']}/Program/moonshot/ae_lstm/specification/config"
-        self._object_dir = "/home/ryo/Dataset/ycb_conveni"
-        self._config_dir = "/home/ryo/Program/moonshot/ae_lstm/specification/config"
+        self._object_dir = f"{os.environ['HOME']}/Dataset/ycb_conveni"
+        self._config_dir = f"{os.environ['HOME']}/Program/moonshot/ae_lstm/specification/config"
+        # self._object_dir = "/home/ryo/Dataset/ycb_conveni"
+        # self._config_dir = "/home/ryo/Program/moonshot/ae_lstm/specification/config"
         self.load_config(dataset, split)
 
     def load_config(self, dataset, split):
