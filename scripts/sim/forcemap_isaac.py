@@ -128,7 +128,8 @@ class Object:
                 name=f"{self._id}_cs",
                 min_threshold=0,
                 max_threshold=10000000,
-                radius=0.5,
+                # radius=0.5,
+                radius=-1,
                 translation=np.array([0, 0, 0]),
             )
         )
@@ -319,6 +320,8 @@ class Scene:
     def read_contact_sensor(self, contact_sensor):
         csif = contact_sensor._contact_sensor_interface
         cs_raw_data = csif.get_contact_sensor_raw_data(contact_sensor.prim_path)
+        print(f'CURRENT_FRAME: {contact_sensor.get_current_frame()}')
+        print(f'{len(cs_raw_data)}: {cs_raw_data}')
         # backend_utils = simulation_context.backend_utils
         # device = simulation_context.device
         backend_utils = self._world.backend_utils
@@ -570,13 +573,15 @@ class Recorder:
             contacts = scene.read_contact_sensor(contact_sensor)
 
             for contact in contacts:
-                if scipy.linalg.norm(contact["impulse"]) > 1e-8:
+                # if scipy.linalg.norm(contact["impulse"]) > 1e-8:
+                if True:
                     objectA = scene.get_object_name_by_primitive_name(contact["body0"])
                     objectB = scene.get_object_name_by_primitive_name(contact["body1"])
                     contact_positions.append(contact["position"])
                     contact_normals.append(contact["normal"])
                     impulse_values.append(scipy.linalg.norm(contact["impulse"]))
                     contacting_objects.append((objectA, objectB))
+                    print(f' {objectA}, {objectB}, {contact["impulse"]}')
 
             prim = o.get_primitive()
             pose = omni.usd.get_world_transform_matrix(prim)

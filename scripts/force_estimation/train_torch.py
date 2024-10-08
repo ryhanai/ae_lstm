@@ -199,20 +199,22 @@ if args.device >= 0:
 else:
     device = "cpu"
 
+task_name="tabletop_airec241008"
+
 # load dataset
 minmax = [args.vmin, args.vmax]
 print("loading train data ... ", end="")
 t_start = time.time()
 # train_data = KonbiniRandomSceneDataset('train', minmax, stdev=args.stdev)
 # train_data = SeriaBasketRandomSceneDataset("train", minmax, stdev=args.stdev)
-train_data = TabletopRandomSceneDataset("train", minmax, method=args.method)
+train_data = TabletopRandomSceneDataset("train", minmax, task_name=task_name, method=args.method)
 print(f"{time.time() - t_start} [sec]")
 
 print("loading validation data ... ", end="")
 t_start = time.time()
 # test_data  = KonbiniRandomSceneDataset('validation', minmax, stdev=args.stdev)
 # test_data = SeriaBasketRandomSceneDataset("validation", minmax, stdev=args.stdev)
-test_data = TabletopRandomSceneDataset("validation", minmax, method=args.method)
+test_data = TabletopRandomSceneDataset("validation", minmax, task_name=task_name, method=args.method)
 print(f"{time.time() - t_start} [sec]")
 
 train_sampler = BatchSampler(RandomSampler(train_data), batch_size=args.batch_size, drop_last=False)

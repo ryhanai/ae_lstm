@@ -146,8 +146,8 @@ class FmapSmoother:
 
         start_t = time.time()
         print(f"processing contact points [{len(contact_state[0])} contacts]: ", end="", flush=True)
-        # for contact_position, force_value, contact_pair, contact_normal in zip(*contact_state):
-        for contact_position, force_value, contact_pair in zip(*contact_state):            
+        for contact_position, force_value, contact_pair, contact_normal in zip(*contact_state):
+        # for contact_position, force_value, contact_pair in zip(*contact_state):            
             objectA, objectB = contact_pair
 
             sdf1 = self.get_sdf_for_object_in_scene(objectA, bs[objectA])

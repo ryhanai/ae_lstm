@@ -59,7 +59,7 @@ elif args.method == 'smoothing':
     
     # AIREC
     env_config = {
-        'data_dir': os.environ["HOME"] + "/Dataset/forcemap/tabletop_airec240818",
+        'data_dir': os.environ["HOME"] + "/Dataset/forcemap/tabletop_airec241008",
         'object_set': "ycb_conveni_v1",
         'forcemap': 'small_table',
         'forcemap_bandwidth': 0.03,
@@ -72,17 +72,17 @@ elif args.method == 'smoothing':
     from concurrent import futures
 
     viewer = force_distribution_viewer.ForceDistributionViewer.get_instance()
-    fmap_smoother = FmapSmoother(env_config, viewer)
+    # fmap_smoother = FmapSmoother(env_config, viewer)
     
-    # fmap_smoother = FmapSmoother(env_config)
+    fmap_smoother = FmapSmoother(env_config)
 
-    # def compute_force_distribution_for_all(scene_numbers=range(0, 10)):
-    #     start_tm = time.time()
-    #     with futures.ProcessPoolExecutor() as executor:
-    #         executor.map(fmap_smoother.compute_force_distribution, scene_numbers)
-    #     print(f"compute force distribution took: {time.time() - start_tm} [sec]")
+    def compute_force_distribution_for_all(scene_numbers=range(0, 1000)):
+        start_tm = time.time()
+        with futures.ProcessPoolExecutor() as executor:
+            executor.map(fmap_smoother.compute_force_distribution, scene_numbers)
+        print(f"compute force distribution took: {time.time() - start_tm} [sec]")
 
-    # compute_force_distribution_for_all()
+    compute_force_distribution_for_all()
 
 else:
     print('--method option is not specified')
