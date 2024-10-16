@@ -58,22 +58,6 @@ args = parser.parse_args()
 # SDF: "log/20240222_1649_39"
 
 
-def setup_model(weights):
-    with open(Path(weights) / "args.json", "r") as f:
-        model_params = json.load(f)
-
-    model_class = model_params["model"]
-    weight_file = f"{weights}/{model_class}.pth"
-    print_info(f"loading pretrained weight [{weight_file}]")
-    ckpt = torch.load(f"{weight_file}")
-    # ckpt = torch.load(args.weights, map_location=torch.device('cpu'))
-
-    print_info(f"building model [{model_class}]")
-    model = globals()[model_class]()
-    model.load_state_dict(ckpt["model_state_dict"])
-    return model
-
-
 def setup_dataloader(args):
     with open(os.path.join(args.dataset_path, "params.json"), "r") as f:
         dataset_params = json.load(f)
@@ -85,7 +69,7 @@ def setup_dataloader(args):
     return test_data, dataset_params
 
 
-models = [setup_model(w) for w in args.weights.split()]
+model_files = args.weights.split()
 
 test_data, dataset_params = setup_dataloader(args)
 fmap = forcemap.GridForceMap(dataset_params["forcemap"])
@@ -93,21 +77,36 @@ planner = LiftingDirectionPlanner(fmap)
 
 
 class Tester:
-    def __init__(self, test_data, models, fmap, planner=None):
+    def __init__(self, test_data, model_files, fmap, planner=None):
         self._device = "cuda"
         self.test_data = test_data
 
-        self._models = []
-        for m in models:
-            m.to(self._device)
-            m.eval()
-            self._models.append(m)
-
-        print(summary(self._models[0], input_size=(16, 3, 336, 672)))
-        # self._model = torch.compile(self._model)
+        self._models = {}
+        for model_file in model_files:
+            self.setup_model(model_file)
+        
         self._fmap = fmap
         self._planner = planner
-        self._draw_range = [0.5, 0.9]
+        self._draw_range = [0.4, 0.9]
+
+    def setup_model(self, model_file):
+        with open(Path(model_file) / "args.json", "r") as f:
+            model_params = json.load(f)
+
+        model_class = model_params["model"]
+        weight_file = f"{model_file}/{model_class}.pth"
+        print_info(f"loading pretrained weight [{weight_file}]")
+        ckpt = torch.load(f"{weight_file}")
+        # ckpt = torch.load(args.weights, map_location=torch.device('cpu'))
+
+        print_info(f"building model [{model_class}]")
+        model = globals()[model_class]()
+        model.load_state_dict(ckpt["model_state_dict"])
+        model.to(self._device)
+        model.eval()
+        # model = torch.compile(model)
+        print(summary(model, input_size=(16, 3, 336, 672)))
+        self._models[model_params['method']] = model
 
     def predict_from_image_file(
         self, image_file, log_scale=True, planning=True, object_radius=0.05, show_result=True, visualize_idx=1
@@ -127,22 +126,58 @@ class Tester:
         roi = normalization(roi, (0.0, 255.0), [0.1, 0.9])
         x_batch = np.expand_dims(roi, axis=0)
         x_batch = torch.from_numpy(x_batch).float()
-        result = self.do_predict(x_batch, log_scale=True, planning=planning, object_radius=0.05)
+        result = self.do_predict(x_batch, log_scale=True, object_radius=0.05)
         if show_result:
             self.show_result(None, *result, show_bin_state=False, visualize_idx=visualize_idx)
         return result
 
     def predict(
-        self, idx, view_idx=0, log_scale=True, planning=True, object_radius=0.05, show_result=True, visualize_idx=1
-    ):
+        self, idx, view_idx=0, log_scale=True, downstream_task=True, object_radius=0.05, show_result=True, visualize='geometry-aware'):
         # prepare data
         x_batch, f_batch = self.test_data.__getitem__([idx], view_idx)
-        result = self.do_predict(x_batch, log_scale=True, planning=True, object_radius=0.05)
-        if show_result:
-            self.show_result(idx, *result, visualize_idx=visualize_idx)
-        return result
+        predicted_maps = self.do_predict(x_batch, log_scale=True)
 
-    def do_predict(self, x_batch, log_scale=True, planning=True, object_radius=0.05):
+        viewer.rviz_client.delete_all()
+
+        if downstream_task:
+            downstream_task_results = self.perform_down_stream_task(predicted_maps, object_radius=object_radius)
+
+        if show_result:
+            self.show_result(idx, predicted_maps, visualize=visualize)
+
+        return predicted_maps, downstream_task_results
+
+    def perform_down_stream_task(self, predicted_maps, object_radius=0.05):
+        planning_results = {}
+        object_center = viewer.rviz_client.getObjectPosition()
+        print_info(f"object center: {object_center}")
+        force_bounds = self.test_data._compute_force_bounds()
+
+        planning_results = {}
+        for tag, y in predicted_maps.items():
+            predicted_force_map = np.exp(normalization(y, test_data.minmax, np.log(force_bounds)))
+            print_info(f"AVERAGE predicted force: {np.average(predicted_force_map)}")
+            v_omega = self._planner.pick_direction_plan(
+                predicted_force_map, object_center, object_radius=object_radius
+            )
+            print_info(f"planning result: {v_omega[0]}, {v_omega[1]}")
+            planning_results[tag] = v_omega
+
+        # draw lifting directions
+        object_center = viewer.rviz_client.getObjectPosition()
+        arrow_scale = [0.005, 0.01, 0.004]
+        arrow_colors = {
+            'isotropic': [1, 0, 1, 1],
+            'geometry-aware': [1, 1, 0, 1],
+            'sdf': [0, 1, 1, 1]
+            }
+        for tag, v_omega in planning_results.items():
+            lift_direction = v_omega[0]
+            planner.draw_result(viewer, object_center, lift_direction, rgba=arrow_colors[tag], arrow_scale=arrow_scale)
+
+        return planning_results
+
+    def do_predict(self, x_batch, log_scale=True):
         def post_process(y, log_scale=True):
             y = tensor2numpy(y)
             y = y.transpose(1, 2, 0)
@@ -152,69 +187,49 @@ class Tester:
 
         x_batch = x_batch.to(self._device)
 
-        # force prediction
-        results = []
-        for m in self._models:
+        predicted_maps = {}
+        for tag, m in self._models.items():
             t1 = time.time()
             y = m(x_batch)[0]
             y = post_process(y, log_scale=log_scale)
             t2 = time.time()
             print_info(f"inference: {t2-t1} [sec]")
-            results.append(y)
+            predicted_maps[tag] = y
 
-        # lifting direction planning
-        if planning:
-            planning_results = []
-            object_center = viewer.rviz_client.getObjectPosition()
-            print_info(f"object center: {object_center}")
-            force_bounds = self.test_data._compute_force_bounds()
-
-            for y in results:
-                predicted_force_map = np.exp(normalization(y, test_data.minmax, np.log(force_bounds)))
-                print_info(f"AVERAGE predicted force: {np.average(predicted_force_map)}")
-                v_omega = self._planner.pick_direction_plan(
-                    predicted_force_map, object_center, object_radius=object_radius
-                )
-                print_info(f"planning result: {v_omega[0]}, {v_omega[1]}")
-                planning_results.append(v_omega)
-
-            return object_center, results, planning_results
-        else:
-            return None, results, []
+        return predicted_maps
 
     def show_result(
         self,
         idx,
-        object_center=None,
-        results=None,
-        planning_results=[],
+        predicted_maps={},
         show_bin_state=True,
-        visualize_idx=0,
+        visualize='geometry-aware',
     ):
         if show_bin_state:
             bs = self.test_data.load_bin_state(idx)
         else:
             bs = None
 
-        self.show_forcemap(results[visualize_idx], bs, draw_range=self._draw_range)
-
-        if len(planning_results) > 0:
-            arrow_scale = [0.005, 0.01, 0.004]
-            arrow_colors = [[1, 0, 1, 1], [1, 1, 0, 1], [0, 1, 1, 1]]
-            for c, planning_result in zip(arrow_colors, planning_results):
-                pick_direction = planning_result[0]
-                planner.draw_result(viewer, object_center, pick_direction, rgba=c, arrow_scale=arrow_scale)
-
+        self.show_forcemap(predicted_maps[visualize], bs, draw_range=self._draw_range)
         viewer.rviz_client.show()
 
-    def show_force_label(self, idx, method=2):
-        m = self.test_data._method
-        self.test_data._method = method
+    def show_force_label(self, idx, method='geometry-aware'):
+        if method == 'geometry-aware':
+            method_num = 1
+        elif method == 'isotropic':
+            method_num = 0
+        elif method == 'sdf':
+            method_num = 2
+
+        m = self.test_data._method  # save self.test_data._method
+        self.test_data._method = method_num
         f = self.test_data.load_fmap(idx)
-        self.test_data._method = m
-        results = [None, None, None]
-        results[method] = f.transpose(1, 2, 0)
-        self.show_result(idx, results=results, visualize_idx=method)
+        self.test_data._method = m  # restore self.test_data._method
+        f = f.transpose(1, 2, 0)
+        bs = self.test_data.load_bin_state(idx)        
+        self.show_forcemap(f, bs, draw_range=self._draw_range)
+        viewer.rviz_client.show()
+
 
     # def predict_with_multiple_views(self, idx, view_indices=range(3), ord=1, eps=1e-7):
     #     def error_fn(x, y):
@@ -313,8 +328,7 @@ class Tester:
     #     #     s = s +
     #     # return a
 
-
-tester = Tester(test_data, models, fmap, planner)
+tester = Tester(test_data, model_files, fmap, planner)
 
 
 # Predict force (mean)

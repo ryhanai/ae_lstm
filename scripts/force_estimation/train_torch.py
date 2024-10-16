@@ -76,12 +76,17 @@ class Trainer:
         device (str):
     """
 
-    def __init__(self, model, optimizer, device="cpu"):
+    def __init__(self, model, optimizer, log_dir_path, device="cpu"):
         self.device = device
         self.optimizer = optimizer
         self.model = model.to(self.device)
+        self._log_dir_path = log_dir_path
 
-    def save(self, epoch, loss, savename):
+    def gen_chkpt_path(self, tag):
+        return os.path.join(self._log_dir_path, f"{tag}.pth")
+
+    def save(self, epoch, loss, tag=None):
+        save_name = self.gen_chkpt_path(f'{epoch:05d}' if tag == None else 'best')
         torch.save(
             {
                 "epoch": epoch,
@@ -90,7 +95,7 @@ class Trainer:
                 "train_loss": loss[0],
                 "test_loss": loss[1],
             },
-            savename,
+            save_name,
         )
 
     def process_epoch(self, data, training=True):
@@ -266,12 +271,11 @@ else:
     assert False, "Unknown optimizer name {}. please set Adam or RAdam or Adamax.".format(args.optimizer)
 
 # load trainer/tester class
-trainer = Trainer(model, optimizer, device=device)
+log_dir_path = set_logdir("./" + args.log_dir, args.tag)
+
+trainer = Trainer(model, optimizer, log_dir_path=log_dir_path, device=device)
 # trainer = TrainerMVE(model, optimizer, device=device)
 
-# training main
-log_dir_path = set_logdir("./" + args.log_dir, args.tag)
-save_name = os.path.join(log_dir_path, f"{trainer.model.__class__.__name__}.pth")
 writer = SummaryWriter(log_dir=log_dir_path, flush_secs=30)
 early_stop = EarlyStopping(patience=100000)
 
@@ -309,10 +313,13 @@ def do_train():
             writer.add_scalar("Loss/test_loss", test_loss, epoch)
 
             # early stop
-            save_ckpt, _ = early_stop(test_loss)
+            save_ckpt, stop_ckpt = early_stop(test_loss)
 
             if save_ckpt:
-                trainer.save(epoch, [train_loss, test_loss], save_name)
+                trainer.save(epoch, [train_loss, test_loss], 'best')
+            else:
+                if epoch % 20 == 0:
+                    trainer.save(epoch, [train_loss, test_loss])
 
             # print process bar
             # postfix = f'train_loss={train_loss:.4e}, test_loss={test_loss:.4e}, train_sig={train_sig_loss:.4e}, test_sig={test_sig_loss:.4e}, train_mu={train_mu_loss:.4e}, test_mu={test_mu_loss:.4e}'
