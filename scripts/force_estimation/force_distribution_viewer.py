@@ -4,8 +4,7 @@ import colorsys
 
 import numpy as np
 import scipy.linalg
-from core.object_loader import ObjectInfo
-from force_estimation import forcemap, rviz_client
+from force_estimation import rviz_client
 
 
 class ForceDistributionViewer:
@@ -28,14 +27,14 @@ class ForceDistributionViewer:
         if not cls._unique_instance:
             cls._unique_instance = cls.__internal_new__()
             cls.rviz_client = rviz_client.RVizClient()
-            cls._unique_instance._object_info = ObjectInfo(dataset='ycb_conveni_v1', split='train')
         return cls._unique_instance
 
     def set_object_info(self, object_info):
         self._object_info = object_info
 
-    def publish_bin_state(self, bin_state, fmap, draw_fmap=True, draw_force_gradient=False, draw_range=[0.5, 0.9]):
-        self.rviz_client.delete_all()
+    def publish_bin_state(self, bin_state, fmap, draw_fmap=True, draw_force_gradient=False, draw_range=[0.5, 0.9], refresh=True):
+        if refresh:
+            self.rviz_client.delete_all()
         self.draw_bin(fmap)
 
         positions = fmap.get_positions()

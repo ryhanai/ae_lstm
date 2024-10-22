@@ -11,11 +11,11 @@ import time
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import torch
 import torch._dynamo
 from app.pick_planning import LiftingDirectionPlanner
 from force_estimation import force_distribution_viewer, forcemap
+from core.object_loader import ObjectInfo
 from force_estimation.eipl_print_func import print_info
 from force_estimation.eipl_utils import tensor2numpy
 from force_estimation.force_estimation_v4 import *
@@ -30,14 +30,14 @@ torch._dynamo.config.suppress_errors = True
 
 
 viewer = force_distribution_viewer.ForceDistributionViewer.get_instance()
+viewer.set_object_info(ObjectInfo(dataset='ycb_conveni_v1', split='train'))
+
 
 parser = argparse.ArgumentParser()
-
 # parser.add_argument("--filename", type=str, default="log/20230627_1730_52/CAE.pth")
 # parser.add_argument("--dataset_path", type=str, default="./basket-filling3-c-1k")
-
-data_dir = f"{os.environ['HOME']}/Dataset/forcemap/tabletop240125"
-parser.add_argument("--dataset_path", type=str, default=data_dir)
+parser.add_argument("--dataset_path", type=str, default=f"{os.environ['HOME']}/Dataset/forcemap")
+parser.add_argument("--task_name", type=str, default="tabletop240125")
 # parser.add_argument("--weights", type=str, default="log/20240221_0015_58 log/20240227_1431_21 log/20240301_1431_11")
 # parser.add_argument("--weights", type=str, default="log/20240221_0015_58 log/20240304_1834_24 log/20240304_2000_11")
 parser.add_argument(
@@ -59,12 +59,15 @@ args = parser.parse_args()
 
 
 def setup_dataloader(args):
-    with open(os.path.join(args.dataset_path, "params.json"), "r") as f:
+    root_dir = Path(args.dataset_path)
+    task_name = args.task_name
+
+    with open(os.path.join(args.dataset_path, task_name, "params.json"), "r") as f:
         dataset_params = json.load(f)
 
     data_loader = dataset_params["data loader"]
     print_info(f"loading test data [{data_loader}]")
-    test_data = globals()[data_loader]("test")
+    test_data = globals()[data_loader]("test", root_dir=root_dir, task_name=task_name)
     # test_data = globals()[data_loader]("validation")
     return test_data, dataset_params
 
@@ -94,7 +97,8 @@ class Tester:
             model_params = json.load(f)
 
         model_class = model_params["model"]
-        weight_file = f"{model_file}/{model_class}.pth"
+        # weight_file = f"{model_file}/{model_class}.pth"
+        weight_file = f"{model_file}/08000.pth"
         print_info(f"loading pretrained weight [{weight_file}]")
         ckpt = torch.load(f"{weight_file}")
         # ckpt = torch.load(args.weights, map_location=torch.device('cpu'))
@@ -137,13 +141,13 @@ class Tester:
         x_batch, f_batch = self.test_data.__getitem__([idx], view_idx)
         predicted_maps = self.do_predict(x_batch, log_scale=True)
 
-        viewer.rviz_client.delete_all()
-
-        if downstream_task:
-            downstream_task_results = self.perform_down_stream_task(predicted_maps, object_radius=object_radius)
+        # viewer.rviz_client.delete_all()
 
         if show_result:
             self.show_result(idx, predicted_maps, visualize=visualize)
+
+        if downstream_task:
+            downstream_task_results = self.perform_down_stream_task(predicted_maps, object_radius=object_radius)
 
         return predicted_maps, downstream_task_results
 
@@ -174,6 +178,7 @@ class Tester:
         for tag, v_omega in planning_results.items():
             lift_direction = v_omega[0]
             planner.draw_result(viewer, object_center, lift_direction, rgba=arrow_colors[tag], arrow_scale=arrow_scale)
+            viewer.rviz_client.show()
 
         return planning_results
 
@@ -384,7 +389,6 @@ def f(predictions, minmax=[0.1, 0.2]):
     return res
 
 
-import functools
 import operator
 
 import matplotlib
