@@ -2,6 +2,9 @@ import torch
 import torch.nn as nn
 import torchvision.transforms as T
 
+
+
+
 # dinov2_vits14 = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14')
 # img = cv2.imread('/home/ryo/Dataset/dataset2/pen-kitting-real/1/image_frame00000.jpg')
 # img2 = torch.tensor(cv2.resize(img, (224,224)) / 255, dtype=torch.float32)
@@ -222,8 +225,11 @@ class ForceEstimationResNetTabletop(nn.Module):
         )
 
     def forward(self, x):
-        # x = self.augmenter(x) + torch.normal(mean=0, std=self.stdev, size=[360, 512]).to(self.device)
-        return self.decoder(self.encoder(x))
+        if self.training:
+            x = self.augmenter(x) + torch.normal(mean=0, std=self.stdev, size=[360, 512]).to(self.device)
+
+        x = self.decoder(self.encoder(x))
+        return x
 
 
 class ForceEstimationResNetSeriaBasketMVE(nn.Module):
