@@ -18,14 +18,19 @@ from eipl_arg_utils import check_args
 from eipl_print_func import print_info
 from eipl_utils import set_logdir
 from force_estimation_v4 import *
+from force_estimation_v5 import *
 
 # from KonbiniForceMapData import *
 # from SeriaBasketForceMapData import *
 from TabletopForceMapData import *
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import BatchSampler, RandomSampler
-from torch.utils.tensorboard import SummaryWriter
-from torchinfo import summary
+
+#　from torch.utils.tensorboard import SummaryWriter
+import wandb
+from datetime import datetime
+
+from torchsummary import summary
 from tqdm import tqdm
 
 
@@ -204,6 +209,7 @@ if args.device >= 0:
 else:
     device = "cpu"
 
+
 task_name="tabletop_airec241008"
 
 # load dataset
@@ -245,8 +251,11 @@ test_loader = DataLoader(test_data, batch_size=None, num_workers=8, pin_memory=T
 # model = ForceEstimationDINOv2(device=args.device)
 # model = ForceEstimationDinoRes(fine_tune_encoder=True, device=args.device)
 
-model = ForceEstimationResNetTabletop(fine_tune_encoder=True, device=args.device)
-print(summary(model, input_size=(args.batch_size, 3, 360, 512)))
+
+# model = ForceEstimationResNetTabletop(fine_tune_encoder=True, device=args.device)
+model = ForceEstimationV5(encoder='vitl', device=args.device)
+
+summary(model, input_size=(args.batch_size, 3, 360, 512))
 # print(summary(model, input_size=(args.batch_size, 3, 336, 672)))
 
 if args.weights != "":
@@ -276,7 +285,9 @@ log_dir_path = set_logdir("./" + args.log_dir, args.tag)
 trainer = Trainer(model, optimizer, log_dir_path=log_dir_path, device=device)
 # trainer = TrainerMVE(model, optimizer, device=device)
 
-writer = SummaryWriter(log_dir=log_dir_path, flush_secs=30)
+# tensorboard
+# writer = SummaryWriter(log_dir=log_dir_path, flush_secs=30)
+
 early_stop = EarlyStopping(patience=100000)
 
 # loss, sig_term, mu_term = trainer.process_epoch(test_loader, training=False)
@@ -302,6 +313,22 @@ def initialization_test(n_times, mve=True):
 
 
 def do_train():
+    time_stamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    wandb.init(
+        project="forcemap",
+        name=f"fmap_{time_stamp}",
+        config={
+            "model": type(model),
+            "epochs": args.epoch,
+            "batch_size": args.batch_size,
+            "lr": args.lr,
+            "optimizer": args.optimizer,
+            "method": args.method,
+            "pre_trained_weights": args.weights,
+            "dataset_class": type(test_data),
+            "dataset": task_name,
+            })
+
     with tqdm(range(args.epoch)) as pbar_epoch:
         for epoch in pbar_epoch:
             # train and test
@@ -309,8 +336,12 @@ def do_train():
             # test_loss, test_sig_loss, test_mu_loss  = trainer.process_epoch(test_loader, training=False)
             train_loss = trainer.process_epoch(train_loader)
             test_loss = trainer.process_epoch(test_loader, training=False)
-            writer.add_scalar("Loss/train_loss", train_loss, epoch)
-            writer.add_scalar("Loss/test_loss", test_loss, epoch)
+
+            # tensorboard
+            # writer.add_scalar("Loss/train_loss", train_loss, epoch)
+            # writer.add_scalar("Loss/test_loss", test_loss, epoch)
+
+            wandb.log({"Loss/train_loss": train_loss, "Loss/test_loss": test_loss})
 
             # early stop
             save_ckpt, stop_ckpt = early_stop(test_loss)
@@ -326,3 +357,8 @@ def do_train():
             postfix = f"train_loss={train_loss:.5e}, test_loss={test_loss:.5e}"
             pbar_epoch.set_postfix_str(postfix)
             # pbar_epoch.set_postfix(OrderedDict(train_loss=train_loss, test_loss=test_loss))
+
+    wandb.finish()
+
+
+do_train()

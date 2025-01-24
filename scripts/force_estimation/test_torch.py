@@ -14,23 +14,24 @@ import numpy as np
 import torch
 import torch._dynamo
 from app.pick_planning import LiftingDirectionPlanner
-from force_estimation import force_distribution_viewer, forcemap
 from core.object_loader import ObjectInfo
+from force_estimation import force_distribution_viewer, forcemap
 from force_estimation.eipl_print_func import print_info
 from force_estimation.eipl_utils import tensor2numpy
 from force_estimation.force_estimation_v4 import *
+from force_estimation.force_estimation_v5 import *
 
 # from KonbiniForceMapData import *
 # from SeriaBasketForceMapData import *
 from force_estimation.TabletopForceMapData import *
-from torchinfo import summary
+from torchsummary import summary
 
 torch._dynamo.config.verbose = True
 torch._dynamo.config.suppress_errors = True
 
 
 viewer = force_distribution_viewer.ForceDistributionViewer.get_instance()
-viewer.set_object_info(ObjectInfo(dataset='ycb_conveni_v1', split='train'))
+viewer.set_object_info(ObjectInfo(dataset="ycb_conveni_v1", split="train"))
 
 
 parser = argparse.ArgumentParser()
@@ -87,7 +88,7 @@ class Tester:
         self._models = {}
         for model_file in model_files:
             self.setup_model(model_file)
-        
+
         self._fmap = fmap
         self._planner = planner
         self._draw_range = [0.4, 0.9]
@@ -98,7 +99,9 @@ class Tester:
 
         model_class = model_params["model"]
         # weight_file = f"{model_file}/{model_class}.pth"
-        weight_file = f"{model_file}/08000.pth"
+        # weight_file = f"{model_file}/08000.pth"
+        # weight_file = f"{model_file}/best.pth"
+        weight_file = f"{model_file}/00020.pth"
         print_info(f"loading pretrained weight [{weight_file}]")
         ckpt = torch.load(f"{weight_file}")
         # ckpt = torch.load(args.weights, map_location=torch.device('cpu'))
@@ -109,8 +112,9 @@ class Tester:
         model.to(self._device)
         model.eval()
         # model = torch.compile(model)
-        print(summary(model, input_size=(16, 3, 336, 672)))
-        self._models[model_params['method']] = model
+        # summary(model, input_size=(16, 3, 336, 672))
+        summary(model, input_size=(1, 3, 360, 512))
+        self._models[model_params["method"]] = model
 
     def predict_from_image_file(
         self, image_file, log_scale=True, planning=True, object_radius=0.05, show_result=True, visualize_idx=1
@@ -136,7 +140,15 @@ class Tester:
         return result
 
     def predict(
-        self, idx, view_idx=0, log_scale=True, downstream_task=True, object_radius=0.05, show_result=True, visualize='geometry-aware'):
+        self,
+        idx,
+        view_idx=0,
+        log_scale=True,
+        downstream_task=True,
+        object_radius=0.05,
+        show_result=True,
+        visualize="geometry-aware",
+    ):
         # prepare data
         x_batch, f_batch = self.test_data.__getitem__([idx], view_idx)
         predicted_maps = self.do_predict(x_batch, log_scale=True)
@@ -161,20 +173,14 @@ class Tester:
         for tag, y in predicted_maps.items():
             predicted_force_map = np.exp(normalization(y, test_data.minmax, np.log(force_bounds)))
             print_info(f"AVERAGE predicted force: {np.average(predicted_force_map)}")
-            v_omega = self._planner.pick_direction_plan(
-                predicted_force_map, object_center, object_radius=object_radius
-            )
+            v_omega = self._planner.pick_direction_plan(predicted_force_map, object_center, object_radius=object_radius)
             print_info(f"planning result: {v_omega[0]}, {v_omega[1]}")
             planning_results[tag] = v_omega
 
         # draw lifting directions
         object_center = viewer.rviz_client.getObjectPosition()
         arrow_scale = [0.005, 0.01, 0.004]
-        arrow_colors = {
-            'isotropic': [1, 0, 1, 1],
-            'geometry-aware': [1, 1, 0, 1],
-            'sdf': [0, 1, 1, 1]
-            }
+        arrow_colors = {"isotropic": [1, 0, 1, 1], "geometry-aware": [1, 1, 0, 1], "sdf": [0, 1, 1, 1]}
         for tag, v_omega in planning_results.items():
             lift_direction = v_omega[0]
             planner.draw_result(viewer, object_center, lift_direction, rgba=arrow_colors[tag], arrow_scale=arrow_scale)
@@ -208,7 +214,7 @@ class Tester:
         idx,
         predicted_maps={},
         show_bin_state=True,
-        visualize='geometry-aware',
+        visualize="geometry-aware",
     ):
         if show_bin_state:
             bs = self.test_data.load_bin_state(idx)
@@ -218,12 +224,12 @@ class Tester:
         self.show_forcemap(predicted_maps[visualize], bs, draw_range=self._draw_range)
         viewer.rviz_client.show()
 
-    def show_force_label(self, idx, method='geometry-aware'):
-        if method == 'geometry-aware':
+    def show_force_label(self, idx, method="geometry-aware"):
+        if method == "geometry-aware":
             method_num = 1
-        elif method == 'isotropic':
+        elif method == "isotropic":
             method_num = 0
-        elif method == 'sdf':
+        elif method == "sdf":
             method_num = 2
 
         m = self.test_data._method  # save self.test_data._method
@@ -231,10 +237,9 @@ class Tester:
         f = self.test_data.load_fmap(idx)
         self.test_data._method = m  # restore self.test_data._method
         f = f.transpose(1, 2, 0)
-        bs = self.test_data.load_bin_state(idx)        
+        bs = self.test_data.load_bin_state(idx)
         self.show_forcemap(f, bs, draw_range=self._draw_range)
         viewer.rviz_client.show()
-
 
     # def predict_with_multiple_views(self, idx, view_indices=range(3), ord=1, eps=1e-7):
     #     def error_fn(x, y):
@@ -333,6 +338,7 @@ class Tester:
     #     #     s = s +
     #     # return a
 
+
 tester = Tester(test_data, model_files, fmap, planner)
 
 
@@ -389,26 +395,26 @@ def f(predictions, minmax=[0.1, 0.2]):
     return res
 
 
-import operator
+# import operator
 
-import matplotlib
+# import matplotlib
 
-matplotlib.use("TkAgg")
-
-
-def g(predictions, minmax=[0.1, 0.2]):
-    n_samples, means, stds = zip(*f(predictions, minmax))
-    return (
-        functools.reduce(operator.add, n_samples),
-        np.average(list(filter(np.isfinite, means))),
-        np.average(list(filter(np.isfinite, stds))),
-    )
+# matplotlib.use("TkAgg")
 
 
-def h(predictions):
-    res = []
-    for i in range(1, 8):
-        minmax = [0.1 * i, 0.1 * (i + 1)]
-        n_samples, means, stds = g(predictions, minmax)
-        res.append((f"[{minmax[0]:.1f}, {minmax[1]:.1f}]", n_samples, means, stds))
-    return res
+# def g(predictions, minmax=[0.1, 0.2]):
+#     n_samples, means, stds = zip(*f(predictions, minmax))
+#     return (
+#         functools.reduce(operator.add, n_samples),
+#         np.average(list(filter(np.isfinite, means))),
+#         np.average(list(filter(np.isfinite, stds))),
+#     )
+
+
+# def h(predictions):
+#     res = []
+#     for i in range(1, 8):
+#         minmax = [0.1 * i, 0.1 * (i + 1)]
+#         n_samples, means, stds = g(predictions, minmax)
+#         res.append((f"[{minmax[0]:.1f}, {minmax[1]:.1f}]", n_samples, means, stds))
+#     return res
