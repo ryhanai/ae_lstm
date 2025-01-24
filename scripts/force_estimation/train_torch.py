@@ -18,7 +18,7 @@ from eipl_arg_utils import check_args
 from eipl_print_func import print_info
 from eipl_utils import set_logdir
 from force_estimation_v4 import *
-from force_estimation_v5 import *
+# from force_estimation_v5 import *
 
 # from KonbiniForceMapData import *
 # from SeriaBasketForceMapData import *
@@ -85,6 +85,7 @@ class Trainer:
         self.device = device
         self.optimizer = optimizer
         self.model = model.to(self.device)
+        summary(self.model, input_size=(3, 360, 512))
         self._log_dir_path = log_dir_path
 
     def gen_chkpt_path(self, tag):
@@ -184,10 +185,11 @@ torch.backends.cudnn.benchmark = True
 
 # argument parser
 parser = argparse.ArgumentParser(description="Learning convolutional autoencoder")
+parser.add_argument("--dataset_path", type=str, default="~/Dataset/forcemap")
+parser.add_argument("--task_name", type=str, default="tabletop240125")
 parser.add_argument("--model", type=str, default="ForceEstimationResNetTabletop")
 parser.add_argument("--epoch", type=int, default=10000)
 parser.add_argument("--batch_size", type=int, default=32)
-parser.add_argument("--feat_dim", type=int, default=10)
 parser.add_argument("--stdev", type=float, default=0.02)
 parser.add_argument("--lr", type=float, default=1e-3)
 parser.add_argument("--optimizer", type=str, default="adamax")
@@ -210,22 +212,25 @@ else:
     device = "cpu"
 
 
-task_name="tabletop_airec241008"
+task_name=args.task_name
 
 # load dataset
+with open(os.path.join(args.dataset_path, task_name, "params.json"), "r") as f:
+    dataset_params = json.load(f)
+
+data_loader = dataset_params["data loader"]
+print_info(f"loading test data [{data_loader}]")
+
+
 minmax = [args.vmin, args.vmax]
 print("loading train data ... ", end="")
 t_start = time.time()
-# train_data = KonbiniRandomSceneDataset('train', minmax, stdev=args.stdev)
-# train_data = SeriaBasketRandomSceneDataset("train", minmax, stdev=args.stdev)
-train_data = TabletopRandomSceneDataset("train", minmax, task_name=task_name, method=args.method)
+train_data = globals()[data_loader]("train", minmax, task_name=task_name, method=args.method)
 print(f"{time.time() - t_start} [sec]")
 
 print("loading validation data ... ", end="")
 t_start = time.time()
-# test_data  = KonbiniRandomSceneDataset('validation', minmax, stdev=args.stdev)
-# test_data = SeriaBasketRandomSceneDataset("validation", minmax, stdev=args.stdev)
-test_data = TabletopRandomSceneDataset("validation", minmax, task_name=task_name, method=args.method)
+test_data = globals()[data_loader]("validation", minmax, task_name=task_name, method=args.method)
 print(f"{time.time() - t_start} [sec]")
 
 train_sampler = BatchSampler(RandomSampler(train_data), batch_size=args.batch_size, drop_last=False)
@@ -252,11 +257,7 @@ test_loader = DataLoader(test_data, batch_size=None, num_workers=8, pin_memory=T
 # model = ForceEstimationDinoRes(fine_tune_encoder=True, device=args.device)
 
 
-# model = ForceEstimationResNetTabletop(fine_tune_encoder=True, device=args.device)
-model = ForceEstimationV5(encoder='vitl', device=args.device)
-
-summary(model, input_size=(args.batch_size, 3, 360, 512))
-# print(summary(model, input_size=(args.batch_size, 3, 336, 672)))
+model = globals()[args.model](fine_tune_encoder=True, device=args.device)
 
 if args.weights != "":
     with open(Path(args.weights) / "args.json", "r") as f:
@@ -269,6 +270,7 @@ if args.weights != "":
     ckpt = torch.load(weight_file)
     model.load_state_dict(ckpt["model_state_dict"])
 
+
 # set optimizer
 if args.optimizer.casefold() == "adam":
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
@@ -279,8 +281,10 @@ elif args.optimizer.casefold() == "adamax":
 else:
     assert False, "Unknown optimizer name {}. please set Adam or RAdam or Adamax.".format(args.optimizer)
 
+
 # load trainer/tester class
 log_dir_path = set_logdir("./" + args.log_dir, args.tag)
+
 
 trainer = Trainer(model, optimizer, log_dir_path=log_dir_path, device=device)
 # trainer = TrainerMVE(model, optimizer, device=device)
@@ -294,22 +298,22 @@ early_stop = EarlyStopping(patience=100000)
 # print_info(f'Initialized model performance (test_loss): {loss}/{sig_term}/{mu_term}')
 
 
-def initialization_test(n_times, mve=True):
-    for n in range(n_times):
-        if mve:
-            model = ForceEstimationResNetSeriaBasketMVE(mean_network_weights, device=args.device)
-            optimizer = optim.RAdam(model.parameters(), lr=args.lr, eps=1e-4)
-            trainer = TrainerMVE(model, optimizer, device=device)
-            loss, sig_term, mu_term = trainer.process_epoch(test_loader, training=False)
-            print_info(f"Initialized model performance (test_loss/sig_term/mu_term): {loss}/{sig_term}/{mu_term}")
-        else:
-            model = ForceEstimationResNetSeriaBasket(fine_tune_encoder=True, device=args.device)
-            model.load_state_dict(mean_network_weights)
-            optimizer = optim.RAdam(model.parameters(), lr=args.lr, eps=1e-4)
-            trainer = Trainer(model, optimizer, device=device)
-            print_info(
-                f"Initialized model performance (train_loss/test_loss): {trainer.process_epoch(train_loader, training=False)}/{trainer.process_epoch(test_loader, training=False)}"
-            )
+# def initialization_test(n_times, mve=True):
+#     for n in range(n_times):
+#         if mve:
+#             model = ForceEstimationResNetSeriaBasketMVE(mean_network_weights, device=args.device)
+#             optimizer = optim.RAdam(model.parameters(), lr=args.lr, eps=1e-4)
+#             trainer = TrainerMVE(model, optimizer, device=device)
+#             loss, sig_term, mu_term = trainer.process_epoch(test_loader, training=False)
+#             print_info(f"Initialized model performance (test_loss/sig_term/mu_term): {loss}/{sig_term}/{mu_term}")
+#         else:
+#             model = ForceEstimationResNetSeriaBasket(fine_tune_encoder=True, device=args.device)
+#             model.load_state_dict(mean_network_weights)
+#             optimizer = optim.RAdam(model.parameters(), lr=args.lr, eps=1e-4)
+#             trainer = Trainer(model, optimizer, device=device)
+#             print_info(
+#                 f"Initialized model performance (train_loss/test_loss): {trainer.process_epoch(train_loader, training=False)}/{trainer.process_epoch(test_loader, training=False)}"
+#             )
 
 
 def do_train():

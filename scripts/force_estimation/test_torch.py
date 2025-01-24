@@ -19,7 +19,7 @@ from force_estimation import force_distribution_viewer, forcemap
 from force_estimation.eipl_print_func import print_info
 from force_estimation.eipl_utils import tensor2numpy
 from force_estimation.force_estimation_v4 import *
-from force_estimation.force_estimation_v5 import *
+# from force_estimation.force_estimation_v5 import *
 
 # from KonbiniForceMapData import *
 # from SeriaBasketForceMapData import *
@@ -39,6 +39,7 @@ parser = argparse.ArgumentParser()
 # parser.add_argument("--dataset_path", type=str, default="./basket-filling3-c-1k")
 parser.add_argument("--dataset_path", type=str, default=f"{os.environ['HOME']}/Dataset/forcemap")
 parser.add_argument("--task_name", type=str, default="tabletop240125")
+parser.add_argument("--data_split", type=str, default="test")
 # parser.add_argument("--weights", type=str, default="log/20240221_0015_58 log/20240227_1431_21 log/20240301_1431_11")
 # parser.add_argument("--weights", type=str, default="log/20240221_0015_58 log/20240304_1834_24 log/20240304_2000_11")
 parser.add_argument(
@@ -46,6 +47,7 @@ parser.add_argument(
     type=str,
     default=f"{os.environ['HOME']}/Program/moonshot/ae_lstm/scripts/force_estimation/log/20240221_0015_58 {os.environ['HOME']}/Program/moonshot/ae_lstm/scripts/force_estimation/log/20240304_1834_24",
 )
+parser.add_argument("--weight_file", type=str, default="best.pth")
 args = parser.parse_args()
 
 
@@ -67,13 +69,12 @@ def setup_dataloader(args):
         dataset_params = json.load(f)
 
     data_loader = dataset_params["data loader"]
-    print_info(f"loading test data [{data_loader}]")
-    test_data = globals()[data_loader]("test", root_dir=root_dir, task_name=task_name)
-    # test_data = globals()[data_loader]("validation")
+    print_info(f"loading test data [{data_loader}], split={args.data_split}")
+    test_data = globals()[data_loader](args.data_split, root_dir=root_dir, task_name=task_name)
     return test_data, dataset_params
 
 
-model_files = args.weights.split()
+weight_dirs = args.weights.split()
 
 test_data, dataset_params = setup_dataloader(args)
 fmap = forcemap.GridForceMap(dataset_params["forcemap"])
@@ -81,27 +82,25 @@ planner = LiftingDirectionPlanner(fmap)
 
 
 class Tester:
-    def __init__(self, test_data, model_files, fmap, planner=None):
+    def __init__(self, test_data, weight_dirs, fmap, planner=None):
         self._device = "cuda"
         self.test_data = test_data
 
         self._models = {}
-        for model_file in model_files:
-            self.setup_model(model_file)
+        for weight_dir in weight_dirs:
+            self.setup_model(weight_dir)
 
         self._fmap = fmap
         self._planner = planner
         self._draw_range = [0.4, 0.9]
 
-    def setup_model(self, model_file):
-        with open(Path(model_file) / "args.json", "r") as f:
+    def setup_model(self, weight_dir):
+        with open(Path(weight_dir) / "args.json", "r") as f:
             model_params = json.load(f)
 
         model_class = model_params["model"]
         # weight_file = f"{model_file}/{model_class}.pth"
-        # weight_file = f"{model_file}/08000.pth"
-        # weight_file = f"{model_file}/best.pth"
-        weight_file = f"{model_file}/00020.pth"
+        weight_file = f"{weight_dir}/{args.weight_file}"
         print_info(f"loading pretrained weight [{weight_file}]")
         ckpt = torch.load(f"{weight_file}")
         # ckpt = torch.load(args.weights, map_location=torch.device('cpu'))
@@ -112,8 +111,7 @@ class Tester:
         model.to(self._device)
         model.eval()
         # model = torch.compile(model)
-        # summary(model, input_size=(16, 3, 336, 672))
-        summary(model, input_size=(1, 3, 360, 512))
+        summary(model, input_size=(3, 360, 512))
         self._models[model_params["method"]] = model
 
     def predict_from_image_file(
@@ -184,7 +182,7 @@ class Tester:
         for tag, v_omega in planning_results.items():
             lift_direction = v_omega[0]
             planner.draw_result(viewer, object_center, lift_direction, rgba=arrow_colors[tag], arrow_scale=arrow_scale)
-            viewer.rviz_client.show()
+        viewer.rviz_client.show()
 
         return planning_results
 
@@ -339,7 +337,7 @@ class Tester:
     #     # return a
 
 
-tester = Tester(test_data, model_files, fmap, planner)
+tester = Tester(test_data, weight_dirs, fmap, planner)
 
 
 # Predict force (mean)
