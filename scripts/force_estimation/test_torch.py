@@ -19,7 +19,7 @@ from force_estimation import force_distribution_viewer, forcemap
 from force_estimation.eipl_print_func import print_info
 from force_estimation.eipl_utils import tensor2numpy
 from force_estimation.force_estimation_v4 import *
-# from force_estimation.force_estimation_v5 import *
+from force_estimation.force_estimation_v5 import *
 
 # from KonbiniForceMapData import *
 # from SeriaBasketForceMapData import *
