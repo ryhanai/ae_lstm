@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import time
+import random
 from pathlib import Path
 
 import numpy as np
@@ -18,7 +19,7 @@ from eipl_arg_utils import check_args
 from eipl_print_func import print_info
 from eipl_utils import set_logdir
 from force_estimation_v4 import *
-# from force_estimation_v5 import *
+from force_estimation_v5 import *
 
 # from KonbiniForceMapData import *
 # from SeriaBasketForceMapData import *
@@ -190,6 +191,7 @@ parser.add_argument("--task_name", type=str, default="tabletop240125")
 parser.add_argument("--model", type=str, default="ForceEstimationResNetTabletop")
 parser.add_argument("--epoch", type=int, default=10000)
 parser.add_argument("--batch_size", type=int, default=32)
+parser.add_argument("--seed", type=int, default=42)
 parser.add_argument("--stdev", type=float, default=0.02)
 parser.add_argument("--lr", type=float, default=1e-3)
 parser.add_argument("--optimizer", type=str, default="adamax")
@@ -315,6 +317,13 @@ early_stop = EarlyStopping(patience=100000)
 #                 f"Initialized model performance (train_loss/test_loss): {trainer.process_epoch(train_loader, training=False)}/{trainer.process_epoch(test_loader, training=False)}"
 #             )
 
+def set_seed_everywhere(seed):
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+
 
 def do_train():
     time_stamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
@@ -365,4 +374,5 @@ def do_train():
     wandb.finish()
 
 
+set_seed_everywhere(args.seed)
 do_train()
