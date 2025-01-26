@@ -1,5 +1,8 @@
 import json
 import os
+import re
+import yaml
+import glob
 from pathlib import Path
 
 import cv2
@@ -54,9 +57,7 @@ class TabletopRandomSceneDataset(Dataset):
         self.task_name = task_name
         self.root_dir = root_dir
         self.mirror_url = ""
-
-        self._input_dir = root_dir / task_name
-
+        
         self._num_samples = num_samples
         self._num_views = num_views
         self._load_data()
@@ -74,17 +75,40 @@ class TabletopRandomSceneDataset(Dataset):
     # def get_data(self, device=None):
     #     return self.images.to(device), self.forces.to(device)
 
+    def _scan_ids(self, dataset_name):
+        p = str(Path(self.root_dir) / dataset_name / 'bin_state*.pkl')
+        bin_files = glob.glob(str(p))
+        ids = [re.findall('bin_state(.*).pkl', x)[0] for x in bin_files]
+        return [(dataset_name, i) for i in ids]
+
     def _load_data(self, split=[0.75, 0.875]):
-        self._all_ids = range(self._num_samples)
-        self._train_ids, self._validation_ids, self._test_ids = np.split(
+        sub_dataset_def_file = Path(self.root_dir) / self.task_name / 'sub_datasets.yaml'
+        if os.path.isfile(sub_dataset_def_file):
+            with open(sub_dataset_def_file) as f:
+                sub_datasets = yaml.safe_load(f)['sub_datasets']
+        else:
+            sub_datasets = [self.task_name]
+
+        print(f'LOAD: {sub_datasets}')
+        self._all_ids = []
+        for sub_dataset in sub_datasets:
+            self._all_ids.extend(self._scan_ids(sub_dataset))
+
+        # shuffle ids
+        np.random.seed(42)
+        self._all_ids = np.random.permutation(self._all_ids)
+
+        train_ids, validation_ids, test_ids = np.split(
             self._all_ids, [int(len(self._all_ids) * split[0]), int(len(self._all_ids) * split[1])]
         )
         if self.data_type == "train":
-            self._ids = self._train_ids
+            self._ids = train_ids
         elif self.data_type == "validation":
-            self._ids = self._validation_ids
+            self._ids = validation_ids
         elif self.data_type == "test":
-            self._ids = self._test_ids
+            self._ids = test_ids
+
+        self._ids = [(x[0], int(x[1])) for x in self._ids]
 
     def _compute_force_bounds(self):
         return self.fminmax
@@ -117,8 +141,8 @@ class TabletopRandomSceneDataset(Dataset):
         return x_img, y_force
 
     def load_fmap(self, idx):
-        scene_idx = self._ids[idx]
-        fmap = pd.read_pickle(self._input_dir / f"force_zip{scene_idx:05}.pkl")[self._method]
+        dataset_name, scene_idx = self._ids[idx]
+        fmap = pd.read_pickle(self.root_dir / dataset_name / f"force_zip{scene_idx:05}.pkl")[self._method]
         fmap = fmap[:, :, :30].astype("float32")
 
         if self._method == 0 or self._method == 1:
@@ -134,8 +158,8 @@ class TabletopRandomSceneDataset(Dataset):
         return fmap
 
     def load_image(self, idx, view_idx):
-        scene_idx = self._ids[idx]
-        rgb = cv2.cvtColor(cv2.imread(str(self._input_dir / f"rgb{scene_idx:05}_{view_idx:05}.jpg")), cv2.COLOR_BGR2RGB)
+        dataset_name, scene_idx = self._ids[idx]
+        rgb = cv2.cvtColor(cv2.imread(str(self.root_dir / dataset_name / f"rgb{scene_idx:05}_{view_idx:05}.jpg")), cv2.COLOR_BGR2RGB)
         if self.img_format == "CWH":
             rgb = rgb.transpose(2, 0, 1)
         rbg = rgb.astype("float32")
@@ -151,8 +175,8 @@ class TabletopRandomSceneDataset(Dataset):
         return e
 
     def load_bin_state(self, idx):
-        scene_idx = self._ids[idx]
-        p = Path(self.root_dir) / self.task_name / f"bin_state{scene_idx:05d}.pkl"
+        dataset_name, scene_idx = self._ids[idx]
+        p = Path(self.root_dir) / dataset_name / f"bin_state{scene_idx:05d}.pkl"
         return pd.read_pickle(p)
 
     # def get_specific_view_and_force(self, idx, view_idx):
