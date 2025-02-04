@@ -159,7 +159,7 @@ class ForceEstimationV5(nn.Module):
         self, 
         device=0,
         fine_tune_encoder=False,
-        encoder='vitl', 
+        encoder='vits', 
         features=256, 
         out_channels=[256, 512, 1024, 1024], 
         use_bn=False, 
@@ -198,8 +198,10 @@ class ForceEstimationV5(nn.Module):
         self.encoder = encoder
         self.pretrained = DINOv2(model_name=encoder)
         self.pretrained.load_state_dict(torch.load(f'../../checkpoints/depth_anything_v2_{encoder}_encoder.pth', map_location='cpu'))
-        for param in self.pretrained.parameters():
-            param.requires_grad = False
+
+        # freeze encoder's weights
+        # for param in self.pretrained.parameters():
+        #     param.requires_grad = False
         
         self.head = VoxelHead(self.pretrained.embed_dim, features, use_bn, out_channels=out_channels, use_clstoken=use_clstoken)
     
