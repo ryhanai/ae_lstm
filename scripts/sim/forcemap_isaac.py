@@ -251,6 +251,8 @@ class Scene:
         camera.set_horizontal_aperture(2.7288)
         camera.set_vertical_aperture(1.5498)
         camera.set_clipping_range(0.1, 5.0)
+        # camera.add_distance_to_image_plane_to_frame()  # Needed to measure depth        
+        camera.add_distance_to_camera_to_frame()
         return camera
 
     def create_lights(self):
@@ -609,20 +611,31 @@ class Recorder:
             pd.to_pickle(force_dist, os.path.join(self._data_dir, "force_zip{:05d}.pkl".format(self._frameNo)))
 
     def save_image(self, viewNum=None):
+        def crop_center_and_resize(img):
+            width, height = self._crop_size
+            cam_height = img.shape[0]
+            cam_width = img.shape[1]
+            cropped_img = img[
+                int((cam_height - height) / 2) : int((cam_height - height) / 2 + height),
+                int((cam_width - width) / 2) : int((cam_width - width) / 2 + width),
+            ]
+            return cv2.resize(cropped_img, self._output_image_size)
+
         rgb = self._camera.get_rgba()[:, :, :3]
         rgb_path = os.path.join(self._data_dir, f"rgb{self._frameNo:05}_{viewNum:05}.jpg")
-
-        # crop center
-        width, height = self._crop_size
-        cam_height, cam_width, _ = rgb.shape
-        cropped_rgb = rgb[
-            int((cam_height - height) / 2) : int((cam_height - height) / 2 + height),
-            int((cam_width - width) / 2) : int((cam_width - width) / 2 + width),
-        ]
-        # resize
-        output_rgb = cv2.resize(cropped_rgb, self._output_image_size)
-
+        output_rgb = crop_center_and_resize(rgb)
         cv2.imwrite(rgb_path, cv2.cvtColor(output_rgb, cv2.COLOR_RGB2BGR))
+
+        # depth = self._camera.get_depth()
+        depth = self._camera.get_current_frame()["distance_to_camera"]
+        depth = np.where(depth > 1., 0., depth)
+        # print(f'DEPTH={depth, np.min(depth), np.max(depth), np.average(depth)}')
+        depth_path = os.path.join(self._data_dir, f"depth{self._frameNo:05}_{viewNum:05}.png")
+        output_depth = crop_center_and_resize(depth)
+        # output_depth = np.array(output_depth * 1000., dtype=np.uint16)  # [m] -> [mm]
+        output_depth = np.array((1.0 - output_depth) * 50000., dtype=np.uint16)
+        cv2.imwrite(depth_path, output_depth)
+
         pd.to_pickle(
             self._camera.get_world_pose(),
             os.path.join(self._data_dir, f"camera_info{self._frameNo:05}_{viewNum:05}.pkl"),

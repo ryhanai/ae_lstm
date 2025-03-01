@@ -13,11 +13,13 @@ env_config = {
     'viewpoint': ([0, 0, 1.6], [0, 90, 180]),  # euler angles in degree
     'viewpoint_randomization_range': (0.02, 3),  # ([m], [degree])
     'object_set': "ycb_conveni_v1",
+    'crop_size': [768, 540],
+    'output_image_size': [512, 360],
 }
 
 
 world = World(stage_units_in_meters=1.0)
 scene = RandomTableScene(world, env_config)
-dataset = DatasetGenerator(scene, output_force=False)
+dataset = DatasetGenerator(scene)
 
-dataset.create(2, 3)
+dataset.create(20, 3)
