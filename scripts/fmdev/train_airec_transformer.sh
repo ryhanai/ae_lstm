@@ -7,5 +7,5 @@ ipython train_torch.py -i -- \
     --epoch 301\
     --batch_size 8\
     --lr '1e-4'\
-    --seed 0\    
+    --seed 0\
     --method 'geometry-aware'

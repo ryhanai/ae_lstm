@@ -4,8 +4,8 @@ import os
 import time
 from pathlib import Path
 
-from force_estimation import forcemap
-import mesh2sdf
+from fmdev import forcemap
+# import mesh2sdf
 import numpy as np
 import pandas as pd
 import trimesh

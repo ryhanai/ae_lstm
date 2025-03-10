@@ -5,7 +5,7 @@ import numpy as np
 import scipy
 import pandas as pd
 import forcemap
-from force_estimation_data_loader import ForceEstimationDataLoader
+from fmdev_data_loader import ForceEstimationDataLoader
 import force_estimation_v2_1 as fe
 import force_distribution_viewer
 

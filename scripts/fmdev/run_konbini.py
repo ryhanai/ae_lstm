@@ -16,7 +16,7 @@ from force_estimation_data_loader import ForceEstimationDataLoaderNoSeq
 import force_estimation_v2_1 as fe
 
 
-from force_estimation import force_distribution_viewer
+from fmdev import force_distribution_viewer
 viewer = force_distribution_viewer.ForceDistributionViewer.get_instance()
 
 

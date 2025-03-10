@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
-import quaternion
+# import quaternion
 import scipy
-from force_estimation import forcemap
 from scipy.optimize import minimize
 
 

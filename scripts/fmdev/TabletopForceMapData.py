@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 import pandas as pd
 import torch
-from force_estimation.eipl_print_func import *
+from fmdev.eipl_print_func import *
 from torch.utils.data import Dataset
 
 

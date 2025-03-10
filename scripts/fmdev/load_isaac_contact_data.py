@@ -41,8 +41,8 @@ from concurrent import futures
 #     return contact_positions, impulse_value, bin_state
 
 
-from force_estimation import forcemap
-from force_estimation import force_distribution_viewer
+from fmdev import forcemap
+from fmdev import force_distribution_viewer
 
 
 # data_dir = '../sim/data'

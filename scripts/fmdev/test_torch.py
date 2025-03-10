@@ -13,17 +13,15 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch._dynamo
-from app.pick_planning import LiftingDirectionPlanner
+from fm_app.pick_planning import LiftingDirectionPlanner
 from core.object_loader import ObjectInfo
-from force_estimation import force_distribution_viewer, forcemap
-from force_estimation.eipl_print_func import print_info
-from force_estimation.eipl_utils import tensor2numpy
-from force_estimation.force_estimation_v4 import *
-from force_estimation.force_estimation_v5 import *
+from fmdev import force_distribution_viewer, forcemap
+from fmdev.eipl_print_func import print_info
+from fmdev.eipl_utils import tensor2numpy
+# from force_estimation.force_estimation_v4 import *
+from fmdev.force_estimation_v5 import *
 
-# from KonbiniForceMapData import *
-# from SeriaBasketForceMapData import *
-from force_estimation.TabletopForceMapData import *
+from fmdev.TabletopForceMapData import *
 from torchsummary import summary
 
 torch._dynamo.config.verbose = True
@@ -106,7 +104,7 @@ class Tester:
         # ckpt = torch.load(args.weights, map_location=torch.device('cpu'))
 
         print_info(f"building model [{model_class}]")
-        model = globals()[model_class]()
+        model = globals()[model_class](initialize_encoder_with_pretrained_weight=False)
         model.load_state_dict(ckpt["model_state_dict"])
         model.to(self._device)
         model.eval()

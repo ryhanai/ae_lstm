@@ -31,7 +31,7 @@ from torch.utils.data.sampler import BatchSampler, RandomSampler
 import wandb
 from datetime import datetime
 
-from torchsummary import summary
+from torchinfo import summary
 from tqdm import tqdm
 
 
@@ -86,7 +86,7 @@ class Trainer:
         self.device = device
         self.optimizer = optimizer
         self.model = model.to(self.device)
-        summary(self.model, input_size=(3, 360, 512))
+        summary(self.model, input_size=(1, 3, 360, 512))
         self._log_dir_path = log_dir_path
 
     def gen_chkpt_path(self, tag):
