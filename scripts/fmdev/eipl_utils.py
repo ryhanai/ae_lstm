@@ -10,7 +10,7 @@ import cv2
 import glob
 import datetime
 import numpy as np
-import matplotlib.pylab as plt
+# import matplotlib.pylab as plt
 
 
 def normalization(data, indataRange, outdataRange):
@@ -73,24 +73,24 @@ def resize_img(img, size=(64,64), reshape_flag=True):
     return imgs
 
 
-def plt_img(img, key=None, title=None, dtype=None):
-    """
-    Convert tensor to numpy array.
-    """
-    width, height = img.shape
+# def plt_img(img, key=None, title=None, dtype=None):
+#     """
+#     Convert tensor to numpy array.
+#     """
+#     width, height = img.shape
 
-    if dtype is not None:
-        plt.imshow( img.astype(dtype))
-    else:
-        plt.imshow( img )
+#     if dtype is not None:
+#         plt.imshow( img.astype(dtype))
+#     else:
+#         plt.imshow( img )
 
-    if key is not None:
-        plt.plot(key[0]*width, key[1]*height, 'ro', markersize=3)
+#     if key is not None:
+#         plt.plot(key[0]*width, key[1]*height, 'ro', markersize=3)
 
-    plt.xticks(color="None")
-    plt.yticks(color="None")
-    plt.title(title)
-    plt.tick_params(length=0)
+#     plt.xticks(color="None")
+#     plt.yticks(color="None")
+#     plt.title(title)
+#     plt.tick_params(length=0)
 
 
 def check_path(path, mkdir=False):

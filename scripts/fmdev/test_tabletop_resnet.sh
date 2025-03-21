@@ -1,9 +1,13 @@
 #!/bin/bash
 
-ipython test_torch.py -i -- \
+ipython3 test_torch.py -i -- \
     --dataset_path ~/Dataset/forcemap\
-    --task_name tabletop240125\
+    --task_name tabletop240304\
     --data_split test\
-    --weights ~/Program/moonshot/ae_lstm/scripts/force_estimation/log/20250124_2000_17\
-    --weight_file best.pth
-    
+    --weight_files log/20250321_0141_06/00199.pth
+
+
+# GAFS 0.03,0.01: log/20250321_0935_35/00199.pth
+# GAFS 0.06,0.01: log/20250321_0141_06/00199.pth
+# IFS 0.015: log/20250321_1423_23/00199.pth
+# IFS 0.005: log/20250321_1243_40/00199.pth

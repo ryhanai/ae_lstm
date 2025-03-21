@@ -4,13 +4,13 @@ import os
 import time
 from pathlib import Path
 
-from fmdev import forcemap
+from fmdev.forcemap import GridForceMap, SmoothingMethod
+from fmdev.eipl_print_func import print_info
 # import mesh2sdf
 import numpy as np
 import pandas as pd
 import trimesh
 from core.object_loader import ObjectInfo
-from core.utils import message
 
 from mesh_to_sdf import mesh_to_voxels
 from scipy.spatial.transform import Rotation as R
@@ -32,20 +32,44 @@ class FmapSmoother:
     def __init__(self, env_config, viewer=None):
         self._data_dir = env_config['data_dir']
         self._object_info = ObjectInfo(env_config['object_set'])
-        self._fmap = forcemap.GridForceMap(env_config['forcemap'], 
-                                           bandwidth=env_config['forcemap_bandwidth'])
+        self._fmap = GridForceMap(env_config['forcemap'], bandwidth=env_config['sigma_f'])
+        self._env_config = env_config
+
         if viewer != None:
             self._viewer = viewer
             self._viewer.set_object_info(self._object_info)
 
         self._voxel_resolution = 40
 
+        print_info(f'data_dir: {env_config["data_dir"]}')
+        m = env_config["smoothing_method"]
+        print_info(f'smoothing_method: {m}')
+        print_info(f'sigma_f: {env_config["sigma_f"]}')
+        if m == 'GAFS':
+            self._smoothing_method = SmoothingMethod.GAFS
+            print_info(f'sigma_g: {env_config["sigma_g"]}')
+        elif m == 'IFS':
+            self._smoothing_method = SmoothingMethod.IFS
+        elif m == 'SDF':
+            self._smoothing_method = SmoothingMethod.SDF
+        else:
+            raise Exception(f'unknown smoothing method: {m}')
+
         if env_config['use_precomputed_sdfs']:
             sdf_file = 'sdfs.pkl'
-            message(f'load precomputed SDFs from {sdf_file}')
+            print_info(f'load precomputed SDFs from {sdf_file}')
             self._sdfs = pd.read_pickle('sdfs.pkl')
         else:
             self._sdfs = {}
+
+    def _out_file_name(self, frame_no):
+        m = self._smoothing_method
+        if m == SmoothingMethod.GAFS:
+            return f'force{frame_no:05d}_{self._smoothing_method.name}_f{self._env_config["sigma_f"]:.3f}_g{self._env_config["sigma_g"]:.3f}.pkl'
+        elif m == SmoothingMethod.IFS:
+            return f'force{frame_no:05d}_{self._smoothing_method.name}_f{self._env_config["sigma_f"]:.3f}.pkl'
+        elif m == SmoothingMethod.SDF:
+            return f'force{frame_no:05d}_{self._smoothing_method.name}.pkl'
 
     def load(self, scene_number, exclude_protruding_object=False):
         bin_state = pd.read_pickle(f"{self._data_dir}/bin_state{scene_number:05d}.pkl")
@@ -102,7 +126,7 @@ class FmapSmoother:
         return values.reshape(self._fmap.get_grid_shape())
 
     def compute_sdf_for_object(self, object_name):
-        print(f"computing SDF for {object_name}: ", end="", flush=True)
+        print_info(f"computing SDF for {object_name}: ")
         start_t = time.time()
 
         obj_file, mesh_unit_scale = self.get_obj_file(object_name)
@@ -114,7 +138,7 @@ class FmapSmoother:
         sdf = sdf / scale
         orig_center = mesh.bounding_box.centroid
 
-        message(f"{time.time() - start_t:.2f}[sec]")        
+        print_info(f"{time.time() - start_t:.2f}[sec]")        
         return sdf, orig_center, scale
 
     def precompute_sdfs_for_all_objects(self, save_sdfs=True):
@@ -133,7 +157,82 @@ class FmapSmoother:
             self._sdfs[object_name] = sdf
         return sdf            
 
-    def compute_density(self, bin_state, contact_state, sigma_d=0.01):
+    def compute_density_GAFS(self, bs, contact_state, sigma_f, sigma_g):
+        fdists = []
+        weighted_fdists = []
+
+        start_t = time.time()
+        print_info(f"processing contact points [{len(contact_state[0])} contacts]: ")
+
+        for contact in zip(*contact_state):
+            if len(contact) == 4:
+                contact_position, force_value, contact_pair, contact_normal = contact
+            else:
+                contact_position, force_value, contact_pair = contact
+
+            objectA, objectB = contact_pair
+
+            g = self.normal_distribution(mean=contact_position, sigma=sigma_f)
+            fdist = force_value * g
+
+            sdf1 = self.get_sdf_for_object_in_scene(objectA, bs[objectA])
+            esdf1 = np.exp(-np.abs(sdf1) / (sigma_g))
+            sdf2 = self.get_sdf_for_object_in_scene(objectB, bs[objectB])
+            esdf2 = np.exp(-np.abs(sdf2) / (sigma_g))
+
+            unnormalized_wkde = esdf1 * esdf2 * g
+            sumg = np.sum(g)  #####
+            alpha = 1.0 / max(np.sum(unnormalized_wkde), 1e-4) * sumg  #####
+            normalized_wkde = alpha * force_value * unnormalized_wkde
+            weighted_fdists.append(normalized_wkde)
+            # print_info("skip a contact point (contacting object is out of bound)")
+                
+        weighted_force_distribution = functools.reduce(operator.add, weighted_fdists)
+
+        print_info(f"{time.time() - start_t:.2f}[sec]")
+        return weighted_force_distribution
+
+    def compute_density_IFS(self, contact_state, sigma_f):
+        fdists = []
+
+        start_t = time.time()
+        print_info(f"processing contact points [{len(contact_state[0])} contacts]: ")
+
+        for contact in zip(*contact_state):
+            if len(contact) == 4:
+                contact_position, force_value, contact_pair, contact_normal = contact
+            else:
+                contact_position, force_value, contact_pair = contact
+
+            objectA, objectB = contact_pair
+
+            g = self.normal_distribution(mean=contact_position, sigma=sigma_f)
+            fdist = force_value * g
+            fdists.append(fdist)
+            # print_info("skip a contact point (contacting object is out of bound)")
+                
+        force_distribution = functools.reduce(operator.add, fdists)
+
+        print_info(f"{time.time() - start_t:.2f}[sec]")
+        return force_distribution
+
+    def compute_density_SDF(self, bs):
+        """
+          compute the sdf for the scene
+        """
+        start_t = time.time()
+
+        inside_only = False
+        sdfs = [self.get_sdf_for_object_in_scene(name, pose) for name, pose in bs.items()]
+
+        if inside_only:  # nsdf
+            sdfs = [np.where(sdf <= 0, sdf, 0) for sdf in sdfs]
+        scene_sdf = functools.reduce(lambda x, y: np.minimum(x, y), sdfs)
+
+        print_info(f"{time.time() - start_t:.2f}[sec]")
+        return scene_sdf
+
+    def compute_density(self, bin_state, contact_state, sigma_d, method):
         bs = dict(bin_state)
         assert self._fmap.get_scene() == "small_table" or self._fmap.get_scene() == "seria_basket"
         if self._fmap.get_scene() == "small_table":
@@ -141,30 +240,37 @@ class FmapSmoother:
         if self._fmap.get_scene() == "seria_basket":
             bs['seria_basket'] = ([0, 0, 0.73], [0, 0, 0.70711, 0.70711])
 
+        if method == SmoothingMethod.GAFS:
+            return self.compute_density_GAFS(bs, contact_state, self._env_config['sigma_f'], self._env_config['sigma_g'])
+        elif method == SmoothingMethod.IFS:
+            return self.compute_density_IFS(contact_state, self._env_config['sigma_f'])
+        elif method == SmoothingMethod.SDF:
+            return self.compute_density_SDF(bs)
+
         fdists = []
         weighted_fdists = []
 
         start_t = time.time()
-        print(f"processing contact points [{len(contact_state[0])} contacts]: ", end="", flush=True)
+        print_info(f"processing contact points [{len(contact_state[0])} contacts]: ")
         for contact_position, force_value, contact_pair, contact_normal in zip(*contact_state):
         # for contact_position, force_value, contact_pair in zip(*contact_state):            
             objectA, objectB = contact_pair
+
+            g = self.normal_distribution(contact_position)
+            fdist = force_value * g
+            fdists.append(fdist)
 
             sdf1 = self.get_sdf_for_object_in_scene(objectA, bs[objectA])
             esdf1 = np.exp(-np.abs(sdf1) / (sigma_d))
             sdf2 = self.get_sdf_for_object_in_scene(objectB, bs[objectB])
             esdf2 = np.exp(-np.abs(sdf2) / (sigma_d))
 
-            g = self.normal_distribution(contact_position)
-            fdist = force_value * g
-            fdists.append(fdist)
-
             unnormalized_wkde = esdf1 * esdf2 * g
             sumg = np.sum(g)  #####
             alpha = 1.0 / max(np.sum(unnormalized_wkde), 1e-4) * sumg  #####
             normalized_wkde = alpha * force_value * unnormalized_wkde
             weighted_fdists.append(normalized_wkde)
-            # message("skip a contact point (contacting object is out of bound)")
+            # print_info("skip a contact point (contacting object is out of bound)")
                 
         force_distribution = functools.reduce(operator.add, fdists)
         weighted_force_distribution = functools.reduce(operator.add, weighted_fdists)
@@ -177,13 +283,11 @@ class FmapSmoother:
             sdfs = [np.where(sdf <= 0, sdf, 0) for sdf in sdfs]
         scene_sdf = functools.reduce(lambda x, y: np.minimum(x, y), sdfs)
 
-        message(f"{time.time() - start_t:.2f}[sec]")
+        print_info(f"{time.time() - start_t:.2f}[sec]")
 
         return force_distribution, weighted_force_distribution, scene_sdf
 
-    def normal_distribution(self, contact_position):
-        mean = contact_position
-        sigma = self._fmap.bandwidth
+    def normal_distribution(self, mean, sigma):
         v = [np.exp(-(((np.linalg.norm(p - mean)) / sigma) ** 2)) for p in self._fmap.positions]
         v = np.array(v).reshape(self._fmap.get_grid_shape())
         return v
@@ -207,13 +311,16 @@ class FmapSmoother:
         self._viewer.publish_bin_state(bin_state, self._fmap, draw_fmap=True, draw_range=draw_range)
 
     def compute_force_distribution(self, frameNo, log_scale=False, overwrite=False):
-        out_file = os.path.join(self._data_dir, "force_zip{:05d}.pkl".format(frameNo))
+        out_file = os.path.join(self._data_dir, self._out_file_name(frameNo))
         if (not overwrite) and os.path.exists(out_file):
             print(f"skip [{frameNo}]")
         else:
             print(f"process [{frameNo}], log_scale={log_scale}")
             bin_state, contacts = self.load(frameNo)
-            d = self.compute_density(bin_state, contacts)
+            d = self.compute_density(bin_state,
+                                     contacts,
+                                     sigma_d=self._env_config['sigma_g'],
+                                     method=self._smoothing_method)
             if log_scale:
                 d = np.log(1 + d)
             pd.to_pickle(d, out_file)
@@ -301,12 +408,12 @@ def test(bs, fmap):
     scale = 2.0 / max(fmap._xrange, fmap._yrange, fmap._zrange)
     vertices = (vertices - center) * scale
     scene_mesh.vertices = vertices
-    message(f"{time.time() - start_t:.2f}[sec]")
+    print_info(f"{time.time() - start_t:.2f}[sec]")
 
     start_t = time.time()
     print(f"computing SDF: ", end="", flush=True)
     sdf = mesh_to_voxels(scene_mesh, 80)
-    message(f"{time.time() - start_t:.2f}[sec]")
+    print_info(f"{time.time() - start_t:.2f}[sec]")
 
     return sdf
 

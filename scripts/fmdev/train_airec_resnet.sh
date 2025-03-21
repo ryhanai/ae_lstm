@@ -1,10 +1,13 @@
 #!/bin/bash
 
-ipython train_torch.py -i -- \
+python train_torch.py \
     --dataset_path ~/Dataset/forcemap\
-    --task_name tabletop_airec250125_4000\
+    --task_name tabletop_airec241008\
     --model ForceEstimationResNetTabletop\
-    --epoch 2000\
-    --batch_size 8\
-    --seed 1\    
-    --method 'geometry-aware'
+    --epoch 100\
+    --batch_size 16\
+    --seed 1\
+    --lr 1e-3\
+    --method 'geometry-aware'\
+    --sigma_f 0.03\
+    --sigma_g 0.01

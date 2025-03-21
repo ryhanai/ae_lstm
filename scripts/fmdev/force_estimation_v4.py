@@ -187,7 +187,7 @@ class ForceEstimationResNetSeriaBasket(nn.Module):
 
 
 class ForceEstimationResNetTabletop(nn.Module):
-    def __init__(self, device=0, fine_tune_encoder=True):
+    def __init__(self, device=0, initialize_encoder_with_pretrained_weight=True, fine_tune_encoder=True):
         super().__init__()
 
         self.stdev = 0.02

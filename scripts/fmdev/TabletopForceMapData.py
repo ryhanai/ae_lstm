@@ -10,22 +10,8 @@ import numpy as np
 import pandas as pd
 import torch
 from fmdev.eipl_print_func import *
+from fmdev.eipl_utils import normalization
 from torch.utils.data import Dataset
-
-
-def normalization(data, indataRange, outdataRange):
-    """
-    Function to normalize a numpy array within a specified range
-    Args:
-        data (np.array): Data array
-        indataRange (float list):  List of maximum and minimum values of original data, e.g. ind    ataRange=[0.0, 255.0].
-        outdataRange (float list): List of maximum and minimum values of output data, e.g. indat    aRange=[0.0, 1.0].
-    Return:
-        data (np.array): Normalized data array
-    """
-    data = (data - indataRange[0]) / (indataRange[1] - indataRange[0])
-    data = data * (outdataRange[1] - outdataRange[0]) + outdataRange[0]
-    return data
 
 
 class TabletopRandomSceneDataset(Dataset):
@@ -49,6 +35,8 @@ class TabletopRandomSceneDataset(Dataset):
         num_samples=1000,
         num_views=3,
         method="geometry-aware",
+        sigma_f=0.03,
+        sigma_g=0.01,
     ):
         self.data_type = data_type
         self.minmax = minmax
@@ -64,19 +52,25 @@ class TabletopRandomSceneDataset(Dataset):
 
         self._force_bounds = self._compute_force_bounds()
 
-        print_info(f"label = {method}")
-        methods = {
-            "isotropic": 0,
-            "geometry-aware": 1,
-            "sdf": 2,
-        }
-        self._method = methods[method]
-
+        print_info(f"smoothing_medhod: {method}")
+        print_info(f"sigma_f: {sigma_f}")
+        print_info(f"sigma_g: {sigma_g}")
+        
+        # methods = {
+        #     "isotropic": 0,
+        #     "geometry-aware": 1,
+        #     "sdf": 2,
+        # }
+        # self._method = methods[method]
+        self._method = method
+        self._sigma_f = sigma_f
+        self._sigma_g = sigma_g
+        
     # def get_data(self, device=None):
     #     return self.images.to(device), self.forces.to(device)
 
     def _scan_ids(self, dataset_name):
-        p = str(Path(self.root_dir) / dataset_name / 'bin_state*.pkl')
+        p = str(Path(self.root_dir).expanduser() / dataset_name / 'bin_state*.pkl')
         bin_files = glob.glob(str(p))
         ids = [re.findall('bin_state(.*).pkl', x)[0] for x in bin_files]
         return [(dataset_name, i) for i in ids]
@@ -89,13 +83,13 @@ class TabletopRandomSceneDataset(Dataset):
         else:
             sub_datasets = [self.task_name]
 
-        print(f'LOAD: {sub_datasets}')
+        print_info(f' sub dataset: {sub_datasets}')
         self._all_ids = []
         for sub_dataset in sub_datasets:
             self._all_ids.extend(self._scan_ids(sub_dataset))
 
         # shuffle ids
-        np.random.seed(42)
+        np.random.seed(42)  # data split should be the same for all runs
         self._all_ids = np.random.permutation(self._all_ids)
 
         train_ids, validation_ids, test_ids = np.split(
@@ -140,21 +134,31 @@ class TabletopRandomSceneDataset(Dataset):
         x_img = torch.from_numpy(imgs).float()
         return x_img, y_force
 
+    def _force_distribution_file(self, scene_idx):
+        if self._method == 'geometry-aware':
+            return f'force{scene_idx:05d}_GAFS_f{self._sigma_f:.3f}_g{self._sigma_g:.3f}.pkl'
+        elif self._method == 'isotropic':
+            return f'force{scene_idx:05d}_IFS_f{self._sigma_f:.3f}.pkl'
+        elif self._method == 'sdf':
+            return f'force{scene_idx:05d}_SDF.pkl'
+
     def load_fmap(self, idx):
         dataset_name, scene_idx = self._ids[idx]
-        fmap = pd.read_pickle(self.root_dir / dataset_name / f"force_zip{scene_idx:05}.pkl")[self._method]
+        fmap = pd.read_pickle(self.root_dir / dataset_name / self._force_distribution_file(scene_idx))
         fmap = fmap[:, :, :30].astype("float32")
 
-        if self._method == 0 or self._method == 1:
+        if self._method == 'isotropic' or self._method == 'geometry-aware':
             fmap = np.clip(fmap, self._force_bounds[0], self._force_bounds[1])
             fmap = np.log(fmap)  # force_raw (in log scale)
             fmap = fmap.transpose(2, 0, 1)
             fmap = self._normalization(fmap, np.log(self._force_bounds))
-        else:
-            dist_bounds = [-0.001, 0.02]
-            fmap = np.clip(-fmap, dist_bounds[0], dist_bounds[1])
+        elif self._method == 'sdf':
+            # dist_bounds = [-0.001, 0.02]
+            # fmap = np.clip(-fmap, dist_bounds[0], dist_bounds[1])
+            # fmap = self._normalization(fmap, dist_bounds)
             fmap = fmap.transpose(2, 0, 1)
-            fmap = self._normalization(fmap, dist_bounds)
+        else:
+            raise Exception(f'unknown smoothing method: {self._method}')
         return fmap
 
     def load_image(self, idx, view_idx):

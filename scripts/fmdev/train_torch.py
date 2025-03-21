@@ -4,35 +4,33 @@
 
 import argparse
 import json
-import os
-import time
 import random
 from pathlib import Path
-
+import re
+import importlib
 import numpy as np
 
-# from collections import OrderedDict
+from fmdev.eipl_arg_utils import check_args
+from fmdev.eipl_print_func import print_info, print_error
+from fmdev.eipl_utils import set_logdir
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from eipl_arg_utils import check_args
-from eipl_print_func import print_info
-from eipl_utils import set_logdir
-from force_estimation_v4 import *
-from force_estimation_v5 import *
-
-# from KonbiniForceMapData import *
-# from SeriaBasketForceMapData import *
-from TabletopForceMapData import *
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import BatchSampler, RandomSampler
-
-#　from torch.utils.tensorboard import SummaryWriter
-import wandb
-from datetime import datetime
-
 from torchinfo import summary
+
 from tqdm import tqdm
+import wandb
+
+
+def set_seed_everywhere(seed):
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
 
 
 class EarlyStopping:
@@ -47,7 +45,7 @@ class EarlyStopping:
         self.best_score = None
         self.save_ckpt = False
         self.stop_flag = False
-        self.val_loss_min = np.Inf
+        self.val_loss_min = np.inf
 
     def __call__(self, val_loss):
         if np.isnan(val_loss) or np.isinf(val_loss):
@@ -86,11 +84,10 @@ class Trainer:
         self.device = device
         self.optimizer = optimizer
         self.model = model.to(self.device)
-        summary(self.model, input_size=(1, 3, 360, 512))
         self._log_dir_path = log_dir_path
 
     def gen_chkpt_path(self, tag):
-        return os.path.join(self._log_dir_path, f"{tag}.pth")
+        return str(Path(self._log_dir_path) / f"{tag}.pth")
 
     def save(self, epoch, loss, tag=None):
         save_name = self.gen_chkpt_path(f'{epoch:05d}' if tag == None else 'best')
@@ -184,15 +181,15 @@ class TrainerMVE(Trainer):
 torch.set_float32_matmul_precision("high")
 torch.backends.cudnn.benchmark = True
 
+
 # argument parser
-parser = argparse.ArgumentParser(description="Learning convolutional autoencoder")
+parser = argparse.ArgumentParser(description="Learning to predict force distribution")
 parser.add_argument("--dataset_path", type=str, default="~/Dataset/forcemap")
 parser.add_argument("--task_name", type=str, default="tabletop240125")
-parser.add_argument("--model", type=str, default="ForceEstimationResNetTabletop")
-parser.add_argument("--epoch", type=int, default=10000)
-parser.add_argument("--batch_size", type=int, default=32)
+parser.add_argument("--model", type=str)
+parser.add_argument("--epoch", type=int, default=1000)
+parser.add_argument("--batch_size", type=int, default=16)
 parser.add_argument("--seed", type=int, default=42)
-parser.add_argument("--stdev", type=float, default=0.02)
 parser.add_argument("--lr", type=float, default=1e-3)
 parser.add_argument("--optimizer", type=str, default="adamax")
 parser.add_argument("--log_dir", default="log/")
@@ -201,7 +198,9 @@ parser.add_argument("--vmax", type=float, default=0.9)
 parser.add_argument("--device", type=int, default=0)
 parser.add_argument("--tag", help="Tag name for snap/log sub directory")
 parser.add_argument("--method", help="geometry-aware | isotropic | sdf", type=str, default="geometry-aware")
-parser.add_argument("--weights", help="use pre-trained weight", type=str, default="")
+parser.add_argument("--sigma_f", type=float, default=0.03)
+parser.add_argument("--sigma_g", type=float, default=0.01)
+parser.add_argument("--pretrained_weights", help="use pre-trained weight", type=str, default="")
 args = parser.parse_args()
 
 # check args
@@ -217,61 +216,58 @@ else:
 task_name=args.task_name
 
 # load dataset
-with open(os.path.join(args.dataset_path, task_name, "params.json"), "r") as f:
+with open(Path(args.dataset_path) / task_name / "params.json", "r") as f:
     dataset_params = json.load(f)
 
 data_loader = dataset_params["data loader"]
-print_info(f"loading test data [{data_loader}]")
-
-
 minmax = [args.vmin, args.vmax]
-print("loading train data ... ", end="")
-t_start = time.time()
-train_data = globals()[data_loader]("train", minmax, task_name=task_name, method=args.method)
-print(f"{time.time() - t_start} [sec]")
 
-print("loading validation data ... ", end="")
-t_start = time.time()
-test_data = globals()[data_loader]("validation", minmax, task_name=task_name, method=args.method)
-print(f"{time.time() - t_start} [sec]")
+print_info(f"loading train data [{data_loader}]")
+dataset_module = importlib.import_module('fmdev.TabletopForceMapData')
+train_data = getattr(dataset_module, data_loader)("train", 
+                                                  minmax, 
+                                                  task_name=task_name, 
+                                                  method=args.method,
+                                                  sigma_f=args.sigma_f,
+                                                  sigma_g=args.sigma_g,
+                                                  )
+
+print_info(f"loading validation data [{data_loader}]")
+valid_data = getattr(dataset_module, data_loader)("validation", 
+                                                  minmax, 
+                                                  task_name=task_name, 
+                                                  method=args.method,
+                                                  sigma_f=args.sigma_f,
+                                                  sigma_g=args.sigma_g,
+                                                  )
 
 train_sampler = BatchSampler(RandomSampler(train_data), batch_size=args.batch_size, drop_last=False)
 train_loader = DataLoader(train_data, batch_size=None, num_workers=8, pin_memory=True, sampler=train_sampler)
-test_sampler = BatchSampler(RandomSampler(test_data), batch_size=args.batch_size, drop_last=False)
-test_loader = DataLoader(test_data, batch_size=None, num_workers=8, pin_memory=True, sampler=test_sampler)
-
-# define model
-
-# mean_network_weights = torch.load('log/20230627_1730_52/CAE.pth')['model_state_dict']
-# model = ForceEstimationResNetSeriaBasketMVE(mean_network_weights, device=args.device)
+valid_sampler = BatchSampler(RandomSampler(valid_data), batch_size=args.batch_size, drop_last=False)
+valid_loader = DataLoader(valid_data, batch_size=None, num_workers=8, pin_memory=True, sampler=valid_sampler)
 
 
-# model_class = globals()[args.model]()
-# print_info(f"Model: {model_class}")
-# model = model_class(fine_tune_encoder=True, device=args.device)
+set_seed_everywhere(args.seed)
 
-# model.load_state_dict(mean_network_weights)
+mod_name = re.sub('\.[^\.]+$', '', args.model)
+model_module = importlib.import_module(mod_name)
+model_class_name = re.sub('^.*\.', '', args.model)
+model = getattr(model_module, model_class_name)(fine_tune_encoder=True, device=args.device)
 
-# model = ForceEstimationResNet(fine_tune_encoder=True, device=args.device)
-# model = ForceEstimationResNetMVE(fine_tune_encoder=True, device=args.device)
+print_info('Check the effect of seed:')
+print(model.decoder.state_dict()['0.conv1.weight'][0][0])
 
-# model = ForceEstimationDINOv2(device=args.device)
-# model = ForceEstimationDinoRes(fine_tune_encoder=True, device=args.device)
+if args.pretrained_weights != "":
+    print_error('loading pretrained weight is not supported yet')
+    # with open(Path(args.pretrained_weights) / "args.json", "r") as f:
+    #     model_params = json.load(f)
 
+    # assert args.method == model_params["method"]
 
-model = globals()[args.model](fine_tune_encoder=True, device=args.device)
-
-if args.weights != "":
-    with open(Path(args.weights) / "args.json", "r") as f:
-        model_params = json.load(f)
-
-    assert args.method == model_params["method"]
-
-    weight_file = Path(args.weights) / f"{model.__class__.__name__}.pth"
-    print_info(f"load pre-trained weights from '{weight_file}'")
-    ckpt = torch.load(weight_file)
-    model.load_state_dict(ckpt["model_state_dict"])
-
+    # weight_file = Path(args.pretrained_weights) / f"{model.__class__.__name__}.pth"
+    # print_info(f"load pre-trained weights from '{weight_file}'")
+    # ckpt = torch.load(weight_file)
+    # model.load_state_dict(ckpt["model_state_dict"])
 
 # set optimizer
 if args.optimizer.casefold() == "adam":
@@ -284,17 +280,11 @@ else:
     assert False, "Unknown optimizer name {}. please set Adam or RAdam or Adamax.".format(args.optimizer)
 
 
-# load trainer/tester class
 log_dir_path = set_logdir("./" + args.log_dir, args.tag)
-
-
 trainer = Trainer(model, optimizer, log_dir_path=log_dir_path, device=device)
-# trainer = TrainerMVE(model, optimizer, device=device)
-
-# tensorboard
-# writer = SummaryWriter(log_dir=log_dir_path, flush_secs=30)
-
+# summary(trainer.model, input_size=(1, 3, 360, 512))
 early_stop = EarlyStopping(patience=100000)
+
 
 # loss, sig_term, mu_term = trainer.process_epoch(test_loader, training=False)
 # print_info(f'Initialized model performance (test_loss): {loss}/{sig_term}/{mu_term}')
@@ -317,42 +307,22 @@ early_stop = EarlyStopping(patience=100000)
 #                 f"Initialized model performance (train_loss/test_loss): {trainer.process_epoch(train_loader, training=False)}/{trainer.process_epoch(test_loader, training=False)}"
 #             )
 
-def set_seed_everywhere(seed):
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
-    np.random.seed(seed)
-    random.seed(seed)
-
 
 def do_train():
-    time_stamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-    wandb.init(
-        project="forcemap",
-        name=f"fmap_{time_stamp}",
-        config={
-            "model": type(model),
-            "epochs": args.epoch,
-            "batch_size": args.batch_size,
-            "lr": args.lr,
-            "optimizer": args.optimizer,
-            "method": args.method,
-            "pre_trained_weights": args.weights,
-            "dataset_class": type(test_data),
-            "dataset": task_name,
-            })
+    config = args.__dict__
+    config['dataset_class'] = type(valid_data)
+    if config['method'] == 'isotropic':
+        group = f"IFS_f{config['sigma_f']:.3f}"
+        name = f"IFS_f{config['sigma_f']:.3f}_{config['tag']}"                
+    if config['method'] == 'geometry-aware':
+        group = f"GAFS_f{config['sigma_f']:.3f}_g{config['sigma_g']:.3f}"
+        name = f"GAFS_f{config['sigma_f']:.3f}_g{config['sigma_g']:.3f}_{config['tag']}"        
+    wandb.init(project="forcemap", group=group, name=name, config=config)
 
     with tqdm(range(args.epoch)) as pbar_epoch:
         for epoch in pbar_epoch:
-            # train and test
-            # train_loss, train_sig_loss, train_mu_loss = trainer.process_epoch(train_loader)
-            # test_loss, test_sig_loss, test_mu_loss  = trainer.process_epoch(test_loader, training=False)
             train_loss = trainer.process_epoch(train_loader)
-            test_loss = trainer.process_epoch(test_loader, training=False)
-
-            # tensorboard
-            # writer.add_scalar("Loss/train_loss", train_loss, epoch)
-            # writer.add_scalar("Loss/test_loss", test_loss, epoch)
+            test_loss = trainer.process_epoch(valid_loader, training=False)
 
             wandb.log({"Loss/train_loss": train_loss, "Loss/test_loss": test_loss})
 
@@ -362,17 +332,15 @@ def do_train():
             if save_ckpt:
                 trainer.save(epoch, [train_loss, test_loss], 'best')
             else:
-                if epoch % 20 == 0:
+                if epoch % 50 == 49:
                     trainer.save(epoch, [train_loss, test_loss])
 
             # print process bar
-            # postfix = f'train_loss={train_loss:.4e}, test_loss={test_loss:.4e}, train_sig={train_sig_loss:.4e}, test_sig={test_sig_loss:.4e}, train_mu={train_mu_loss:.4e}, test_mu={test_mu_loss:.4e}'
             postfix = f"train_loss={train_loss:.5e}, test_loss={test_loss:.5e}"
             pbar_epoch.set_postfix_str(postfix)
-            # pbar_epoch.set_postfix(OrderedDict(train_loss=train_loss, test_loss=test_loss))
 
     wandb.finish()
 
 
-set_seed_everywhere(args.seed)
-do_train()
+if __name__ == '__main__':
+    do_train()

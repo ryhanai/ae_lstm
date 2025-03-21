@@ -1,11 +1,14 @@
 # -*- coding: utf-8 -*-
 
 import time
-
-import matplotlib.pyplot as plt
 import numpy as np
+from abc import ABC
 from scipy import stats
 from sklearn.neighbors import KernelDensity
+
+
+from enum import Enum
+SmoothingMethod = Enum('SmoothingMethod', [('GAFS', 0), ('IFS', 1), ('SDF', 2)])
 
 
 def kde_scipy(x, x_grid, bandwidth=0.2, **kwargs):
@@ -21,7 +24,11 @@ def kde_sklearn(x, x_grid, sample_weights, bandwidth=1.0, **kwargs):
     return np.exp(log_pdf)
 
 
-class GridForceMap:
+class ForceMap(ABC):
+    pass
+
+
+class GridForceMap(ForceMap):
     def __init__(self, name, bandwidth=0.010):
         assert name == "seria_basket" or "konbini_shelf" or "small_table"
         if name == "seria_basket":  # IROS2023, moonshot interim review
@@ -119,24 +126,24 @@ class GridForceMap:
     def set_title(self, title):
         self._title = title
 
-    def visualize(self, max_channels=20, zaxis_first=False):
-        V = np.reshape(self.V, self.grid[0].shape)
-        f = V / np.max(V)
-        fig = plt.figure(figsize=(16, 6))
-        fig.subplots_adjust(hspace=0.1)
-        fig.suptitle(self._title, fontsize=28)
+    # def visualize(self, max_channels=20, zaxis_first=False):
+    #     V = np.reshape(self.V, self.grid[0].shape)
+    #     f = V / np.max(V)
+    #     fig = plt.figure(figsize=(16, 6))
+    #     fig.subplots_adjust(hspace=0.1)
+    #     fig.suptitle(self._title, fontsize=28)
 
-        if zaxis_first:
-            channels = f.shape[0]
-        else:
-            channels = f.shape[-1]
-        for p in range(min(channels, max_channels)):
-            ax = fig.add_subplot(channels // 10, 10, p + 1)
-            ax.axis("off")
-            if zaxis_first:
-                ax.imshow(f[p], cmap="gray", vmin=0, vmax=1.0)
-            else:
-                ax.imshow(f[:, :, p], cmap="gray", vmin=0, vmax=1.0)
+    #     if zaxis_first:
+    #         channels = f.shape[0]
+    #     else:
+    #         channels = f.shape[-1]
+    #     for p in range(min(channels, max_channels)):
+    #         ax = fig.add_subplot(channels // 10, 10, p + 1)
+    #         ax.axis("off")
+    #         if zaxis_first:
+    #             ax.imshow(f[p], cmap="gray", vmin=0, vmax=1.0)
+    #         else:
+    #             ax.imshow(f[:, :, p], cmap="gray", vmin=0, vmax=1.0)
 
     def get_scene(self):
         return self._scene_name
