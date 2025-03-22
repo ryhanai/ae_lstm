@@ -19,7 +19,7 @@ from force_estimation import force_distribution_viewer
 from force_estimation.pick_planning import LiftingDirectionPlanner
 
 from core.object_loader import ObjectInfo
-from fmdev.eipl_print_func import print_info
+from fmdev.eipl_print_func import print_info, print_error
 from fmdev.eipl_utils import tensor2numpy, normalization
 from fmdev import forcemap
 
@@ -183,6 +183,8 @@ class Tester:
         viewer.draw_bin_state(bs, self._fmap, draw_range=self._draw_range)
         viewer.show()
 
+        return f
+
     def predict_from_image(
         self,
         image,
@@ -237,7 +239,15 @@ class TesterWithLiftingPlanning(Tester):
         super().__init__(dataset_path, task_name, weight_files, data_split=data_split)
         self._planner = LiftingDirectionPlanner(self._fmap)
         self._arrow_scale = [0.005, 0.01, 0.004]
-        self._arrow_colors = {"isotropic": [1., 0., 1., 1.], "geometry-aware": [1., 1., 0., 1.], "sdf": [0., 1., 1., 1.]}
+        self._arrow_colors_method = {"isotropic": [1., 0., 1., 1.], 
+                                    "geometry-aware": [1., 1., 0., 1.], 
+                                    "sdf": [0., 1., 1., 1.]}
+        self._arrow_colors_index = [
+                [1., 0.64705882, 0., 1.], # orange
+                [0.50196078, 0., 0.50196078, 1.],  # purple
+                [0., 1., 1., 1.],  # cyan
+                [0.19607843, 0.80392157, 0.19607843, 1.],  # lime green
+            ]
 
     def predict(self, 
                 scene_idx,
@@ -273,15 +283,25 @@ class TesterWithLiftingPlanning(Tester):
         viewer.draw_bin_state(bs, self._fmap, draw_range=self._draw_range)
 
         # draw planning results
-        for direction, (model, dataset) in zip(planning_results, self._model_dataset_pairs):
+        for i in range(len(self._model_dataset_pairs)):
+            direction = planning_results[i]
+            c = self.get_arrow_color(i)
             self._planner.draw_result(viewer,
                                       object_center,
                                       direction,
-                                      rgba=self._arrow_colors[dataset._method],
+                                      rgba=c,
                                       arrow_scale=self._arrow_scale
                                      )
 
         viewer.show()
+
+    def get_arrow_color(self, key):
+        if type(key) == str:
+            return self._arrow_colors_method[key]
+        if type(key) == int:
+            return self._arrow_colors_index[key]
+        else:
+            print_error('cannot get arrow color (unknown key)')
 
     def plan_lifting(self, predicted_maps, object_center, object_radius=0.05):        
         print_info(f"object center: {object_center}")
@@ -289,7 +309,8 @@ class TesterWithLiftingPlanning(Tester):
         planning_results = []
         for predicted_map, (model, dataset) in zip(predicted_maps, self._model_dataset_pairs):
             force_bounds = dataset._compute_force_bounds()
-            predicted_force_map = np.exp(normalization(predicted_map, dataset.minmax, np.log(force_bounds)))
+            # predicted_force_map = np.exp(normalization(predicted_map, dataset.minmax, np.log(force_bounds)))
+            predicted_force_map = normalization(predicted_map, dataset.minmax, np.log(force_bounds))
             print_info(f"AVERAGE predicted force: {np.average(predicted_force_map)}")
             v_omega = self._planner.pick_direction_plan(predicted_force_map, object_center, object_radius=object_radius)
             print_info(f"planning result [V, omega]: {v_omega[0]}, {v_omega[1]}")

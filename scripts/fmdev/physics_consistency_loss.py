@@ -1,6 +1,9 @@
+from flask.cli import shell_command
 import numpy as np
 from fmdev.TabletopForceMapData import TabletopRandomSceneDataset
 
+def mse_loss(d1, d2):
+    return ((d1 - d2)**2).mean()
 
 def distance_mask(sdf, shell_thickness):
     df = np.abs(sdf)
@@ -11,8 +14,14 @@ def pc_loss1(d1, d2, sdf, shell_thickness=0.01):
     l = (m * (d1 - d2)**2)[m.nonzero()].mean()
     return l
 
-def mse_loss(d1, d2):
-    return ((d1 - d2)**2).mean()
+def normalized_mse_loss(d_pred, d_gt):
+    return mse_loss(d_pred, d_gt) / d_gt.mean()
+
+def normalized_pc_loss1(d_pred, d_gt, sdf, shell_thickness=0.01):
+    msk = distance_mask(sdf, shell_thickness=shell_thickness)
+    l = (msk * (d_pred - d_gt)**2)[msk.nonzero()].mean()
+    l /= (msk * d_gt)[msk.nonzero()].mean()
+    return l
 
 
 from fmdev.test_torch import *
@@ -21,10 +30,10 @@ dataset_path = '~/Dataset/forcemap'
 task_name = 'tabletop240304'
 
 weight_files = {
-    'GAFS_f0.030_g0.010':'log/20250321_0935_35/00199.pth',
-    'GAFS_f0.060_g0.010': 'log/20250321_0141_06/00199.pth',
-    'IFS_f0.015': 'log/20250321_1423_23/00199.pth',
-    'IFS_f0.005': 'log/20250321_1243_40/00199.pth',
+    'GAFS_f0.030_g0.010':'log/20250322_1023_08/00199.pth',
+    'GAFS_f0.060_g0.010': 'log/20250322_1140_56/00199.pth',
+    'IFS_f0.015': 'log/20250322_1043_24/00199.pth',
+    'IFS_f0.005': 'log/20250322_1016_28/00199.pth'
 }
 
 
@@ -35,6 +44,7 @@ class Experiment:
 
     def clear_score(self):
         self._scores = {}
+        self._nscores = {}
 
     def set_ckpt(self, weight_file):
         self._tester = Tester(dataset_path,
@@ -45,6 +55,7 @@ class Experiment:
     def eval_model(self, weight_file):
         self.set_ckpt(weight_file)
         score = []
+        nscore = []
         model, ds = self._tester._model_dataset_pairs[0]
 
         for scene_idx in range(ds.__len__()):
@@ -56,33 +67,58 @@ class Experiment:
             loss2 = pc_loss1(d_label, d_predicted, sdf, shell_thickness=0.010)
             loss3 = pc_loss1(d_label, d_predicted, sdf, shell_thickness=0.005)
             score.append((loss1, loss2, loss3))
-            print(f'{scene_idx}: MSE Loss={loss1}, PC Loss(0.005)={loss2}, PC Loss(0.002)={loss3}')
 
-        return score
+            nloss1 = normalized_mse_loss(d_predicted, d_label)
+            nloss2 = normalized_pc_loss1(d_predicted, d_label, sdf, shell_thickness=0.010)
+            nloss3 = normalized_pc_loss1(d_predicted, d_label, sdf, shell_thickness=0.005)            
+            nscore.append((nloss1, nloss2, nloss3))
+
+            print(f'{scene_idx}: MSE Loss={loss1}, PC Loss(0.01)={loss2}, PC Loss(0.005)={loss3}')
+            print(f'{scene_idx}: nMSE Loss={nloss1}, nPC Loss(0.01)={nloss2}, nPC Loss(0.005)={nloss3}')            
+
+        return score, nscore
 
     def eval_all_models(self, weight_files):
         for tag, weight_file in weight_files.items():
-            self._scores[tag] = self.eval_model(weight_file)
+            score, nscore = self.eval_model(weight_file)
+            self._scores[tag] = score
+            self._nscores[tag] = nscore
 
-    def print_score(self):
-        print('\\begin{table}[ht]')
+    def format_tag(self, tag):
+        abc = tag.split('_')
+        if len(abc) == 3:
+            a, b, c = abc
+            return f'{a}$(\sigma_f={b[1:]},\sigma_g={c[1:]})$' 
+        elif len(abc) == 2:
+            a, b = abc
+            return f'{a}$(\sigma_f={b[1:]})$'
+        else:
+            return tag
+
+    def print_score(self, scores, caption='prediction losses'):
+        print('\\begin{table*}[ht]')
         print('\\rowcolors{2}{white}{Gainsboro}')
         print('\\centering')
         print('\\begin{tabular}{ l|lll }')
         print('\\toprule')
-        print('\\textbf{Smoothing} & \\textbf{MSE} & \\textbf{MSE, 1.0(cm)} & \\textbf{MSE, 0.5(cm)} \\\\ \midrule')
+        print('\\textbf{Smoothing Method} & \\textbf{MSE} & \\textbf{MSE, 1.0(cm)} & \\textbf{MSE, 0.5(cm)} \\\\ \midrule')
 
-        for tag, vals in self._scores.items():
+        for tag, vals in scores.items():
             vals = np.array(vals)
             means = np.average(vals, axis=0)
             stds = np.std(vals, axis=0)
-            print(f'{tag} & {means[0]:.5f} \pm {stds[0]:.5f} & {means[1]:.5f} \pm {stds[1]:.5f} & {means[2]:.5f} \pm {stds[2]:.5f} \\\\')
+            print(f'{self.format_tag(tag)} & ${means[0]:.5f} \pm {stds[0]:.5f}$ & ${means[1]:.5f} \pm {stds[1]:.5f}$ & ${means[2]:.5f} \pm {stds[2]:.5f}$ \\\\')
 
         print('\\bottomrule')
         print('\\end{tabular}')
-        print('\\caption{\\textbf{prediction losses}}')
+        print(f'\\caption{{\\textbf{{{caption}}}}}')
         print('\\label{tab:prediction_losses}')
-        print('\\end{table}')
+        print('\\end{table*}')
+
+    def print_scores(self):
+        self.print_score(self._scores, caption='prediction losses')
+        self.print_score(self._nscores, caption='prediction losses (normalized)')
 
 
-ex = Experiment()
+if __name__ == '__main__':
+    ex = Experiment()

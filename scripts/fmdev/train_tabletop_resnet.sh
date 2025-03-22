@@ -1,6 +1,6 @@
 #!/bin/bash
 
-for seed in {1..5}; do
+for seed in {1..2}; do
     echo "seed = $seed"
     python train_torch.py \
         --dataset_path ~/Dataset/forcemap\
@@ -10,7 +10,7 @@ for seed in {1..5}; do
         --batch_size 16\
         --seed $seed\
         --lr 1e-3\
-        --method 'isotropic'\
-        --sigma_f 0.015\
+        --method 'geometry-aware'\
+        --sigma_f 0.06\
         --sigma_g 0.01
 done

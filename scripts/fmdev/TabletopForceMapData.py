@@ -28,7 +28,8 @@ class TabletopRandomSceneDataset(Dataset):
         self,
         data_type,
         minmax=[0.1, 0.9],
-        fminmax=[1e-5, 1e-0],
+        # fminmax=[1e-5, 1e-0],
+        fminmax=[1e-7, 1e-2],
         img_format="CWH",
         root_dir=Path(os.path.expanduser("~")) / "Dataset/forcemap/",
         task_name="tabletop240125",
@@ -142,16 +143,17 @@ class TabletopRandomSceneDataset(Dataset):
         elif self._method == 'sdf':
             return f'force{scene_idx:05d}_SDF.pkl'
 
-    def load_fmap(self, idx):
+    def load_fmap(self, idx, normalize=True):
         dataset_name, scene_idx = self._ids[idx]
         fmap = pd.read_pickle(self.root_dir / dataset_name / self._force_distribution_file(scene_idx))
         fmap = fmap[:, :, :30].astype("float32")
 
         if self._method == 'isotropic' or self._method == 'geometry-aware':
-            fmap = np.clip(fmap, self._force_bounds[0], self._force_bounds[1])
-            fmap = np.log(fmap)  # force_raw (in log scale)
-            fmap = fmap.transpose(2, 0, 1)
-            fmap = self._normalization(fmap, np.log(self._force_bounds))
+            if normalize:
+                fmap = np.clip(fmap, self._force_bounds[0], self._force_bounds[1])
+                fmap = np.log(fmap)  # force_raw (in log scale)
+                fmap = self._normalization(fmap, np.log(self._force_bounds))
+            fmap = fmap.transpose(2, 0, 1)            
         elif self._method == 'sdf':
             # dist_bounds = [-0.001, 0.02]
             # fmap = np.clip(-fmap, dist_bounds[0], dist_bounds[1])

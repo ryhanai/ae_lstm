@@ -158,7 +158,6 @@ class FmapSmoother:
         return sdf            
 
     def compute_density_GAFS(self, bs, contact_state, sigma_f, sigma_g):
-        fdists = []
         weighted_fdists = []
 
         start_t = time.time()
@@ -173,16 +172,14 @@ class FmapSmoother:
             objectA, objectB = contact_pair
 
             g = self.normal_distribution(mean=contact_position, sigma=sigma_f)
-            fdist = force_value * g
 
             sdf1 = self.get_sdf_for_object_in_scene(objectA, bs[objectA])
             esdf1 = np.exp(-np.abs(sdf1) / (sigma_g))
             sdf2 = self.get_sdf_for_object_in_scene(objectB, bs[objectB])
             esdf2 = np.exp(-np.abs(sdf2) / (sigma_g))
-
             unnormalized_wkde = esdf1 * esdf2 * g
-            sumg = np.sum(g)  #####
-            alpha = 1.0 / max(np.sum(unnormalized_wkde), 1e-4) * sumg  #####
+
+            alpha = 1.0 / max(np.sum(unnormalized_wkde), 1e-5)
             normalized_wkde = alpha * force_value * unnormalized_wkde
             weighted_fdists.append(normalized_wkde)
             # print_info("skip a contact point (contacting object is out of bound)")
@@ -203,8 +200,6 @@ class FmapSmoother:
                 contact_position, force_value, contact_pair, contact_normal = contact
             else:
                 contact_position, force_value, contact_pair = contact
-
-            objectA, objectB = contact_pair
 
             g = self.normal_distribution(mean=contact_position, sigma=sigma_f)
             fdist = force_value * g
@@ -232,7 +227,7 @@ class FmapSmoother:
         print_info(f"{time.time() - start_t:.2f}[sec]")
         return scene_sdf
 
-    def compute_density(self, bin_state, contact_state, sigma_d, method):
+    def compute_density(self, bin_state, contact_state, method):
         bs = dict(bin_state)
         assert self._fmap.get_scene() == "small_table" or self._fmap.get_scene() == "seria_basket"
         if self._fmap.get_scene() == "small_table":
@@ -247,48 +242,9 @@ class FmapSmoother:
         elif method == SmoothingMethod.SDF:
             return self.compute_density_SDF(bs)
 
-        fdists = []
-        weighted_fdists = []
-
-        start_t = time.time()
-        print_info(f"processing contact points [{len(contact_state[0])} contacts]: ")
-        for contact_position, force_value, contact_pair, contact_normal in zip(*contact_state):
-        # for contact_position, force_value, contact_pair in zip(*contact_state):            
-            objectA, objectB = contact_pair
-
-            g = self.normal_distribution(contact_position)
-            fdist = force_value * g
-            fdists.append(fdist)
-
-            sdf1 = self.get_sdf_for_object_in_scene(objectA, bs[objectA])
-            esdf1 = np.exp(-np.abs(sdf1) / (sigma_d))
-            sdf2 = self.get_sdf_for_object_in_scene(objectB, bs[objectB])
-            esdf2 = np.exp(-np.abs(sdf2) / (sigma_d))
-
-            unnormalized_wkde = esdf1 * esdf2 * g
-            sumg = np.sum(g)  #####
-            alpha = 1.0 / max(np.sum(unnormalized_wkde), 1e-4) * sumg  #####
-            normalized_wkde = alpha * force_value * unnormalized_wkde
-            weighted_fdists.append(normalized_wkde)
-            # print_info("skip a contact point (contacting object is out of bound)")
-                
-        force_distribution = functools.reduce(operator.add, fdists)
-        weighted_force_distribution = functools.reduce(operator.add, weighted_fdists)
-
-        # sdf for the scene
-        inside_only = False
-        sdfs = [self.get_sdf_for_object_in_scene(name, pose) for name, pose in bs.items()]
-
-        if inside_only:  # nsdf
-            sdfs = [np.where(sdf <= 0, sdf, 0) for sdf in sdfs]
-        scene_sdf = functools.reduce(lambda x, y: np.minimum(x, y), sdfs)
-
-        print_info(f"{time.time() - start_t:.2f}[sec]")
-
-        return force_distribution, weighted_force_distribution, scene_sdf
-
     def normal_distribution(self, mean, sigma):
-        v = [np.exp(-(((np.linalg.norm(p - mean)) / sigma) ** 2)) for p in self._fmap.positions]
+        c = 1. / ((2 * np.pi)**(3/2.) * sigma**3) * self._fmap.dV
+        v = [c * np.exp(-1./2 * (((np.linalg.norm(p - mean)) / sigma) ** 2)) for p in self._fmap.positions]
         v = np.array(v).reshape(self._fmap.get_grid_shape())
         return v
 
@@ -319,11 +275,11 @@ class FmapSmoother:
             bin_state, contacts = self.load(frameNo)
             d = self.compute_density(bin_state,
                                      contacts,
-                                     sigma_d=self._env_config['sigma_g'],
                                      method=self._smoothing_method)
             if log_scale:
                 d = np.log(1 + d)
             pd.to_pickle(d, out_file)
+        return d
 
 
 def in_forcemap_area(p):
@@ -520,6 +476,11 @@ def test(bs, fmap):
 #     return
 
 #     return functools.reduce(operator.add, weighted_dists)
+
+def debug1(i):
+    def aux(i, sigma_f):
+        return f'/home/ryo/Dataset/forcemap/tabletop240304/force{i:05d}_IFS_f{sigma_f:.03f}.pkl'
+    return np.sum(pd.read_pickle(aux(i, 0.015))) / np.sum(pd.read_pickle(aux(i, 0.015)))
 
 
 if __name__ == "__main__":
