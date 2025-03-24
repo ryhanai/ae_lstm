@@ -13,6 +13,92 @@ from aist_sb_ur5e.controller import RMPFlowController, SpaceMouseController
 from aist_sb_ur5e.task import ConveniPickupTask
 
 
+import rclpy
+# from std_msgs.msg import String
+from sensor_msgs.msg import Image
+from visualization_msgs.msg import Marker, MarkerArray
+import cv_bridge
+import cv2
+from core.object_loader import ObjectInfo
+
+
+rclpy.init()
+node = rclpy.create_node("isaac_picking_simulator")
+publisher = node.create_publisher(Image, "/camera/camera/color/image_raw", 1)
+bin_state_publisher = node.create_publisher(MarkerArray, "/bin_state", 1)
+br = cv_bridge.CvBridge()
+
+def publish_image(img):
+    def crop_center_and_resize(img):
+        width, height = [768, 540]
+        cam_height = img.shape[0]
+        cam_width = img.shape[1]
+        output_img_size = [512, 360]
+        cropped_img = img[
+            int((cam_height - height) / 2) : int((cam_height - height) / 2 + height),
+            int((cam_width - width) / 2) : int((cam_width - width) / 2 + width),
+        ]
+        return cv2.resize(cropped_img, output_img_size)
+
+    img = crop_center_and_resize(img)
+    msg = br.cv2_to_imgmsg(img, encoding='rgb8')
+    publisher.publish(msg)
+
+message_id = 0
+object_info = ObjectInfo('ycb_conveni_v1')
+
+def publish_bin_state(task):
+    global message_id
+    bin_state = []
+    for product in task.get_active_products():
+        p, o = product.get_world_pose()
+        o[0], o[1], o[2], o[3] = o[1], o[2], o[3], o[0]
+        bin_state.append((product.name, (p, o)))
+
+    # markerD = Marker()
+    # markerD.header.frame_id = 'fmap_frame'
+    # markerD.action = markerD.DELETEALL
+    marker_array =  MarkerArray()
+    # marker_array.markers.append(markerD)
+
+    rgba = [0.5, 0.5, 0.5, 0.4]
+    scale = [1., 1., 1.]
+
+    for name, (xyz, quat) in bin_state:
+        marker = Marker()
+        marker.type = Marker.MESH_RESOURCE
+        marker.header.frame_id = 'fmap_frame'
+        marker.header.stamp = rclpy.clock.Clock().now().to_msg()
+        # marker.lifetime = rclpy.duration.Duration(seconds=0.2).to_msg()
+        marker.lifetime = rclpy.duration.Duration().to_msg()
+        marker.id = message_id
+        marker.action = marker.ADD
+        message_id += 1
+
+        mesh_file, _ = object_info.rviz_mesh_file(name)
+        marker.mesh_resource = mesh_file
+        marker.mesh_use_embedded_materials = True
+        xyz = xyz.tolist()
+        quat = quat.tolist()
+        marker.pose.position.x = xyz[0]
+        marker.pose.position.y = xyz[1]
+        marker.pose.position.z = xyz[2]
+        marker.pose.orientation.x = quat[0]
+        marker.pose.orientation.y = quat[1]
+        marker.pose.orientation.z = quat[2]
+        marker.pose.orientation.w = quat[3]
+        marker.color.r = rgba[0]
+        marker.color.g = rgba[1]
+        marker.color.b = rgba[2]
+        marker.color.a = rgba[3]
+        marker.scale.x = scale[0]
+        marker.scale.y = scale[1]
+        marker.scale.z = scale[2]
+
+        marker_array.markers.append(marker)
+    bin_state_publisher.publish(marker_array)
+
+
 my_world: World = World(stage_units_in_meters=1.0)
 
 conveni_task = ConveniPickupTask(static_path="/home/ryo/Program/hello-isaac-sim/aist_sb_ur5e/static")
@@ -34,9 +120,14 @@ rmpflow_controller = RMPFlowController(robot_articulation=ur5e,
 )
 target_controller = SpaceMouseController(device_type="SpaceMouse Compact", rotate_gain=0.3)
 
+# conveni_task.load_bin_state(13)
+
 while simulation_app.is_running():
     my_world.step(render=True)
     if my_world.is_playing():
+
+        conveni_task.load_bin_state(2)
+
         target_position, target_orientation = target.get_world_pose()
         next_position, next_orientation = target_controller.forward(
             position=target_position,
@@ -62,4 +153,13 @@ while simulation_app.is_running():
                 )
             )
 
+        img = conveni_task._cameras[0].get_rgb()
+        if len(img.shape) == 3:
+            publish_image(img)
+        publish_bin_state(conveni_task)
+
+
 simulation_app.close()
+
+node.destroy_node()
+rclpy.shutdown()

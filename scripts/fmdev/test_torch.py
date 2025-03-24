@@ -192,11 +192,9 @@ class Tester:
         show_result=True,
         visualize_idx=0,
     ):
-        roi = self.crop_center_d415(image)
-        roi = roi.transpose(2, 0, 1).astype("float32")
-
-        roi = normalization(roi, (0.0, 255.0), [0.1, 0.9])
-        x_batch = np.expand_dims(roi, axis=0)
+        image = image.transpose(2, 0, 1).astype("float32")
+        image = normalization(image, (0.0, 255.0), [0.1, 0.9])
+        x_batch = np.expand_dims(image, axis=0)
         x_batch = torch.from_numpy(x_batch).float()
 
         predicted_maps = []
@@ -320,7 +318,8 @@ class TesterWithLiftingPlanning(Tester):
 
 
 if __name__ == '__main__':
-    tester = TesterWithLiftingPlanning(args.dataset_path,
+    #tester = TesterWithLiftingPlanning(args.dataset_path,
+    tester = Tester(args.dataset_path,    
                                     args.task_name,
                                     args.weight_files.split(),
                                     data_split=args.data_split)

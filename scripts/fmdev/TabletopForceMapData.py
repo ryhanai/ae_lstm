@@ -137,15 +137,17 @@ class TabletopRandomSceneDataset(Dataset):
 
     def _force_distribution_file(self, scene_idx):
         if self._method == 'geometry-aware':
-            return f'force{scene_idx:05d}_GAFS_f{self._sigma_f:.3f}_g{self._sigma_g:.3f}.pkl'
+            return f'force{scene_idx:05d}_GAFS_f{self._sigma_f:.3f}_g{self._sigma_g:.3f}.npy'
         elif self._method == 'isotropic':
-            return f'force{scene_idx:05d}_IFS_f{self._sigma_f:.3f}.pkl'
+            return f'force{scene_idx:05d}_IFS_f{self._sigma_f:.3f}.npy'
         elif self._method == 'sdf':
-            return f'force{scene_idx:05d}_SDF.pkl'
+            return f'force{scene_idx:05d}_SDF.npy'
 
     def load_fmap(self, idx, normalize=True):
         dataset_name, scene_idx = self._ids[idx]
-        fmap = pd.read_pickle(self.root_dir / dataset_name / self._force_distribution_file(scene_idx))
+        # this only works in numpy 2.x
+        # fmap = pd.read_pickle(self.root_dir / dataset_name / self._force_distribution_file(scene_idx))
+        fmap = np.load(self.root_dir / dataset_name / self._force_distribution_file(scene_idx))
         fmap = fmap[:, :, :30].astype("float32")
 
         if self._method == 'isotropic' or self._method == 'geometry-aware':
