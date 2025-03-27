@@ -99,6 +99,7 @@ def publish_bin_state(task):
 
 
 from isaacsim.core.utils.transformations import pose_from_tf_matrix, tf_matrix_from_pose
+import transforms3d as tf
 import json
 import numpy as np
 
@@ -123,10 +124,14 @@ def gripper_pose_in_world(task, pose, name='052_extra_large_clamp'):
         [ 2.71320677e-19,  1.00000000e+00, -8.08456633e-19, 0.00000000e+00],
         [ 1.01498696e-20, -4.13673160e-19,  1.00000000e+00, 0.00000000e+00],
         [ 0.00000000e+00,  0.00000000e+00,  0.00000000e+00, 1.00000000e+00]])
-    # Tpalm_tcp = np.eye(4)  # This depends of the end-effector frame of the articulation
+    Tpalm_ur = tf_matrix_from_pose(
+        translation=[0., 0., 0.],
+        orientation=tf.euler.euler2quat(np.pi/2., 0., 0., axes='sxyz')
+    )  # franka canonical frame -> UR5e tool0 frame
+    
     # print(f'Twld_ycb={Twld_ycb}')
     # print(f'Tmgg_palm={Tmgg_palm}')
-    pose_w = pose_from_tf_matrix(Twld_ycb @ Tycb_mgg @ Tmgg_palm)
+    pose_w = pose_from_tf_matrix(Twld_ycb @ Tycb_mgg @ Tmgg_palm @ Tpalm_ur)
     return pose_w
 
 
