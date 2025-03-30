@@ -18,7 +18,7 @@ from torchsummary import summary
 from force_estimation import force_distribution_viewer
 from force_estimation.pick_planning import LiftingDirectionPlanner
 
-from core.object_loader import ObjectInfo
+from dataset.object_loader import ObjectInfo
 from fmdev.eipl_print_func import print_info, print_error
 from fmdev.eipl_utils import tensor2numpy, normalization
 from fmdev import forcemap

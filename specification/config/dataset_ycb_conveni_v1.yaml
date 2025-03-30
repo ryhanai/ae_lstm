@@ -96,4 +96,96 @@ test:
     - gum_paste
     - kao_soap
     - nonio_mintpaste
-    
+
+all:
+  ycb:
+    # 26
+    - 004_sugar_box
+    - 008_pudding_box
+    - 010_potted_meat_can
+    - 012_strawberry
+    - 013_apple
+    - 014_lemon
+    - 016_pear
+    - 026_sponge
+    - 002_master_chef_can
+    - 015_peach
+    - 018_plum
+    - 024_bowl
+    - 025_mug
+    # - 029_plate
+    - 030_fork
+    - 032_knife
+    - 033_spatula
+    - 036_wood_block
+    - 042_adjustable_wrench
+    - 043_phillips_screwdriver
+    - 050_medium_clamp
+    - 052_extra_large_clamp
+    - 053_mini_soccer_ball
+    - 054_softball
+    - 057_racquetball
+    - 058_golf_ball
+    - 077_rubiks_cube
+    - 005_tomato_soup_can
+    - 007_tuna_fish_can
+    - 009_gelatin_box
+    - 011_banana
+    - 017_orange
+    - 040_large_marker
+    - 055_baseball
+    - 056_tennis_ball
+    - 061_foam_brick
+    - 001_chips_can
+    - 021_bleach_cleanser
+    - 023_wine_glass
+    - 031_spoon
+    - 035_power_drill 
+    - 037_scissors
+    - 044_flat_screwdriver
+    - 048_hammer
+    - 051_large_clamp
+  conveni:
+    #  24
+    - xylitol
+    - toppo
+    - kinokonoyama
+    - chip_star
+    - chocoball
+    - gogotea_straight
+    - oi_ocha_350ml
+    - calorie_mate_cheese
+    - xylitol_7assort
+    - cupnoodle_curry    
+    - creap
+    - ginger_tube
+    - java_curry_chukara
+    - kikkoman_soysauce_gennenn
+    - kizami_aojiso_tube
+    - canned_iwashi_kabayaki
+    - pan_meat
+    - vermont_curry_amakuchi
+    - jif
+    - 7i_handsoap
+    - clinica_ad_hamigaki
+    - clinica_advantage
+    - nonio_strong_energy
+    - clorets
+    - koalas_march
+    - macademia
+    - takenoko
+    - coca_cola_300ml
+    - calorie_mate_fruit
+    - xylitol_freshmint
+    - 2nd_cupnoodle  # material binding error
+    - golden_curry_chukara
+    - stew_cream_box
+    - kikkoman_soysauce
+    - pepper_steak
+    - mastard_tube  # material binding error
+    - honwasabi_tube
+    - vermont_curry_chukara
+    - clinica_quick_wash
+    - gum_paste
+    - kao_soap
+    - nonio_mintpaste

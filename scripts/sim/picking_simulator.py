@@ -10,15 +10,17 @@ from omni.isaac.core.utils.types import ArticulationAction
 from omni.isaac.manipulators.grippers import ParallelGripper
 
 from aist_sb_ur5e.controller import RMPFlowController, SpaceMouseController
-from aist_sb_ur5e.task import ConveniPickupTask
+# from aist_sb_ur5e.task import ConveniPickupTask
+from sim.task import TabletopPickingTask
 
 
 import rclpy
+# from std_msgs.msg import String
 from sensor_msgs.msg import Image
 from visualization_msgs.msg import Marker, MarkerArray
 import cv_bridge
 import cv2
-from core.object_loader import ObjectInfo
+from dataset.object_loader import ObjectInfo
 
 
 rclpy.init()
@@ -98,96 +100,51 @@ def publish_bin_state(task):
     bin_state_publisher.publish(marker_array)
 
 
-from isaacsim.core.utils.transformations import pose_from_tf_matrix, tf_matrix_from_pose
-import transforms3d as tf
-import json
-import numpy as np
-
-def load_grasp_data():
-    grasp_data_file = '/home/ryo/Program/isaac_sim_grasping/graspit_grasps/franka_panda/franka_panda-052_extra_large_clamp.json'
-    with open(grasp_data_file) as f:
-        data = json.load(f)
-    poses = np.asarray(data['pose'])  # shape = (9830, 7)
-    dofs = np.asarray(data['dofs'])
-    indices = np.argsort(data['fall_time'])[::-1]
-    poses = poses[indices]
-    return poses
-
-def gripper_pose_in_world(task, pose, name='052_extra_large_clamp'):
-    for product in task._convencience_store.products:
-        if product.name == name:
-            obj_pos, obj_ori = product.get_world_pose()
-    Twld_ycb = tf_matrix_from_pose(translation=obj_pos, orientation=obj_ori)
-    Tmgg_palm = tf_matrix_from_pose(translation=pose[:3], orientation=pose[3:])
-    Tycb_mgg = np.array([  # given from Meshlab (ICP)
-        [ 1.00000000e+00,  5.06082872e-20, -6.05749121e-20, 0.00000000e+00],
-        [ 2.71320677e-19,  1.00000000e+00, -8.08456633e-19, 0.00000000e+00],
-        [ 1.01498696e-20, -4.13673160e-19,  1.00000000e+00, 0.00000000e+00],
-        [ 0.00000000e+00,  0.00000000e+00,  0.00000000e+00, 1.00000000e+00]])
-    Tpalm_ur = tf_matrix_from_pose(
-        translation=[0., 0., 0.],
-        orientation=tf.euler.euler2quat(np.pi/2., 0., 0., axes='sxyz')
-    )  # franka canonical frame -> UR5e tool0 frame
-    
-    # print(f'Twld_ycb={Twld_ycb}')
-    # print(f'Tmgg_palm={Tmgg_palm}')
-    pose_w = pose_from_tf_matrix(Twld_ycb @ Tycb_mgg @ Tmgg_palm @ Tpalm_ur)
-    return pose_w
-
-
 my_world: World = World(stage_units_in_meters=1.0)
 
-conveni_task = ConveniPickupTask(static_path="/home/ryo/Program/hello-isaac-sim/aist_sb_ur5e/static")
-my_world.add_task(task=conveni_task)
+task = TabletopPickingTask(static_path="/home/artuser/Program/hello-isaac-sim/aist_sb_ur5e/static")
+my_world.add_task(task=task)
 my_world.reset()
 
 ur5e: Articulation = my_world.scene.get_object(
-    name=conveni_task.get_params()["robot_names"]["value"][0]
+    name=task.get_params()["robot_names"]["value"][0]
 )
 target: XFormPrim = my_world.scene.get_object(
-    name=conveni_task.get_params()["x_form_prim_names"]["value"][0]
+    name=task.get_params()["x_form_prim_names"]["value"][0]
 )
-gripper: ParallelGripper = conveni_task.get_params()["gripper"]["value"]
+gripper: ParallelGripper = task.get_params()["gripper"]["value"]
 
 rmpflow_controller = RMPFlowController(robot_articulation=ur5e,
-                                       robot_description_path='/home/ryo/Program/hello-isaac-sim/aist_sb_ur5e/static/rmpflow/robot_descriptor.yml',
-                                       rmpflow_config_path='/home/ryo/Program/hello-isaac-sim/aist_sb_ur5e/static/rmpflow/ur5e_rmpflow_common.yml',
-                                       urdf_path='/home/ryo/Program/hello-isaac-sim/aist_sb_ur5e/static/urdf/ur5e.urdf',
+                                       robot_description_path='/home/artuser/Program/hello-isaac-sim/aist_sb_ur5e/static/rmpflow/robot_descriptor.yml',
+                                       rmpflow_config_path='/home/artuser/Program/hello-isaac-sim/aist_sb_ur5e/static/rmpflow/ur5e_rmpflow_common.yml',
+                                       urdf_path='/home/artuser/Program/hello-isaac-sim/aist_sb_ur5e/static/urdf/ur5e.urdf',
 )
-target_controller = SpaceMouseController(device_type="SpaceMouse Compact", rotate_gain=0.3)
+target_controller = SpaceMouseController(device_type="SpaceMouse Wireless", rotate_gain=0.3)
 
-conveni_task.load_bin_state(13)  # 13
-
-poses = load_grasp_data()
-frame_no = 0
+scene_idx = 2
+task.load_bin_state(scene_idx)
 
 while simulation_app.is_running():
-    frame_no += 1
     my_world.step(render=True)
     if my_world.is_playing():
 
-        # conveni_task.load_bin_state(2)  # fix objects in the space
+        # conveni_task.load_bin_state(idx)
 
         target_position, target_orientation = target.get_world_pose()
         next_position, next_orientation = target_controller.forward(
             position=target_position,
             orientation=target_orientation,
         )
-
-        pose = poses[int(frame_no / 5)]
-        g_pos, g_ori = gripper_pose_in_world(conveni_task, pose)
-        target.set_world_pose(position=g_pos, orientation=g_ori)
-
-        # target.set_world_pose(
-        #     position=next_position,
-        #     orientation=next_orientation,
-        # )
+        target.set_world_pose(
+            position=next_position,
+            orientation=next_orientation,
+        )
 
         action: ArticulationAction = rmpflow_controller.forward(
             target_end_effector_position=next_position,
             target_end_effector_orientation=next_orientation,
         )
-        #ur5e.get_articulation_controller().apply_action(control_actions=action)
+        ur5e.get_articulation_controller().apply_action(control_actions=action)
 
         optional_action: str | None = target_controller.get_gripper_action()
         if optional_action is not None:
@@ -198,10 +155,10 @@ while simulation_app.is_running():
                 )
             )
 
-        img = conveni_task._cameras[0].get_rgb()
+        img = task._cameras[0].get_rgb()
         if len(img.shape) == 3:
             publish_image(img)
-        publish_bin_state(conveni_task)
+        publish_bin_state(task)
 
 
 simulation_app.close()

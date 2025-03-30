@@ -1,22 +1,21 @@
-import os
+import yaml
 from pathlib import Path
 
-import yaml
+
+OBJECT_MODEL_DIR = Path("~").expanduser() / "Dataset" / "ycb_conveni"
 
 
 class ObjectInfo:
-    def __init__(self, dataset="ycb_conveni", split="train"):
-        self._object_dir = f"{os.environ['HOME']}/Dataset/ycb_conveni"
-        self._config_dir = f"{os.environ['HOME']}/Program/moonshot/ae_lstm/specification/config"
-        # self._object_dir = "/home/ryo/Dataset/ycb_conveni"
-        # self._config_dir = "/home/ryo/Program/moonshot/ae_lstm/specification/config"
+    def __init__(self, dataset="ycb_conveni_v1", split="train"):
+        self._object_dir = OBJECT_MODEL_DIR
+        self._config_dir = OBJECT_MODEL_DIR / 'config'
         self.load_config(dataset, split)
 
     def load_config(self, dataset, split):
-        with open(os.path.join(self._config_dir, f"dataset_{dataset}.yaml")) as f:
+        with open(self._config_dir / f"dataset_{dataset}.yaml") as f:
             dataset_def = yaml.safe_load(f)[split]
 
-        with open(os.path.join(f"{self._config_dir}", "objects.yaml")) as f:
+        with open(self._config_dir / "objects.yaml") as f:
             obj_def = yaml.safe_load(f)
 
         self._info = {}
@@ -56,11 +55,6 @@ class ObjectInfo:
             obj_file = p.parent.parent / "textured.obj"
         scale = 1.0
         return str(obj_file), scale
-
-        # if name == "seria_basket":
-        #     return f"{obj_dir}/seria_basket_body_collision.obj", 0.001
-        # else:
-        #     return f"{obj_dir}/ycb/{name}/google_16k/textured.obj", 1.0
 
     def rviz_mesh_file(self, name):
         if self.dataset(name) == "ycb":
