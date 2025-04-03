@@ -7,7 +7,9 @@ simulation_app = SimulationApp(launch_config={"headless": False, "multi_gpu": Fa
 import cv2
 import cv_bridge
 import rclpy
-from aist_sb_ur5e.controller import RMPFlowController, SpaceMouseController
+from aist_sb_ur5e.controller import RMPFlowController
+# from aist_sb_ur5e_controller import SpaceMouseController
+from aist_sb_ur5e_controller import KeyboardController
 from dataset.object_loader import ObjectInfo
 from omni.isaac.core import World
 from omni.isaac.core.articulations.articulation import Articulation
@@ -157,7 +159,8 @@ rmpflow_controller = RMPFlowController(
     rmpflow_config_path=str(HELLO_ISAAC_ROOT / "aist_sb_ur5e/static/rmpflow/ur5e_rmpflow_common.yml"),
     urdf_path=str(HELLO_ISAAC_ROOT / "aist_sb_ur5e/static/urdf/ur5e.urdf"),
 )
-target_controller = SpaceMouseController(device_type="SpaceMouse Compact", rotate_gain=0.3)
+# target_controller = SpaceMouseController(device_type="SpaceMouse Compact", rotate_gain=0.3)
+target_controller = KeyboardController()
 
 scene_idx = 2
 # task.load_bin_state(scene_idx)
