@@ -8,8 +8,8 @@ import cv2
 import cv_bridge
 import rclpy
 from aist_sb_ur5e.controller import RMPFlowController
-# from aist_sb_ur5e_controller import SpaceMouseController
-from aist_sb_ur5e_controller import KeyboardController
+# from aist_sb_ur5e.controller import SpaceMouseController
+from aist_sb_ur5e.controller import KeyboardController
 from dataset.object_loader import ObjectInfo
 from omni.isaac.core import World
 from omni.isaac.core.articulations.articulation import Articulation
@@ -120,7 +120,7 @@ def load_grasp_data():
     return poses
 
 def gripper_pose_in_world(task, pose, name='052_extra_large_clamp'):
-    for product in task._convencience_store.products:
+    for product in task._env.products:
         if product.name == name:
             obj_pos, obj_ori = product.get_world_pose()
     Twld_ycb = tf_matrix_from_pose(translation=obj_pos, orientation=obj_ori)
@@ -162,7 +162,7 @@ rmpflow_controller = RMPFlowController(
 # target_controller = SpaceMouseController(device_type="SpaceMouse Compact", rotate_gain=0.3)
 target_controller = KeyboardController()
 
-scene_idx = 2
+scene_idx = 13
 # task.load_bin_state(scene_idx)
 
 poses = load_grasp_data()
