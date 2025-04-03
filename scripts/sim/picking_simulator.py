@@ -1,33 +1,33 @@
 from operator import itemgetter
+from pathlib import Path
 
 from omni.isaac.kit import SimulationApp
 
 simulation_app = SimulationApp(launch_config={"headless": False, "multi_gpu": False})
+import cv2
+import cv_bridge
+import rclpy
+from aist_sb_ur5e.controller import RMPFlowController, SpaceMouseController
+from dataset.object_loader import ObjectInfo
 from omni.isaac.core import World
 from omni.isaac.core.articulations.articulation import Articulation
 from omni.isaac.core.prims import XFormPrim
 from omni.isaac.core.utils.types import ArticulationAction
 from omni.isaac.manipulators.grippers import ParallelGripper
 
-from aist_sb_ur5e.controller import RMPFlowController, SpaceMouseController
-# from aist_sb_ur5e.task import ConveniPickupTask
-from sim.task import TabletopPickingTask
-
-
-import rclpy
 # from std_msgs.msg import String
 from sensor_msgs.msg import Image
-from visualization_msgs.msg import Marker, MarkerArray
-import cv_bridge
-import cv2
-from dataset.object_loader import ObjectInfo
 
+# from aist_sb_ur5e.task import ConveniPickupTask
+from sim.task.tabletop_picking_task import TabletopPickingTask
+from visualization_msgs.msg import Marker, MarkerArray
 
 rclpy.init()
 node = rclpy.create_node("isaac_picking_simulator")
 publisher = node.create_publisher(Image, "/camera/camera/color/image_raw", 1)
 bin_state_publisher = node.create_publisher(MarkerArray, "/bin_state", 1)
 br = cv_bridge.CvBridge()
+
 
 def publish_image(img):
     def crop_center_and_resize(img):
@@ -42,11 +42,13 @@ def publish_image(img):
         return cv2.resize(cropped_img, output_img_size)
 
     img = crop_center_and_resize(img)
-    msg = br.cv2_to_imgmsg(img, encoding='rgb8')
+    msg = br.cv2_to_imgmsg(img, encoding="rgb8")
     publisher.publish(msg)
 
+
 message_id = 0
-object_info = ObjectInfo('ycb_conveni_v1')
+object_info = ObjectInfo("ycb_conveni_v1")
+
 
 def publish_bin_state(task):
     global message_id
@@ -59,16 +61,16 @@ def publish_bin_state(task):
     # markerD = Marker()
     # markerD.header.frame_id = 'fmap_frame'
     # markerD.action = markerD.DELETEALL
-    marker_array =  MarkerArray()
+    marker_array = MarkerArray()
     # marker_array.markers.append(markerD)
 
     rgba = [0.5, 0.5, 0.5, 0.4]
-    scale = [1., 1., 1.]
+    scale = [1.0, 1.0, 1.0]
 
     for name, (xyz, quat) in bin_state:
         marker = Marker()
         marker.type = Marker.MESH_RESOURCE
-        marker.header.frame_id = 'fmap_frame'
+        marker.header.frame_id = "fmap_frame"
         marker.header.stamp = rclpy.clock.Clock().now().to_msg()
         # marker.lifetime = rclpy.duration.Duration(seconds=0.2).to_msg()
         marker.lifetime = rclpy.duration.Duration().to_msg()
@@ -100,26 +102,25 @@ def publish_bin_state(task):
     bin_state_publisher.publish(marker_array)
 
 
+HELLO_ISAAC_ROOT = Path("~/Program/hello-isaac-sim").expanduser()
+
 my_world: World = World(stage_units_in_meters=1.0)
 
-task = TabletopPickingTask(static_path="/home/artuser/Program/hello-isaac-sim/aist_sb_ur5e/static")
+task = TabletopPickingTask(static_path=HELLO_ISAAC_ROOT / "aist_sb_ur5e/static")
 my_world.add_task(task=task)
 my_world.reset()
 
-ur5e: Articulation = my_world.scene.get_object(
-    name=task.get_params()["robot_names"]["value"][0]
-)
-target: XFormPrim = my_world.scene.get_object(
-    name=task.get_params()["x_form_prim_names"]["value"][0]
-)
+ur5e: Articulation = my_world.scene.get_object(name=task.get_params()["robot_names"]["value"][0])
+target: XFormPrim = my_world.scene.get_object(name=task.get_params()["x_form_prim_names"]["value"][0])
 gripper: ParallelGripper = task.get_params()["gripper"]["value"]
 
-rmpflow_controller = RMPFlowController(robot_articulation=ur5e,
-                                       robot_description_path='/home/artuser/Program/hello-isaac-sim/aist_sb_ur5e/static/rmpflow/robot_descriptor.yml',
-                                       rmpflow_config_path='/home/artuser/Program/hello-isaac-sim/aist_sb_ur5e/static/rmpflow/ur5e_rmpflow_common.yml',
-                                       urdf_path='/home/artuser/Program/hello-isaac-sim/aist_sb_ur5e/static/urdf/ur5e.urdf',
+rmpflow_controller = RMPFlowController(
+    robot_articulation=ur5e,
+    robot_description_path=str(HELLO_ISAAC_ROOT / "aist_sb_ur5e/static/rmpflow/robot_descriptor.yml"),
+    rmpflow_config_path=str(HELLO_ISAAC_ROOT / "aist_sb_ur5e/static/rmpflow/ur5e_rmpflow_common.yml"),
+    urdf_path=str(HELLO_ISAAC_ROOT / "aist_sb_ur5e/static/urdf/ur5e.urdf"),
 )
-target_controller = SpaceMouseController(device_type="SpaceMouse Wireless", rotate_gain=0.3)
+target_controller = SpaceMouseController(device_type="SpaceMouse Compact", rotate_gain=0.3)
 
 scene_idx = 2
 task.load_bin_state(scene_idx)
@@ -149,11 +150,7 @@ while simulation_app.is_running():
         optional_action: str | None = target_controller.get_gripper_action()
         if optional_action is not None:
             gripper_action: ArticulationAction = gripper.forward(optional_action)
-            gripper.apply_action(
-                ArticulationAction(
-                    joint_positions=itemgetter(7, 9)(gripper_action.joint_positions)
-                )
-            )
+            gripper.apply_action(ArticulationAction(joint_positions=itemgetter(7, 9)(gripper_action.joint_positions)))
 
         img = task._cameras[0].get_rgb()
         if len(img.shape) == 3:

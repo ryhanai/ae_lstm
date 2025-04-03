@@ -2,17 +2,17 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from aist_sb_ur5e.env import get_settings
+from aist_sb_ur5e.model import RMPFlowTarget, UR5e
+from aist_sb_ur5e.model.factory import create_camera, create_light, create_viewport
+from isaacsim.sensors.camera import Camera
 from omni.isaac.core.prims import XFormPrim
 from omni.isaac.core.scenes.scene import Scene
 from omni.isaac.core.tasks import BaseTask
 from omni.isaac.core.utils.numpy.rotations import euler_angles_to_quats
-from isaacsim.sensors.camera import Camera
 from omni.kit.viewport.window.window import ViewportWindow
 from pxr.Usd import Prim
-
-from aist_sb_ur5e.env import get_settings
-from aist_sb_ur5e.model import RMPFlowTarget, UR5e
-from aist_sb_ur5e.model.factory import create_camera, create_light, create_viewport
+from sim.model.tabletop_env import TabletopEnv
 
 
 class TabletopPickingTask(BaseTask):
@@ -25,7 +25,7 @@ class TabletopPickingTask(BaseTask):
 
     def __init__(self, static_path: str = "aist_sb_ur5e/static") -> None:
         """
-        Initialize ConveniPickupTask
+        Initialize TabletopPickingTask
 
         Args:
             static_path (str, optional):
@@ -33,20 +33,13 @@ class TabletopPickingTask(BaseTask):
                 Defaults to "aist_sb_ur5e/static".
         """
         super().__init__(
-            name="conveni_pickup_task",
+            name="tabletop_picking_task",
         )
         self._ur5e = UR5e(
-            usd_path=f"{static_path}/usd/ur5e_with_gripper_and_frame_410.usd",
+            usd_path=f"{static_path}/usd/ur5e_with_gripper_and_cuboid_stand.usd",
         )
         self._rmpflow_target: XFormPrim = RMPFlowTarget()
-        self._convencience_store = ConvenienceStore(
-            # store_usd_path=f"{static_path}/usd/table_surface.usd",
-            store_usd_path=f"{static_path}/usd/tana_zentai.usd",            
-            goods_usd_path=f"{static_path}/usd/java_curry_chukara/java_curry_chukara.usd",
-            gap=get_settings().conveni_product_stack_gap,
-            num_product_rows=get_settings().conveni_product_stack_rows,
-            num_product_columns=get_settings().conveni_product_stack_columns,
-        )
+        self._env = TabletopEnv()
         self._cameras: list[Camera] = [
             create_camera(
                 name="top_camera",
@@ -60,7 +53,7 @@ class TabletopPickingTask(BaseTask):
                 name="right_camera",
                 prim_path="/World/right_camera",
                 position=np.array([0.00, -0.65, 1.62]),
-                # position=np.array([0.60, -0.65, 1.62]),                
+                # position=np.array([0.60, -0.65, 1.62]),
                 orientation=np.array([0, 45, 90]),
             ),
         ]
@@ -95,8 +88,7 @@ class TabletopPickingTask(BaseTask):
         for sensor in self._ur5e.sensors:
             scene.add(obj=sensor)
         scene.add(obj=self._rmpflow_target)
-        scene.add(obj=self._convencience_store.shelf)
-        for product in self._convencience_store.products:
+        for product in self._env.products:
             scene.add(obj=product)
         scene.add_default_ground_plane()
         self.post_reset()
@@ -140,8 +132,8 @@ class TabletopPickingTask(BaseTask):
             "x_form_prim_names": {
                 "value": [
                     self._rmpflow_target.name,
-                    self._convencience_store.shelf.name,
-                    *[curry.name for curry in self._convencience_store.products],
+                    #                    self._convenience_store.shelf.name,
+                    #                    *[curry.name for curry in self._convenience_store.products],
                 ],
                 "modifiable": False,
             },
@@ -184,17 +176,16 @@ class TabletopPickingTask(BaseTask):
 
     def load_bin_state(self, scene_idx):
         self._active_products = []
-        bs = pd.read_pickle(f'/home/artuser/Dataset/forcemap/tabletop240304/bin_state{scene_idx:05d}.pkl')
+        bs = pd.read_pickle(f"/home/ryo/Dataset/forcemap/tabletop240304/bin_state{scene_idx:05d}.pkl")
         print(bs)
         for name, (p, o) in bs:
-            for product in self._convencience_store.products:
+            for product in self._env.products:
                 if product.name == name:
                     # print(dir(p))
                     o[0], o[1], o[2], o[3] = o[3], o[0], o[1], o[2]
-                    print(f'SET POSE: {name}')
+                    print(f"SET POSE: {name}")
                     product.set_world_pose(p, o)
                     self._active_products.append(product)
 
     def get_active_products(self):
         return self._active_products
-    
