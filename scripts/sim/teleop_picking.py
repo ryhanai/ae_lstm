@@ -8,7 +8,7 @@ import cv2
 import cv_bridge
 import rclpy
 from aist_sb_ur5e.controller import RMPFlowController
-from aist_sb_ur5e.controller import KeyboardController
+from aist_sb_ur5e.controller import SpaceMouseController
 from dataset.object_loader import ObjectInfo
 from omni.isaac.core import World
 from omni.isaac.core.articulations.articulation import Articulation
