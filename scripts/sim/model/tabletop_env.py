@@ -32,7 +32,9 @@ class TabletopEnv:
             mass=100.0,
             static_friction=0.4,
             dynamic_friction=0.3,
-            position=np.array([0.0, 0.0, 0.71]),
+            # position=np.array([0.0, 0.0, 0.71]),
+            position=np.array([0.0, 0.0, 0.69]),            
+            # position=np.array([0.0, 0.0, 0.60]),                        
             orientation=np.array([1.0, 0.0, 0.0, 0.0]),
             kinematic=True,
         )
@@ -87,6 +89,7 @@ class TabletopEnv:
                     position=np.array(
                         object=[xy[0], xy[1], z],
                     ),
+                    kinematic=False,
                 )
             )
 

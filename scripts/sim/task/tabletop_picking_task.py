@@ -103,11 +103,11 @@ class TabletopPickingTask(BaseTask):
                 [
                     np.array(
                         [
-                            -np.pi / 2,
-                            -np.pi / 2,
-                            -np.pi / 2,
+                            0,
                             -np.pi / 2,
                             np.pi / 2,
+                            -np.pi / 2,
+                            -np.pi / 2,
                             np.pi,
                         ]
                     ),
@@ -177,15 +177,26 @@ class TabletopPickingTask(BaseTask):
     def load_bin_state(self, scene_idx):
         self._active_products = []
         bs = pd.read_pickle(f"/home/ryo/Dataset/forcemap/tabletop240304/bin_state{scene_idx:05d}.pkl")
-        print(bs)
+        # print(bs)
         for name, (p, o) in bs:
             for product in self._env.products:
                 if product.name == name:
                     # print(dir(p))
                     o[0], o[1], o[2], o[3] = o[3], o[0], o[1], o[2]
-                    print(f"SET POSE: {name}")
+                    # print(f"SET POSE: {name}")
                     product.set_world_pose(p, o)
                     self._active_products.append(product)
+
+    def load_extra_large_clamp(self):
+        self._active_products = []
+        bs = pd.read_pickle(f"/home/ryo/Dataset/forcemap/tabletop240304/bin_state00013.pkl")
+        name = '052_extra_large_clamp'
+        p, o = [x for (n, x) in bs if n == name][0]
+        for product in self._env.products:
+            if product.name == name:
+                o[0], o[1], o[2], o[3] = o[3], o[0], o[1], o[2]
+                product.set_world_pose(p, o)
+                self._active_products.append(product)
 
     def get_active_products(self):
         return self._active_products

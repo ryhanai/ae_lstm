@@ -8,6 +8,7 @@ import cv2
 import cv_bridge
 import rclpy
 from aist_sb_ur5e.controller import RMPFlowController
+# from aist_sb_ur5e.controller import SpaceMouseController
 from aist_sb_ur5e.controller import KeyboardController
 from dataset.object_loader import ObjectInfo
 from omni.isaac.core import World
@@ -25,8 +26,8 @@ from aist_sb_ur5e.model.factory import create_contact_sensor
 
 from omni.isaac.core import World
 
-# world = World()
-# world.get_physics_context().set_gravity(0.0)
+world = World()
+world.get_physics_context().set_gravity(0.0)
 # world.set_gravity(value=-9.81 / meters_per_unit())
 
 rclpy.init()
@@ -114,29 +115,15 @@ import transforms3d as tf
 import json
 import numpy as np
 
-feasible_grasps = {
-    # (13, '052_extra_large_clamp'): [885, 886, 892, 893, 1188, 1189, 1397, 1398, 1400, 1415, 1424, 1430, 1434, 1435, 2091, 2345, 2346, 2347, 2424, 2425, 2426, 2427, 2530, 2531, 2730, 2769, 2770, 2784, 2785, 2944, 3645, 3646, 4224, 4231, 4238, 4244, 4266, 4267, 4875, 4882, 4888, 4895, 4896, 4898, 4899, 4903, 4904, 5086, 5116, 5117, 5118, 5130, 5145, 5147, 5148, 5149, 5159, 6918, 6919, 7666, 8002, 8016, 8017, 8048, 8049, 8050, 9121, 9132, 9135, 9144, 9169, 9377, 9388, 9389, 9399, 9479, 9524, 9525, 9526, 9563, 9682, 9752]
-    (13, '052_extra_large_clamp'): [1188, 1189, 1395, 1396, 1397, 1398, 1400, 1415, 1419, 1420, 1424, 1431, 1432, 1434, 1435, 1436, 1449, 1450, 2347, 2354, 2424, 2425, 2426, 2427, 2529, 2530, 2531, 2730, 2769, 2784, 2785, 2944, 3644, 3645, 3646, 4224, 4231, 4238, 4244, 4266, 4267, 4268, 4598, 4743, 4744, 4745, 4875, 4882, 4888, 4889, 4895, 4896, 4898, 4899, 4900, 4901, 4903, 4904, 5086, 5116, 5117, 5118, 5119, 5120, 5130, 5145, 5146, 5147, 5148, 5149, 5159, 6918, 6919, 7129, 7130, 7142, 7666, 7948, 7961, 7962, 8002, 8068, 8069, 9082, 9121, 9135, 9389, 9399, 9479, 9498, 9626, 9682, 9770]
-    }
-
-Tycb_mggs = {  # given from Meshlab (ICP)
-    '052_extra_large_clamp': np.array([
-        [ 9.99999514e-01, -1.05736320e-03,  6.06697628e-04, -2.02874644e-02],
-        [ 1.05417675e-03,  9.99985434e-01,  5.23968244e-03, -3.58058714e-02],
-        [-6.12228836e-04, -5.23904553e-03,  9.99986177e-01, -1.72968221e-02],
-        [ 0.00000000e+00,  0.00000000e+00,  0.00000000e+00, 1.00000000e+00]]),
-}
-
-def load_grasp_data(scene_id=13, object_id='052_extra_large_clamp'):
-    grasp_data_file = f'/home/ryo/Program/isaac_sim_grasping/graspit_grasps/franka_panda/franka_panda-{object_id}.json'
+def load_grasp_data():
+    grasp_data_file = '/home/ryo/Program/isaac_sim_grasping/graspit_grasps/franka_panda/franka_panda-052_extra_large_clamp.json'
     with open(grasp_data_file) as f:
         data = json.load(f)
+    poses = np.asarray(data['pose'])  # shape = (9830, 7)
+    dofs = np.asarray(data['final_dofs'])
     indices = np.argsort(data['fall_time'])[::-1]
-    grasp_ids = indices[feasible_grasps[(scene_id, object_id)]]
-    poses = np.asarray(data['pose'])[grasp_ids]
-    dofs = np.asarray(data['final_dofs'])[grasp_ids]
-    return poses, dofs
-
+    poses_and_dofs = poses[indices], dofs[indices]
+    return poses_and_dofs
 
 def gripper_pose_in_world(task, pose, name='052_extra_large_clamp'):
     for product in task._env.products:
@@ -149,15 +136,23 @@ def gripper_pose_in_world(task, pose, name='052_extra_large_clamp'):
     #     [ 2.71320677e-19,  1.00000000e+00, -8.08456633e-19, 0.00000000e+00],
     #     [ 1.01498696e-20, -4.13673160e-19,  1.00000000e+00, 0.00000000e+00],
     #     [ 0.00000000e+00,  0.00000000e+00,  0.00000000e+00, 1.00000000e+00]])
-
-    Tycb_mgg = Tycb_mggs[name]
+    Tycb_mgg = np.array([
+        [ 9.99999514e-01, -1.05736320e-03,  6.06697628e-04, -2.02874644e-02],
+        [ 1.05417675e-03,  9.99985434e-01,  5.23968244e-03, -3.58058714e-02],
+        [-6.12228836e-04, -5.23904553e-03,  9.99986177e-01, 1.72968221e-02],
+        [ 0.00000000e+00,  0.00000000e+00,  0.00000000e+00, 1.00000000e+00]])
+    # Tycb_mgg = np.array([
+    #     [0.999999, 0.00105417, -0.000612229, -0.0203146],
+    #     [-0.00105737, 0.999986, -0.00523904, -0.0356933],
+    #     [0.000606697, 0.00523969, 0.999986, 0.0174965],
+    #     [0, 0, 0, 1]])
 
     # Tpalm_ur = tf_matrix_from_pose(
     #     translation=[0., 0., 0.],
     #     orientation=tf.euler.euler2quat(np.pi/2., 0., 0., axes='sxyz')
     # )  # franka canonical frame -> UR5e tool0 frame
     Tpalm_ur = tf_matrix_from_pose(
-        translation=[0., 0., -0.125],
+        translation=[0., 0., -0.12],
         orientation=tf.euler.euler2quat(0., 0., 0., axes='sxyz')
     )  # franka canonical frame -> UR5e tool0 frame
 
@@ -186,10 +181,6 @@ rmpflow_controller = RMPFlowController(
     urdf_path=str(HELLO_ISAAC_ROOT / "aist_sb_ur5e/static/urdf/ur5e.urdf"),
 )
 
-ik_solver = KinematicsSolver(
-    robot_articulation=ur5e,
-)
-
 
 # target_controller = SpaceMouseController(device_type="SpaceMouse Compact", rotate_gain=0.3)
 target_controller = KeyboardController()
@@ -200,6 +191,10 @@ scene_idx = 13
 
 poses_and_dofs = load_grasp_data()
 
+n = 20
+counter = n
+grasp_pose_number = -1
+feasible_grasps = []
 
 def set_joint_positions(arm_joint_positions, gripper_joint_position):
     joint_positions = np.zeros(12)
@@ -215,101 +210,104 @@ def convert_to_joint_angle(finger_distance):
     return 1. - np.arcsin(finger_distance / 0.1664)    
 
 
-phase = 0
-grasp_pose_number = 0
+ik_solver = KinematicsSolver(robot_articulation=ur5e)
+ik_solver._kinematics.set_robot_base_pose(*ur5e.get_world_pose())
+
 
 while simulation_app.is_running():
+    if counter >= n:
+        counter = 0
+        js = ur5e.get_joints_default_state()
+        ur5e.set_joint_positions(js.positions)
+
     my_world.step(render=True)
     if my_world.is_playing():
 
-        if phase == 0:  # load the scene and grasp pose
-            js = ur5e.get_joints_default_state()
-            ur5e.set_joint_positions(js.positions)
+        if counter == 0:
 
-            task.load_bin_state(scene_idx)
-            # task.load_extra_large_clamp()  # load only "extra_large_clamp" in scene 13
+            while True:
+                grasp_pose_number += 1            
+                # task.load_bin_state(scene_idx)
+                task.load_extra_large_clamp()
 
-            # target_position, target_orientation = target.get_world_pose()
-            # next_position, next_orientation = target_controller.forward(
-            #     position=target_position,
-            #     orientation=target_orientation,
-            # )
+                # target_position, target_orientation = target.get_world_pose()
+                # next_position, next_orientation = target_controller.forward(
+                #     position=target_position,
+                #     orientation=target_orientation,
+                # )
 
-            pose = poses_and_dofs[0][grasp_pose_number]
-            g_pos, g_ori = gripper_pose_in_world(task, pose)
+                pose = poses_and_dofs[0][grasp_pose_number]
+                g_pos, g_ori = gripper_pose_in_world(task, pose)
+                target.set_world_pose(position=g_pos, orientation=g_ori)
+                if np.dot(tf.quaternions.quat2mat(g_ori)[:, 2], [0, 0, -1]) < 0.707:
+                    continue
 
-            # target.set_world_pose(position=g_pos, orientation=g_ori)
+                position_tolerance = 0.002
+                orientation_tolerance = 0.02
+                ik_action, success = ik_solver.compute_inverse_kinematics(
+                    g_pos, g_ori, position_tolerance, orientation_tolerance
+                )
 
-            base_pos, base_ori = ur5e.get_world_pose()
-            ik_solver._kinematics.set_robot_base_pose(base_pos, base_ori)
-            position_tolerance = 0.003
-            orientation_tolerance = 0.02
-            ik_action, success = ik_solver.compute_inverse_kinematics(
-                g_pos, g_ori, position_tolerance, orientation_tolerance
-            )
+                if not success:
+                    continue
 
-            grasp_pose_number += 1
+                # print(f'ik success: {ik_action.joint_positions}')
 
-            if not success:
-                print("ik failure: this shouldn't happen")
+                dof = poses_and_dofs[1][grasp_pose_number]
+                margin = 0.05
+                distance = min(dof[0] + dof[1] + margin, 0.14)
+                target_gripper_joint_position = convert_to_joint_angle(distance)
+
+                # isaacsim.core.utils.types.ArticulationAction
+                target_joint_positions = set_joint_positions(ik_action.joint_positions , target_gripper_joint_position) 
+
+                next_position = g_pos
+                next_orientation = g_ori
+                break
+
+        elif counter == 1:
+            in_contact = False
+            for cs in ur5e.sensors:
+                current_frame = cs.get_current_frame()
+                # print(f'CF: {cs.name}, {current_frame}')
+                if current_frame['in_contact']:
+                    # print(current_frame['contacts'])
+                    in_contact = True
+
+            if in_contact:
+                # print(f'in contact')
+                counter = n
                 continue
+            else:
+                if not np.allclose(target_joint_positions[:6], ur5e.get_joint_positions()[:6], atol=1e-2):
+                    print(f'ARM joint poisitions are different from the goal {ur5e.get_joint_positions()[:6]}')
+                    counter = n
+                    continue
+                if not np.allclose(target_joint_positions[6:], ur5e.get_joint_positions()[6:], atol=8e-2):
+                    print(f'GRIPPER joint poisitions are different from the goal {ur5e.get_joint_positions()[6:]}')
+                    counter = n
+                    continue
 
-            dof = poses_and_dofs[1][grasp_pose_number]
-            margin = 0.05
-            distance = min(dof[0] + dof[1] + margin, 0.14)
-            target_gripper_joint_position = convert_to_joint_angle(distance)
+                feasible_grasps.append(grasp_pose_number)
+                print(f'feasible grasp found: {feasible_grasps}')
 
-            target_joint_positions = set_joint_positions(ik_action.joint_positions , target_gripper_joint_position) 
-            counter = 100
-            phase = 1
-            print('move on to phase 1')
+        counter += 1
 
-        elif phase == 1:  # do grasp
+        # target.set_world_pose(
+        #     position=next_position,
+        #     orientation=next_orientation,
+        # )
 
-            # target.set_world_pose(
-            #     position=next_position,
-            #     orientation=next_orientation,
-            # )
+        # action: ArticulationAction = rmpflow_controller.forward(
+        #     target_end_effector_position=next_position,
+        #     target_end_effector_orientation=next_orientation,
+        # )
+        # ur5e.get_articulation_controller().apply_action(control_actions=action)
 
-            # gripper_command = 'close'
-            # gripper_action: ArticulationAction = gripper.forward(gripper_command)
-            # gripper.apply_action(ArticulationAction(joint_positions=itemgetter(7, 9)(gripper_action.joint_positions)))
-
-            distance = min(dof[0] + dof[1] + counter * 0.0005, 0.14)
-            target_gripper_joint_position = convert_to_joint_angle(distance)
-            target_joint_positions = set_joint_positions(ik_action.joint_positions , target_gripper_joint_position) 
-
-            counter -= 1
-            if counter == 50:  # do lift
-                counter = 100
-                phase = 2
-                print('move on to phase 2')
-
-        elif phase == 2:
-            
-            target_position, target_orientation = ur5e._kinematics.compute_forward_kinematics('tool0', ur5e.get_joint_positions()[:6])
-            target_position[2] += 0.001
-            target_orientation = tf.quaternions.mat2quat(target_orientation)
-            next_position, next_orientation = target_controller.forward(
-                position=target_position,
-                orientation=target_orientation,
-            )
-            action: ArticulationAction = rmpflow_controller.forward(
-                target_end_effector_position=next_position,
-                target_end_effector_orientation=next_orientation,
-            )
-            ur5e.get_articulation_controller().apply_action(control_actions=action)
-            
-            counter -= 1
-            if counter == 0:
-                phase = 0
-                print('go back to phase 0')
-            
-        elif phase == 3:
-            counter -= 1
-            if counter == 0:
-                phase = 0
-                print('go back to phase 0')
+        # optional_action: str | None = target_controller.get_gripper_action()
+        # if optional_action is not None:
+        #     gripper_action: ArticulationAction = gripper.forward(optional_action)
+        #     gripper.apply_action(ArticulationAction(joint_positions=itemgetter(7, 9)(gripper_action.joint_positions)))
 
         # img = task._cameras[0].get_rgb()
         # if len(img.shape) == 3:
