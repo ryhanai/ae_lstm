@@ -116,7 +116,7 @@ class TabletopPickingTask(BaseTask):
             )
         )
         self._rmpflow_target.set_default_state(
-            position=np.array([0.13, 0.49, 1.52]),
+            position=np.array([-0.20, 0.075, 1.22]),
             orientation=euler_angles_to_quats(euler_angles=[0, np.pi, 0]),
         )
 
@@ -190,7 +190,7 @@ class TabletopPickingTask(BaseTask):
     def load_extra_large_clamp(self):
         self._active_products = []
         bs = pd.read_pickle(f"/home/ryo/Dataset/forcemap/tabletop240304/bin_state00013.pkl")
-        name = '052_extra_large_clamp'
+        name = "052_extra_large_clamp"
         p, o = [x for (n, x) in bs if n == name][0]
         for product in self._env.products:
             if product.name == name:
