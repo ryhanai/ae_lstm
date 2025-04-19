@@ -38,6 +38,7 @@ class TabletopRandomSceneDataset(Dataset):
         method="geometry-aware",
         sigma_f=0.03,
         sigma_g=0.01,
+        load_sdf=False,
     ):
         self.data_type = data_type
         self.minmax = minmax
@@ -66,7 +67,8 @@ class TabletopRandomSceneDataset(Dataset):
         self._method = method
         self._sigma_f = sigma_f
         self._sigma_g = sigma_g
-        
+        self._load_sdf = load_sdf
+
     # def get_data(self, device=None):
     #     return self.images.to(device), self.forces.to(device)
 
@@ -126,45 +128,56 @@ class TabletopRandomSceneDataset(Dataset):
 
         imgs = []
         fmaps = []
+        sdfs = []
         for i in idx:
             imgs.append(self.load_image(i, view_idx))
             fmaps.append(self.load_fmap(i))
+            if self._load_sdf:
+                sdfs.append(self.load_sdf(i))
         fmaps = np.array(fmaps)
         y_force = torch.from_numpy(fmaps).float()
         imgs = np.array(imgs)
         x_img = torch.from_numpy(imgs).float()
-        return x_img, y_force
+        if self._load_sdf:
+            sdfs = np.array(sdfs)
+            y_sdf = torch.from_numpy(sdfs).float()
+            return x_img, y_force, y_sdf
+        else:
+            return x_img, y_force
 
-    def _force_distribution_file(self, scene_idx):
-        if self._method == 'geometry-aware':
+    def _force_distribution_file(self, scene_idx, smoothing_method):
+        if smoothing_method == 'geometry-aware':
             return f'force{scene_idx:05d}_GAFS_f{self._sigma_f:.3f}_g{self._sigma_g:.3f}.npy'
-        elif self._method == 'isotropic':
+        elif smoothing_medhod == 'isotropic':
             return f'force{scene_idx:05d}_IFS_f{self._sigma_f:.3f}.npy'
-        elif self._method == 'sdf':
-            return f'force{scene_idx:05d}_SDF.npy'
+        else:
+            raise Exception(f'unknown smoothing method: {self._method}')
+
+    def _sdf_file(self, scene_idx):
+        return f'force{scene_idx:05d}_SDF.npy'
 
     def load_fmap(self, idx, normalize=True):
         dataset_name, scene_idx = self._ids[idx]
         # this only works in numpy 2.x
         # fmap = pd.read_pickle(self.root_dir / dataset_name / self._force_distribution_file(scene_idx))
-        fmap = np.load(self.root_dir / dataset_name / self._force_distribution_file(scene_idx))
+        fmap = np.load(self.root_dir / dataset_name / self._force_distribution_file(scene_idx, self._method))
         fmap = fmap[:, :, :30].astype("float32")
 
-        if self._method == 'isotropic' or self._method == 'geometry-aware':
-            if normalize:
-                fmap = np.clip(fmap, self._force_bounds[0], self._force_bounds[1])
-                fmap = np.log(fmap)  # force_raw (in log scale)
-                fmap = self._normalization(fmap, np.log(self._force_bounds))
-            fmap = fmap.transpose(2, 0, 1)            
-        elif self._method == 'sdf':
-            # dist_bounds = [-0.001, 0.02]
-            # fmap = np.clip(-fmap, dist_bounds[0], dist_bounds[1])
-            # fmap = self._normalization(fmap, dist_bounds)
-            fmap = fmap.transpose(2, 0, 1)
-        else:
-            raise Exception(f'unknown smoothing method: {self._method}')
-        return fmap
+        if normalize:
+            fmap = np.clip(fmap, self._force_bounds[0], self._force_bounds[1])
+            fmap = np.log(fmap)  # force_raw (in log scale)
+            fmap = self._normalization(fmap, np.log(self._force_bounds))
+        return fmap.transpose(2, 0, 1)            
 
+    def load_sdf(self, idx):
+        dataset_name, scene_idx = self._ids[idx]
+        sdf = np.load(self.root_dir / dataset_name / self._sdf_file(scene_idx))
+        sdf = sdf[:, :, :30].astype("float32")
+        # dist_bounds = [-0.001, 0.02]
+        # sdf = np.clip(-fmap, dist_bounds[0], dist_bounds[1])
+        # sdf = self._normalization(sdf, dist_bounds)
+        return sdf.transpose(2, 0, 1)
+    
     def load_image(self, idx, view_idx):
         dataset_name, scene_idx = self._ids[idx]
         rgb = cv2.cvtColor(cv2.imread(str(self.root_dir / dataset_name / f"rgb{scene_idx:05}_{view_idx:05}.jpg")), cv2.COLOR_BGR2RGB)

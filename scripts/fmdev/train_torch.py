@@ -69,6 +69,17 @@ class EarlyStopping:
         return self.save_ckpt, self.stop_flag
 
 
+class PCLoss(nn.Module):
+    def __init__(self, delta=0.01):
+        super().__init__()
+        self._delta = delta
+
+    def forward(self, y_hat, y, sdf):
+        weight = 1. / (torch.abs(sdf) / self._delta + 1.) ** 2
+        loss = (weight * ((y_hat - y) ** 2)).mean()
+        return loss
+
+
 class Trainer:
     """
     Helper class to train convolutional neural network with datalodaer
@@ -80,11 +91,12 @@ class Trainer:
         device (str):
     """
 
-    def __init__(self, model, optimizer, log_dir_path, device="cpu"):
+    def __init__(self, model, optimizer, log_dir_path, loss="mse", device="cpu"):
         self.device = device
         self.optimizer = optimizer
         self.model = model.to(self.device)
         self._log_dir_path = log_dir_path
+        self._loss = loss
 
     def gen_chkpt_path(self, tag):
         return str(Path(self._log_dir_path) / f"{tag}.pth")
@@ -107,13 +119,25 @@ class Trainer:
             self.model.eval()
 
         total_loss = 0.0
-        for n_batch, (xi, yi) in enumerate(data):
-            xi = xi.to(self.device)
-            yi = yi.to(self.device)
 
-            yi_hat = self.model(xi)
-            loss = nn.MSELoss()(yi_hat, yi)
-            total_loss += loss.item()
+        assert self._loss == "mse" or self._loss == "pcl", f"Unknown loss function: {self._loss}"
+
+        for n_batch, bi in enumerate(data):
+            if self._loss == "mse":
+                xi, yi = bi
+                xi = xi.to(self.device)
+                yi = yi.to(self.device)
+                yi_hat = self.model(xi)
+                loss = nn.MSELoss()(yi_hat, yi)
+                total_loss += loss.item()
+            elif self._loss == "pcl":
+                xi, yi, sdf = bi
+                xi = xi.to(self.device)
+                yi = yi.to(self.device)
+                sdf = sdf.to(self.device)
+                yi_hat = self.model(xi)
+                loss = PCLoss()(yi_hat, yi, sdf)
+                total_loss += loss.item()
 
             if training:
                 self.optimizer.zero_grad(set_to_none=True)
@@ -121,7 +145,6 @@ class Trainer:
                 self.optimizer.step()
 
         return total_loss / n_batch
-
 
 class MVELoss(nn.Module):
     def __init__(self):
@@ -191,6 +214,7 @@ parser.add_argument("--epoch", type=int, default=1000)
 parser.add_argument("--batch_size", type=int, default=16)
 parser.add_argument("--seed", type=int, default=42)
 parser.add_argument("--lr", type=float, default=1e-3)
+parser.add_argument("--loss", type=str, default="mse")
 parser.add_argument("--optimizer", type=str, default="adamax")
 parser.add_argument("--log_dir", default="log/")
 parser.add_argument("--vmin", type=float, default=0.1)
@@ -230,6 +254,7 @@ train_data = getattr(dataset_module, data_loader)("train",
                                                   method=args.method,
                                                   sigma_f=args.sigma_f,
                                                   sigma_g=args.sigma_g,
+                                                  load_sdf=args.loss == "pcl",
                                                   )
 
 print_info(f"loading validation data [{data_loader}]")
@@ -239,6 +264,7 @@ valid_data = getattr(dataset_module, data_loader)("validation",
                                                   method=args.method,
                                                   sigma_f=args.sigma_f,
                                                   sigma_g=args.sigma_g,
+                                                  load_sdf=args.loss == "pcl",
                                                   )
 
 train_sampler = BatchSampler(RandomSampler(train_data), batch_size=args.batch_size, drop_last=False)
@@ -249,13 +275,13 @@ valid_loader = DataLoader(valid_data, batch_size=None, num_workers=8, pin_memory
 
 set_seed_everywhere(args.seed)
 
-mod_name = re.sub('\.[^\.]+$', '', args.model)
+mod_name = re.sub('\\.[^.]+$', '', args.model)
 model_module = importlib.import_module(mod_name)
-model_class_name = re.sub('^.*\.', '', args.model)
+model_class_name = re.sub('[^.]*\\.', '', args.model)
 model = getattr(model_module, model_class_name)(fine_tune_encoder=True, device=args.device)
 
-print_info('Check the effect of seed:')
-print(model.decoder.state_dict()['0.conv1.weight'][0][0])
+# print_info('Check the effect of seed:')
+# print(model.decoder.state_dict()['0.conv1.weight'][0][0])
 
 if args.pretrained_weights != "":
     print_error('loading pretrained weight is not supported yet')
@@ -281,7 +307,7 @@ else:
 
 
 log_dir_path = set_logdir("./" + args.log_dir, args.tag)
-trainer = Trainer(model, optimizer, log_dir_path=log_dir_path, device=device)
+trainer = Trainer(model, optimizer, log_dir_path=log_dir_path, loss=args.loss, device=device)
 # summary(trainer.model, input_size=(1, 3, 360, 512))
 early_stop = EarlyStopping(patience=100000)
 
@@ -311,12 +337,18 @@ early_stop = EarlyStopping(patience=100000)
 def do_train():
     config = args.__dict__
     config['dataset_class'] = type(valid_data)
+
+    if model_class_name == 'ForceEstimationV5':
+        model_tag = 'transformer'
+    elif model_class_name == 'ForceEstimationResNetSeriaBasket':
+        model_tag = 'resnet'
+    
     if config['method'] == 'isotropic':
-        group = f"IFS_f{config['sigma_f']:.3f}"
-        name = f"IFS_f{config['sigma_f']:.3f}_{config['tag']}"                
+        group = f"IFS_f{config['sigma_f']:.3f}_{model_tag}"
+        name = f"IFS_f{config['sigma_f']:.3f}_{config['tag']}_{model_tag}"
     if config['method'] == 'geometry-aware':
-        group = f"GAFS_f{config['sigma_f']:.3f}_g{config['sigma_g']:.3f}"
-        name = f"GAFS_f{config['sigma_f']:.3f}_g{config['sigma_g']:.3f}_{config['tag']}"        
+        group = f"GAFS_f{config['sigma_f']:.3f}_g{config['sigma_g']:.3f}_{model_tag}"
+        name = f"GAFS_f{config['sigma_f']:.3f}_g{config['sigma_g']:.3f}_{config['tag']}_{model_tag}"
     wandb.init(project="forcemap", group=group, name=name, config=config)
 
     with tqdm(range(args.epoch)) as pbar_epoch:
