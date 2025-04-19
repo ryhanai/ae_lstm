@@ -191,7 +191,7 @@ scene_idx = 13
 
 poses_and_dofs = load_grasp_data()
 
-n = 20
+n = 30
 counter = n
 grasp_pose_number = -1
 feasible_grasps = []
@@ -290,6 +290,8 @@ while simulation_app.is_running():
 
                 feasible_grasps.append(grasp_pose_number)
                 print(f'feasible grasp found: {feasible_grasps}')
+
+
 
         counter += 1
 
