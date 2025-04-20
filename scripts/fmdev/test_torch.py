@@ -318,8 +318,8 @@ class TesterWithLiftingPlanning(Tester):
 
 
 if __name__ == '__main__':
-    #tester = TesterWithLiftingPlanning(args.dataset_path,
-    tester = Tester(args.dataset_path,    
+    tester = TesterWithLiftingPlanning(args.dataset_path,
+    # tester = Tester(args.dataset_path,    
                                     args.task_name,
                                     args.weight_files.split(),
                                     data_split=args.data_split)
