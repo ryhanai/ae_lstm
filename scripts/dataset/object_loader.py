@@ -44,9 +44,20 @@ class ObjectInfo:
     def usd_file(self, name):
         return self._info[name]["usd_file"]
 
-    def obj_file(self, name):
+    def obj_file(self, name, with_scale=True):
         """
-        return obj file name and scale
+            Get the filename of the object.
+
+        Args:
+            name (str): The name of the object.
+            with_scale (bool): If True,
+                return a tuple of filename and scale.
+                If False, return the filename only.
+                The scale is used to scale the object to real size.
+                Defaults to True.
+        Returns:
+            str: The filename of the object.
+            float: The scale of the object.
         """
         p = Path(self.usd_file(name))
         if self.dataset(name) == "ycb":
@@ -54,7 +65,11 @@ class ObjectInfo:
         if self.dataset(name) == "conveni":
             obj_file = p.parent.parent / "textured.obj"
         scale = 1.0
-        return str(obj_file), scale
+
+        if with_scale:
+            return str(obj_file), scale
+        else:
+            return str(obj_file)
 
     def rviz_mesh_file(self, name):
         if self.dataset(name) == "ycb":
