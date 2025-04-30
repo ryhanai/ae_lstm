@@ -19,7 +19,8 @@ from omni.isaac.manipulators.grippers import ParallelGripper
 from sensor_msgs.msg import Image
 
 from sim.task.tabletop_picking_task import TabletopPickingTask
-from sim.controller.kinematics_solver import KinematicsSolver
+from sim.controller.kinematics_solver import KinematicsSolver  # for UR5e
+from isaacsim.robot.manipulators.examples.franka import KinematicsSolver
 from visualization_msgs.msg import Marker, MarkerArray
 from aist_sb_ur5e.model.factory import create_contact_sensor
 
@@ -181,7 +182,7 @@ HELLO_ISAAC_ROOT = Path("~/Program/hello-isaac-sim").expanduser()
 
 my_world: World = World(stage_units_in_meters=1.0)
 
-task = TabletopPickingTask(static_path=HELLO_ISAAC_ROOT / "aist_sb_ur5e/static")
+task = TabletopPickingTask(static_path=HELLO_ISAAC_ROOT / "aist_sb_ur5e/static", robot="franka")
 my_world.add_task(task=task)
 my_world.reset()
 

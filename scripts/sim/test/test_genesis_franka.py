@@ -1,11 +1,15 @@
 import numpy as np
 import pandas as pd
+import argparse
 import genesis as gs
 
 from dataset.object_loader import ObjectInfo
 
-# visopt = gs.options.vis.VisOptions()
-# visopt.contact_force_scale = 0.1
+
+parser = argparse.ArgumentParser(description="")
+parser.add_argument('--visualize_contact', action='store_true')
+args = parser.parse_args()
+
 
 ########################## 初期化 ##########################
 gs.init(backend=gs.gpu)
@@ -43,7 +47,7 @@ plane = scene.add_entity(
 table_surface = scene.add_entity(
     morph=gs.morphs.Box(
         size = (1.0, 1.0, 0.04),
-        pos  = (0.0, 0.0, 0.69),
+        pos  = (0.0, 0.0, 0.71),
         fixed = True,
     ),
     surface=gs.surfaces.Rough(
@@ -58,7 +62,7 @@ franka = scene.add_entity(
         file  = 'xml/franka_emika_panda/panda.xml',
         pos = (-0.6, 0.0, 0.7),
     ),
-    visualize_contact=True,
+    visualize_contact=False,
 )
 
 ## Add cameras
@@ -67,7 +71,27 @@ franka = scene.add_entity(
 ## Load scene data and add procucts
 oi = ObjectInfo()
 
-def load_bin_state(scene_idx):
+
+def get_entity_name(entity):
+    try:
+        tokens = entity.morph.file.split('/')
+        if tokens[-3] == 'conveni':
+            return tokens[-2]
+        elif tokens[-4] == 'ycb':
+            return tokens[-3]
+    except:
+        pass
+    return None
+
+def get_entity_by_name(name):
+    for entity in scene.entities:
+        entity_name = get_entity_name(entity)
+        if entity_name == name:
+            return entity
+    return None
+
+
+def load_products(scene_idx):
     active_products = []
     bs = pd.read_pickle(f"/home/ryo/Dataset/forcemap/tabletop240304/bin_state{scene_idx:05d}.pkl")
     for name, (pos, ori) in bs:  # quaternion is scholar first: (w, x, y, z)
@@ -78,14 +102,12 @@ def load_bin_state(scene_idx):
                 pos=pos,
                 quat=ori,
             ),
-            visualize_contact=True,
+            visualize_contact=args.visualize_contact,
         )        
 
-load_bin_state(13)
 
-
-def get_entity_name(entity):
-    return entity.morph.file.split('/')[-2]
+scene_idx = 14  # 13: default
+load_products(scene_idx)
 
 
 ## Get Contact Force
@@ -112,20 +134,47 @@ import transforms3d as tf
 import trimesh
 from mimo.data_gen.panda_sample import PandaGripper, sample_multiple_grasps
 
-def sample_grasps(object_name, n_grasps=20):
+def sample_grasps_from_mesh(object_name, n_grasps=20):
     gripper = PandaGripper()
     obj_mesh = trimesh.load(oi.obj_file(object_name, with_scale=False), force='mesh')
     trans, quality = sample_multiple_grasps(n_grasps, obj_mesh, gripper, systematic_sampling=False)
     quality = np.array(quality["quality_antipodal"])
     trans = trans[quality > 0.05]        
     grasp = trans.tolist()
-    # print(grasp)
     print(f"Number of high quality grasps: {len(grasp)}")
     return grasp
 
 
-lifting_target = '052_extra_large_clamp'
-grasps = sample_grasps(lifting_target, n_grasps=50)
+lifting_targets = ['052_extra_large_clamp', 'jif']
+
+
+def gripper_pose_in_world(target_name: str, grasp):
+    def pos_euler2mat(pos, euler):
+        return tf.affines.compose(pos, tf.euler.euler2mat(euler[0], euler[1], euler[2], axes='sxyz'), np.ones(3))
+    def pos_quat2mat(pos, quat):
+        return tf.affines.compose(pos, tf.quaternions.quat2mat(quat), np.ones(3))
+
+    e = get_entity_by_name(target_name)
+    Tworld_obj = pos_quat2mat(e.get_pos().cpu(), e.get_quat().cpu())
+    Tmimo_genesis = pos_euler2mat([0, 0, 0], [0, 0, np.pi/2])
+    return Tworld_obj @ grasp @ Tmimo_genesis
+
+def solve_ik(target_pos, target_quat):
+    ee_link = franka.get_link("hand")    
+    q, err = franka.inverse_kinematics(
+        link=ee_link,
+        pos=target_pos,
+        quat=target_quat,
+        return_error=True,
+        rot_mask=[True, True, True],
+    )
+    return q, err
+
+def solve_ik_affine(T):
+    target_pos, M, S, Z = tf.affines.decompose(T)
+    target_quat = tf.quaternions.mat2quat(M)
+    return solve_ik(target_pos, target_quat)
+
 
 
 ########################## ビルド ##########################
@@ -143,6 +192,8 @@ jnt_names = [
     'finger_joint2',
 ]
 dofs_idx = [franka.get_joint(name).dof_idx_local for name in jnt_names]
+arm_idx = dofs_idx[:7]
+finger_idx = dofs_idx[7:]
 
 ############ オプション：制御ゲインの設定 ############
 # 位置ゲインの設定
@@ -164,43 +215,144 @@ franka.set_dofs_force_range(
 
 
 # Initial pose
-franka.set_dofs_position([0, -0.5, 0, -2, 0, np.pi/2, 1, 0, 0,], dofs_idx)
-scene.step()
+def set_initial_pose():
+    franka.set_dofs_position([0, -0.5, 0, -2, 0, np.pi/2, 1, 0.03, 0.03], dofs_idx)
 
+
+def load_bin_state(scene_idx, n_steps=50):
+    bs = pd.read_pickle(f"/home/ryo/Dataset/forcemap/tabletop240304/bin_state{scene_idx:05d}.pkl")
+    for name, (pos, ori) in bs:  # quaternion is scholar first: (w, x, y, z)
+        ori[0], ori[1], ori[2], ori[3] = ori[3], ori[0], ori[1], ori[2]
+        e = get_entity_by_name(name)
+        e.set_pos(pos)
+        e.set_quat(ori)
+
+    for i in range(n_steps):
+        set_initial_pose()
+        scene.step()
+
+
+import time
+import torch
+
+def do_grasp(grasp_force=10.0, n_steps=100):
+    q = franka.get_dofs_position(arm_idx)
+    franka.control_dofs_position(q, arm_idx)
+    for i in range(n_steps):
+        franka.control_dofs_force([-grasp_force, -grasp_force], finger_idx)
+        scene.step()
+
+def do_lifting(lifting_direction=[0, 0, 1], n_steps=100):
+    hand = franka.get_link('hand')
+    pos = hand.get_pos() + torch.tensor(lifting_direction, device='cuda') * 0.1
+    quat = hand.get_quat()
+    q, err = solve_ik(pos, quat)
+    franka.control_dofs_position(q[:7], arm_idx)
+    for i in range(n_steps):
+        scene.step()
+
+
+def do_picking(grasp_q, lifting_direction=[0, 0, 1], grasp_force=5.0, reset_env=True):
+    if reset_env:
+        scene.reset()
+        load_bin_state(scene_idx)
+    
+    franka.set_dofs_position(grasp_q, dofs_idx)  # set arm pose for grasping
+    scene.step()
+
+    do_grasp(grasp_force)  # close the fingers until the contact force reacees the threshold
+    do_lifting(lifting_direction)  # lift the object
+
+
+def sample_grasps(lifting_target='052_extra_large_clamp',
+                n_grasps_to_find=5,
+                n_max_sampling=1000,
+                threshold=0.707):
+    def grasp_filter(T):
+        P, R, S, Z = tf.affines.decompose(T)
+        return np.dot(R[:, 2], [0, 0, -1]) > threshold
+
+    feasible_grasps = []
+    grasps = sample_grasps_from_mesh(lifting_target, n_grasps=n_max_sampling)
+    grasps = filter(grasp_filter, grasps)
+
+    for grasp in grasps:
+        scene.reset()
+        load_bin_state(scene_idx)
+
+        T = gripper_pose_in_world(lifting_target, grasp=grasp)    
+        print(T)
+        scene.clear_debug_objects()
+        scene.draw_debug_frame(T=T, axis_length=0.2, origin_size=0.02, axis_radius=0.005)
+
+        q, err = solve_ik_affine(T)
+        if not np.allclose(err.cpu(), 0, atol=1e-3):
+            print(f"IK solution failed: {err}")
+            continue
+
+        contact_found = False
+        for i in range(10):
+            franka.set_dofs_position(q, dofs_idx)
+            franka.set_dofs_position([0.03, 0.03], [7, 8])  # open fingers　
+            scene.step()
+            # scene.visualizer.update()
+
+            # collision check
+            contacts = franka.get_contacts()
+            target_entity = get_entity_by_name(lifting_target)
+            target_link_id = target_entity.links[0].idx
+            link_a = contacts['link_a']
+            link_b = contacts['link_b']
+            for a, b in zip(link_a, link_b):
+                ab = sorted([a, b])
+                c = (ab != [11, target_link_id]) and (ab != [12, target_link_id])
+                if c:
+                    print(f"Contact found: {a}, {b}")
+                    contact_found = True
+
+        if contact_found:
+            continue
+
+        print(f"Feasible grasp found")
+        # time.sleep(2.0)
+
+        feasible_grasps.append((T, q))
+        if len(feasible_grasps) >= n_grasps_to_find:
+            break
+
+    return feasible_grasps
 
 
 # 'hand'リンクはx周りに180度回転させただけに見える．
 # z方向はMIMOと同じ．
 # 指のスライド方向が，Genesisはy軸，MIMOはx軸なので，
 # 追加でz軸周りにpi/2回せば一致するはず
-# tf.euler.quat2euler(q.to('cpu'))
-# Out[68]: (-3.126955534659113, -0.06757781592988017, -0.2150900160806781)
 
 
 ## Set grasp pose
-target_quat = np.array([0, 1, 0, 0])  # pointing downwards, Genesis　modelではyが上
-    center = np.array([0.4, -0.2, 0.25])
-    r = 0.1
+# target_quat = np.array([0, 1, 0, 0])  # pointing downwards, Genesis　modelではyが上
+#     center = np.array([0.4, -0.2, 0.25])
+#     r = 0.1
 
-    ee_link = robot.get_link("hand")
+#     ee_link = robot.get_link("hand")
 
-    for i in range(0, 2000):
-        target_pos = center + np.array([np.cos(i / 360 * np.pi), np.sin(i / 360 * np.pi), 0]) * r
+#     for i in range(0, 2000):
+#         target_pos = center + np.array([np.cos(i / 360 * np.pi), np.sin(i / 360 * np.pi), 0]) * r
 
-        target_entity.set_qpos(np.concatenate([target_pos, target_quat]))
-        q, err = robot.inverse_kinematics(
-            link=ee_link,
-            pos=target_pos,
-            quat=target_quat,
-            return_error=True,
-            rot_mask=[False, False, True],  # for demo purpose: only care about direction of z-axis
-        )
-        print("error:", err)
+#         target_entity.set_qpos(np.concatenate([target_pos, target_quat]))
+#         q, err = robot.inverse_kinematics(
+#             link=ee_link,
+#             pos=target_pos,
+#             quat=target_quat,
+#             return_error=True,
+#             rot_mask=[False, False, True],  # for demo purpose: only care about direction of z-axis
+#         )
+#         print("error:", err)
 
-        # Note that this IK example is only for visualizing the solved q, so here we do not call scene.step(), but only update the state and the visualizer
-        # In actual control applications, you should instead use robot.control_dofs_position() and scene.step()
-        robot.set_qpos(q)
-        scene.visualizer.update()
+#         # Note that this IK example is only for visualizing the solved q, so here we do not call scene.step(), but only update the state and the visualizer
+#         # In actual control applications, you should instead use robot.control_dofs_position() and scene.step()
+#         robot.set_qpos(q)
+#         scene.visualizer.update()
 
 
 # ハードリセット

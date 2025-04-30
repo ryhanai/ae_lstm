@@ -14,6 +14,12 @@ from omni.kit.viewport.window.window import ViewportWindow
 from pxr.Usd import Prim
 from sim.model.tabletop_env import TabletopEnv
 
+import carb
+from isaacsim.robot.manipulators.examples.franka import Franka
+from isaacsim.core.utils.prims import is_prim_path_valid
+from isaacsim.core.utils.string import find_unique_string_name
+from isaacsim.storage.native import get_assets_root_path
+
 
 class TabletopPickingTask(BaseTask):
     """
@@ -23,7 +29,7 @@ class TabletopPickingTask(BaseTask):
         BaseTask ([type]): [description]
     """
 
-    def __init__(self, static_path: str = "aist_sb_ur5e/static") -> None:
+    def __init__(self, static_path: str = "aist_sb_ur5e/static", robot: str = "ur5e") -> None:
         """
         Initialize TabletopPickingTask
 
@@ -35,9 +41,25 @@ class TabletopPickingTask(BaseTask):
         super().__init__(
             name="tabletop_picking_task",
         )
-        self._ur5e = UR5e(
-            usd_path=f"{static_path}/usd/ur5e_with_gripper_and_cuboid_stand.usd",
-        )
+
+        if robot == "ur5e":
+            self._ur5e = UR5e(
+                usd_path=f"{static_path}/usd/ur5e_with_gripper_and_cuboid_stand.usd",
+            )
+        elif robot == "franka":
+            franka_prim_path = find_unique_string_name(
+                initial_name="/World/Franka", is_unique_fn=lambda x: not is_prim_path_valid(x)
+            )
+            franka_robot_name = "my_franka"
+            assets_root_path = get_assets_root_path()
+            if assets_root_path is None:
+                carb.log_error("Could not find Isaac Sim assets folder")
+            self._ur5e = Franka(
+                prim_path=franka_prim_path,
+                name=franka_robot_name,
+                usd_path=assets_root_path + "/Isaac/Robots/Franka/franka.usd"
+            )
+
         self._rmpflow_target: XFormPrim = RMPFlowTarget()
         self._env = TabletopEnv()
         self._cameras: list[Camera] = [
@@ -85,8 +107,8 @@ class TabletopPickingTask(BaseTask):
         scene.add(obj=self._ur5e)
         for camera in self._cameras:
             scene.add(obj=camera)
-        for sensor in self._ur5e.sensors:
-            scene.add(obj=sensor)
+        # for sensor in self._ur5e.sensors:
+        #     scene.add(obj=sensor)
         scene.add(obj=self._rmpflow_target)
         for product in self._env.products:
             scene.add(obj=product)
@@ -98,8 +120,8 @@ class TabletopPickingTask(BaseTask):
         """
         ロボットを初期状態にリセットする
         """
-        self._ur5e.set_joints_default_state(
-            positions=np.concatenate(
+        if isinstance(self._ur5e, UR5e):
+            joint_positions = np.concatenate(
                 [
                     np.array(
                         [
@@ -114,7 +136,10 @@ class TabletopPickingTask(BaseTask):
                     np.zeros(6),
                 ]
             )
-        )
+        elif isinstance(self._ur5e, Franka):
+            joint_positions = np.zeros(9)
+
+        self._ur5e.set_joints_default_state(positions=joint_positions)
         self._rmpflow_target.set_default_state(
             position=np.array([-0.20, 0.075, 1.22]),
             orientation=euler_angles_to_quats(euler_angles=[0, np.pi, 0]),
@@ -137,10 +162,10 @@ class TabletopPickingTask(BaseTask):
                 ],
                 "modifiable": False,
             },
-            "contact_sensor_names": {
-                "value": [sensor.name for sensor in self._ur5e.sensors],
-                "modifiable": False,
-            },
+            # "contact_sensor_names": {
+            #     "value": [sensor.name for sensor in self._ur5e.sensors],
+            #     "modifiable": False,
+            # },
             "camera_names": {
                 "value": [camera.name for camera in self._cameras],
                 "modifiable": False,
