@@ -106,7 +106,7 @@ def load_products(scene_idx):
         )        
 
 
-scene_idx = 14  # 13: default
+scene_idx = 13  # 13: default
 load_products(scene_idx)
 
 

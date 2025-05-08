@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from aist_sb_ur5e.env import get_settings
 from aist_sb_ur5e.model import RMPFlowTarget, UR5e
-from aist_sb_ur5e.model.factory import create_camera, create_light, create_viewport
+from aist_sb_ur5e.model.factory import create_camera, create_light, create_viewport, create_contact_sensor
 from isaacsim.sensors.camera import Camera
 from omni.isaac.core.prims import XFormPrim
 from omni.isaac.core.scenes.scene import Scene
@@ -19,6 +19,8 @@ from isaacsim.robot.manipulators.examples.franka import Franka
 from isaacsim.core.utils.prims import is_prim_path_valid
 from isaacsim.core.utils.string import find_unique_string_name
 from isaacsim.storage.native import get_assets_root_path
+from omni.isaac.core.utils.stage import get_current_stage
+from omni.physx.scripts import utils, physicsUtils
 
 
 class TabletopPickingTask(BaseTask):
@@ -59,6 +61,58 @@ class TabletopPickingTask(BaseTask):
                 name=franka_robot_name,
                 usd_path=assets_root_path + "/Isaac/Robots/Franka/franka.usd"
             )
+
+            self._ur5e.set_world_pose([-0.5, 0.0, 0.72], [0, 0, 0, 1])  # scalar last
+
+            gripper_links = [
+                'panda_hand',
+                'panda_leftfinger',
+                'panda_rightfinger',
+            ]
+
+            arm_links = [
+                'panda_link0',
+                'panda_link1',
+                'panda_link2',
+                'panda_link3',
+                'panda_link4',
+                'panda_link5',
+                'panda_link6',
+                'panda_link7',
+                'panda_link8',                
+            ]
+
+            self._ur5e._sensors: list[ContactSensor] = []
+
+            def create_contact_sensors_aux(parent_path, links, radius):
+                for link in links:
+                    cs = create_contact_sensor(name=link, link_path=f'{parent_path}/{link}', radius=radius)
+                    self._ur5e._sensors.append(cs)
+
+            create_contact_sensors_aux('/World/Franka', gripper_links, radius=0.2)
+            create_contact_sensors_aux('/World/Franka', arm_links, radius=1.0)
+
+            for cs in self._ur5e._sensors:
+                cs.add_raw_contact_data_to_frame()
+
+            # set friction for finger links
+            phys_mat_path = "/World/Franka/phys_mat_finger"
+            utils.addRigidBodyMaterial(
+                stage=get_current_stage(),
+                path=phys_mat_path,
+                staticFriction=1.0,
+                dynamicFriction=0.7,
+            )
+            for path in [
+                "/World/Franka/panda_leftfinger",
+                "/World/Franka/panda_rightfinger",
+            ]:
+                physicsUtils.add_physics_material_to_prim(
+                    stage=get_current_stage(),
+                    prim=get_current_stage().GetPrimAtPath(path),
+                    materialPath=phys_mat_path,
+                )
+
 
         self._rmpflow_target: XFormPrim = RMPFlowTarget()
         self._env = TabletopEnv()
