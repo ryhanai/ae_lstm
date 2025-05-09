@@ -188,16 +188,20 @@ def sample_grasps_from_mesh(object_name, n_grasps=20):
 # lifting_targets = ['052_extra_large_clamp', 'jif', '004_sugar_box', 'java_curry_chukara', 'kinokonoyama', 'oi_ocha_350ml']
 
 lifting_problems = [
-    # (1, 'vermont_curry_amakuchi'), 
+    (2, 'calorie_mate_cheese'),    
     # (8, 'calorie_mate_cheese'), 
-    # (17, 'calorie_mate_cheese'), 
-    # (9, 'ginger_tube'),
-    # (14, '052_extra_large_clamp'),
-    (22, '010_potted_meat_can'),    
-    # (25, '033_spatula'),
-    # (27, 'chip_star'),
-    # (29, '043_phillips_screwdriver'),
-    # (35, 'calorie_mate_cheese'),     
+    # (14, '052_extra_large_clamp', 0.07),    
+    # (22, '010_potted_meat_can'),
+    # (27, 'chip_star', 0.10),
+    # (29, '043_phillips_screwdriver', 0.05),
+    # (35, 'calorie_mate_cheese'),
+    # (44, '008_pudding_box'),
+    # (45, '024_bowl', 0.07),    
+    # (47, 'kinokonoyama'),         
+    # (65, 'kinokonoyama'),
+    # (86, '033_spatula', 0.07),        
+    # (100, 'gogotea_straight', 0.10),          
+    # (121, '052_extra_large_clamp', 0.07),
     # (69, 'pan_meat'), 
     # (69, 'chocoball'),
     ]
@@ -210,7 +214,11 @@ def get_product_world_pose(task, target_name: str):
             return product.get_world_pose()  # get_world_pose() returns scalar-first quaternion
 
 
-def gripper_pose_in_world_mimo(task, grasp, target_name: str):
+def gripper_pose_in_world_mimo(task, grasp, target_name: str, pregrasp_opening=0.13):
+    """
+    The depth of grasp is dependent on the pregrasp opening.
+    """
+
     def pos_euler2mat(pos, euler):
         return tf.affines.compose(pos, tf.euler.euler2mat(euler[0], euler[1], euler[2], axes='sxyz'), np.ones(3))
     def pos_quat2mat(pos, quat):
@@ -219,7 +227,11 @@ def gripper_pose_in_world_mimo(task, grasp, target_name: str):
     obj_pos, obj_quat = get_product_world_pose(task, target_name)
     Tworld_obj = pos_quat2mat(obj_pos, obj_quat)
     # Tmimo_franka = pos_euler2mat([0, 0, 0.09], [0, 0, np.pi/2])
-    Tmimo_gripper = pos_euler2mat([0, 0, -0.13], [0, 0, np.pi/2]) 
+
+    ## 2f-140 grasp depth
+    grasp_depth = 0.168 * pregrasp_opening - 146.8
+
+    Tmimo_gripper = pos_euler2mat([0, 0, grasp_depth], [0, 0, np.pi/2])
     return pose_from_tf_matrix(Tworld_obj @ grasp @ Tmimo_gripper)  # pose_from_tf_matrix() returns scalar-first quaternion
 
 HELLO_ISAAC_ROOT = Path("~/Program/hello-isaac-sim").expanduser()
@@ -296,11 +308,16 @@ def do_lifting(end_of_episode = 300, end_of_grasping = 200):
                 # distance = min(dof[0] + dof[1] + counter * 0.0005, 0.14)
                 # target_gripper_joint_position = convert_to_joint_angle(distance)
                 # target_joint_positions = set_joint_positions(ik_action.joint_positions , target_gripper_joint_position) 
+
+                if counter == end_of_grasping:
+                    pos0, ori0 = ur5e._kinematics.compute_forward_kinematics('tool0', ur5e.get_joint_positions()[:6])
                 
             elif end_of_grasping < counter < end_of_episode:  # do lifting
                 target_position, target_orientation = ur5e._kinematics.compute_forward_kinematics('tool0', ur5e.get_joint_positions()[:6])
                 target_position[2] += 0.02
-                target_orientation = tf.quaternions.mat2quat(target_orientation)
+
+                # target_orientation = tf.quaternions.mat2quat(target_orientation)
+                target_orientation = tf.quaternions.mat2quat(ori0)                
 
                 next_position, next_orientation = target_controller.forward(
                     position=target_position,
@@ -325,12 +342,16 @@ class GraspSampler:
         try:
             grasp = self._grasp_queue.popleft()
         except IndexError:
-            self._grasp_queue.extend(sample_grasps_from_mesh(object_name, n_grasps=20))
+            self._grasp_queue.extend(sample_grasps_from_mesh(object_name, n_grasps=200))
             grasp = self._grasp_queue.popleft()
 
         return grasp
 
 grasp_sampler = GraspSampler()
+
+
+def sample_pregrasp_opening():
+    return np.random.choice([0.06])
 
 
 def find_feasible_grasp(scene_idx, lifting_target):
@@ -358,7 +379,7 @@ def find_feasible_grasp(scene_idx, lifting_target):
                     if not success:
                         continue
 
-                    pregrasp_opening = 0.12
+                    pregrasp_opening = sample_pregrasp_opening()
                     target_gripper_joint_position = convert_to_joint_angle(pregrasp_opening)
                     target_joint_positions = set_joint_positions_UR5e(ik_action.joint_positions , target_gripper_joint_position) 
                     ur5e.set_joint_velocities(np.zeros(len(target_joint_positions)))
@@ -371,9 +392,10 @@ def find_feasible_grasp(scene_idx, lifting_target):
                     # print(f'CF: {cs.name}, {current_frame}')
                     if current_frame['in_contact']:
                         for c in current_frame['contacts']:
-                            if c['body1'] == '/World/table_surface':
-                                # print(c)
-                                in_contact = True
+                            in_contact = True
+                            # print(c)
+                            # if c['body1'] == '/World/table_surface':
+                            #     in_contact = True
 
                 if in_contact:
                     counter = 0
@@ -388,7 +410,7 @@ def find_feasible_grasp(scene_idx, lifting_target):
                     continue
 
             elif counter == 4:
-                return grasp
+                return grasp, pregrasp_opening
 
             counter += 1
 
@@ -396,7 +418,6 @@ def find_feasible_grasp(scene_idx, lifting_target):
 def collect_successful_grasps():
     for problem in lifting_problems[-1:]:
         counter = 0
-        feasible_grasps = []
         successful_grasps = []
 
         print(f'PROBLEM: {problem}')
@@ -407,18 +428,45 @@ def collect_successful_grasps():
                 print(f'PROBLEM SOLVED: {(problem, successful_grasps)}')
                 break
 
-            grasp = find_feasible_grasp(*problem)  # or set_feasible_grasp()
-            feasible_grasps.append(grasp)
+            grasp, pregrasp_opening = find_feasible_grasp(*problem)  # or set_feasible_grasp()
+            do_lifting()
+
+            if get_product_world_pose(task, lifting_target)[0][2] > 0.85:
+                successful_grasps.append((pregrasp_opening, grasp))
+                print(f'# of successful grasps = {len(successful_grasps)}')
+
+
+from generated_grasps import episodes
+
+def run_successful_grasps():
+    for problem, successful_grasps in episodes:
+        counter = 0
+
+        print(f'PROBLEM: {problem}')
+        scene_idx, lifting_target = problem
+
+        for pregrasp_opening, grasp in successful_grasps:
+            reset_robot_state()
+            task.load_bin_state(scene_idx)
+            g_pos, g_ori = gripper_pose_in_world_mimo(task, grasp, lifting_target)
+            target.set_world_pose(position=g_pos, orientation=g_ori)  # set_world_pose() takes scalar-first quaternion
+
+            position_tolerance = 0.002
+            orientation_tolerance = 0.02
+            ik_action, success = ik_solver.compute_inverse_kinematics(g_pos, g_ori, position_tolerance, orientation_tolerance)
+
+            target_gripper_joint_position = convert_to_joint_angle(pregrasp_opening)
+            target_joint_positions = set_joint_positions_UR5e(ik_action.joint_positions , target_gripper_joint_position) 
+            ur5e.set_joint_velocities(np.zeros(len(target_joint_positions)))
             
             do_lifting()
 
 
-            if get_product_world_pose(task, lifting_target)[0][2] > 0.85:
-                successful_grasps.append(grasp)
-                print(f'# of successful grasps = {len(successful_grasps)}')
 
 
 collect_successful_grasps()
+# run_successful_grasps()
+
 
 simulation_app.close()
 node.destroy_node()
