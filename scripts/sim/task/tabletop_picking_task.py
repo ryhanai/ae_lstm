@@ -253,7 +253,14 @@ class TabletopPickingTask(BaseTask):
             },
         }
 
+    def hide_all_products(self):
+        for product in self._env.products:
+            xy = np.array([0.15, 0.15]) * (np.random.random(2) - 0.5)
+            z = 0.1
+            product.set_world_pose(np.append(xy, [z]), [0, 0, 0, 1])
+
     def load_bin_state(self, scene_idx):
+        self.hide_all_products()
         self._active_products = []
         bs = pd.read_pickle(f"/home/ryo/Dataset/forcemap/tabletop240304/bin_state{scene_idx:05d}.pkl")
         # print(bs)

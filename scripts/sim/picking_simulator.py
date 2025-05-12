@@ -1,5 +1,6 @@
 from operator import itemgetter
 from pathlib import Path
+import pandas as pd
 
 from omni.isaac.kit import SimulationApp
 
@@ -229,8 +230,7 @@ def gripper_pose_in_world_mimo(task, grasp, target_name: str, pregrasp_opening=0
     # Tmimo_franka = pos_euler2mat([0, 0, 0.09], [0, 0, np.pi/2])
 
     ## 2f-140 grasp depth
-    grasp_depth = 0.168 * pregrasp_opening - 146.8
-
+    grasp_depth = -0.168 * pregrasp_opening - 0.10716
     Tmimo_gripper = pos_euler2mat([0, 0, grasp_depth], [0, 0, np.pi/2])
     return pose_from_tf_matrix(Tworld_obj @ grasp @ Tmimo_gripper)  # pose_from_tf_matrix() returns scalar-first quaternion
 
@@ -295,7 +295,92 @@ def reset_robot_state():
     ur5e.set_joint_positions(js.positions)
 
 
-def do_lifting(end_of_episode = 300, end_of_grasping = 200):
+class Recorder:
+    def __init__(self, 
+                 task, 
+                 crop_size=[768,540],
+                 output_image_size=[320,240]):
+
+        self._task = task
+        self._data_dir = Path("picking_experiment_results")
+        self._crop_size = crop_size
+        self._output_image_size = output_image_size
+
+    def new_episode(self, name):
+        self._frameNo = 0
+        self._episode_name = name
+        p = self._data_dir / self._episode_name
+        p.mkdir(parents=True, exist_ok=True)
+
+    def save_robot_state(self):
+        robot_state_path = self._data_dir / self._episode_name / f"robot_state{self._frameNo:05}.pkl"
+        pd.to_pickle(self._task._ur5e.get_joint_positions(), robot_state_path)
+
+    def save_product_state(self):
+        bin_state = []
+        for product in self._task.get_active_products():
+            p, o = product.get_world_pose()
+            o = np.roll(o, 1)  # to scalar first quaternion
+            bin_state.append((product.name, (p, o)))
+
+        bin_state_path = self._data_dir / self._episode_name / f"bin_state{self._frameNo:05}.pkl"
+        pd.to_pickle(bin_state, bin_state_path)
+
+    def save_contact_state(self):
+        contact_positions = []
+        contact_normals = []
+        impulse_values = []
+        contacting_objects = []
+
+        for o in task.get_active_products():
+            cs = task._env._product_sensors[o.name]
+            current_frame = cs.get_current_frame()
+            if current_frame['in_contact']:
+                for contact in current_frame['contacts']:
+                    objectA = contact["body0"]
+                    objectB = contact["body1"]
+                    contact_positions.append(contact["position"])
+                    contact_normals.append(contact["normal"])
+                    impulse_values.append(np.linalg.norm(contact["impulse"]))
+                    contacting_objects.append((objectA, objectB))
+                    # print(f' {objectA}, {objectB}, {contact["impulse"]}')
+
+        # remove duplicated contacts
+        # contact_positions, uidx = np.unique(contact_positions, axis=0, return_index=True)
+        # contact_normals = [contact_normals[idx] for idx in uidx]
+        # impulse_values = [impulse_values[idx] for idx in uidx]
+        # contacting_objects = [contacting_objects[idx] for idx in uidx]
+
+        pd.to_pickle(
+            (contact_positions, impulse_values, contacting_objects, contact_normals),
+            self._data_dir / self._episode_name / f"contact_raw_data{self._frameNo:05d}.pkl"
+        )
+
+    def save_image(self):
+        def crop_center_and_resize(img):
+            width, height = self._crop_size
+            cam_height = img.shape[0]
+            cam_width = img.shape[1]
+            cropped_img = img[
+                int((cam_height - height) / 2) : int((cam_height - height) / 2 + height),
+                int((cam_width - width) / 2) : int((cam_width - width) / 2 + width),
+            ]
+            return cv2.resize(cropped_img, self._output_image_size)
+
+        rgb = self._task._cameras[0].get_rgb()  # top camera
+        rgb_path = self._data_dir / self._episode_name / f"rgb{self._frameNo:05}.jpg"
+        output_rgb = crop_center_and_resize(rgb)
+        cv2.imwrite(str(rgb_path), cv2.cvtColor(output_rgb, cv2.COLOR_RGB2BGR))
+
+    def save(self):
+        self.save_robot_state()
+        self.save_product_state()
+        self.save_contact_state()
+        self.save_image()
+        self._frameNo += 1
+
+
+def do_lifting(recorder, end_of_episode = 300, end_of_grasping = 200):
     counter = 5
     while simulation_app.is_running() and counter < end_of_episode:
         my_world.step(render=True)
@@ -328,6 +413,7 @@ def do_lifting(end_of_episode = 300, end_of_grasping = 200):
                     target_end_effector_orientation=next_orientation,
                 )
                 ur5e.get_articulation_controller().apply_action(control_actions=action)
+                recorder.save()
 
             counter += 1
 
@@ -438,12 +524,15 @@ def collect_successful_grasps():
 
 from generated_grasps import episodes
 
-def run_successful_grasps():
+def run_successful_grasps(lifting_method='UP'):
+    recorder = Recorder(task)
+
     for problem, successful_grasps in episodes:
         counter = 0
 
         print(f'PROBLEM: {problem}')
         scene_idx, lifting_target = problem
+        recorder.new_episode(name=f'{scene_idx}__{lifting_target}__{lifting_method}')
 
         for pregrasp_opening, grasp in successful_grasps:
             reset_robot_state()
@@ -459,13 +548,13 @@ def run_successful_grasps():
             target_joint_positions = set_joint_positions_UR5e(ik_action.joint_positions , target_gripper_joint_position) 
             ur5e.set_joint_velocities(np.zeros(len(target_joint_positions)))
             
-            do_lifting()
+            do_lifting(recorder)
 
 
 
 
-collect_successful_grasps()
-# run_successful_grasps()
+# collect_successful_grasps()
+run_successful_grasps()
 
 
 simulation_app.close()

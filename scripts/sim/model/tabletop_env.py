@@ -1,7 +1,7 @@
 from typing import List
 
 import numpy as np
-from aist_sb_ur5e.model.factory import create_convex_rigid_body
+from aist_sb_ur5e.model.factory import create_convex_rigid_body, create_contact_sensor
 from dataset.object_loader import ObjectInfo
 from omni.isaac.core.prims.xform_prim import XFormPrim
 from scipy.spatial.transform import rotation as R
@@ -41,6 +41,17 @@ class TabletopEnv:
 
         self._products: List = self.create_products()
 
+        self._product_sensors = {}
+        for p in self._products:
+            self._product_sensors[p.name] = create_contact_sensor(
+                                                name=p.name, 
+                                                link_path=f"/World/_{p.name}",
+                                                radius=0.3)
+
+        for cs in self._product_sensors.values():
+            cs.add_raw_contact_data_to_frame()
+
+
     @property
     def products(self) -> List[XFormPrim]:
         """
@@ -78,19 +89,20 @@ class TabletopEnv:
             # axis = np.array([np.cos(theta) * np.cos(phi), np.cos(theta) * np.sin(phi), np.sin(theta)])
             # angle = 360 * np.random.random()
             # orientation = to_quat(R.from_rotvec(axis * angle, degrees=True))
-            products.append(
-                create_convex_rigid_body(
-                    name=name,
-                    prim_path=f"/World/object{object_id}",
-                    usd_path=usd_file,
-                    mass=mass,
-                    static_friction=0.5,
-                    dynamic_friction=0.3,
-                    position=np.array(
-                        object=[xy[0], xy[1], z],
-                    ),
-                    kinematic=False,
-                )
+
+            product = create_convex_rigid_body(
+                name=name,
+                prim_path=f"/World/_{name}",
+                usd_path=usd_file,
+                mass=mass,
+                static_friction=0.5,
+                dynamic_friction=0.3,
+                position=np.array(
+                    object=[xy[0], xy[1], z],
+                ),
+                kinematic=False,
             )
+
+            products.append(product)
 
         return products
