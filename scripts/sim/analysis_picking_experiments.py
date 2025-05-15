@@ -44,13 +44,19 @@ def get_trajectory(data_dir, filter_size=1):
                 except:
                     pass
 
-    for name, traj in trajs.items():
-        a = traj['v_pos']
-        padding = np.zeros((filter_size, 3))
-        a = np.concatenate([padding, a, padding])
-        # a = [np.max(a[i-filter_size:i+filter_size+1], axis=0) for i in range(filter_size, len(a) - filter_size)]
-        a = [a[i] for i in range(filter_size, len(a) - filter_size)]        
-        traj['v_pos_s'] = a
+    # for name, traj in trajs.items():
+    #     a = traj['v_pos']
+    #     pre_padding = np.tile(a[0], (filter_size, 1))
+    #     post_padding = np.tile(a[-1], (filter_size, 1))
+    #     a = np.concatenate([pre_padding, a, post_padding])
+    #     a = np.array([np.average(a[i-filter_size:i+filter_size+1], axis=0) for i in range(filter_size, len(a) - filter_size)])
+    #     traj['v_pos'] = a
+
+    #     a = traj['pos']
+    #     padding = np.zeros((filter_size, 3))
+    #     a = np.concatenate([padding, a, padding])
+    #     a = np.array([np.average(a[i-filter_size:i+filter_size+1], axis=0) for i in range(filter_size, len(a) - filter_size)])
+    #     traj['pos'] = a
 
     return trajs
 
@@ -65,7 +71,7 @@ def eval_trajectories(data_dir, skip_lifting_target=True, summarize=True):
         if not (skip_lifting_target and name == lifting_target):
             poss = np.array(traj['pos'])
             total_distance_travelled = np.sum(np.linalg.norm(poss[1:] - poss[:-1], axis=1))
-            vels = traj['v_pos_s']
+            vels = traj['v_pos']
             max_velocity = np.max(np.linalg.norm(vels, axis=1))
             cfs = traj['contact_force']
             max_contact_force = np.max(cfs)
@@ -91,5 +97,7 @@ def do_evaluation(root_dir='picking_experiment_results'):
         results.append(r)
 
     results = np.array(results)
-    print(f'total distance: {np.average(results[:, 0])}, max velocity: {np.average(results[:, 1])}, max contact force: {np.average(results[:, 2])}')
-
+    means = results.mean(axis=0)
+    variances = results.var(axis=0)    
+    print(f'[MEAN] total distance: {means[0]}, max velocity: {means[1]}, max contact force: {means[2]}')
+    print(f'[VAR] total distance: {variances[0]}, max velocity: {variances[1]}, max contact force: {variances[2]}')

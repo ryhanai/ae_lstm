@@ -269,6 +269,25 @@ class TesterWithLiftingPlanning(Tester):
 
         return predicted_maps, planning_results
 
+    def predict_from_image(
+        self,
+        image,
+        object_center,        
+        log_scale=True,
+        show_result=True,
+        visualize_idx=0,
+        object_radius=0.05,
+    ):
+
+        predicted_maps = super().predict_from_image(image, log_scale, show_result, visualize_idx)
+        planning_results = self.plan_lifting(predicted_maps, object_center, object_radius=object_radius)
+
+        if show_result:
+            bin_state_idx = None
+            self.show_result(predicted_maps[visualize_idx], planning_results, object_center, bin_state_idx)
+
+        return predicted_maps, planning_results
+
     def show_result(self, fmap_values, planning_results, object_center, bin_state_idx=None):
         if bin_state_idx == None:
             bs = None

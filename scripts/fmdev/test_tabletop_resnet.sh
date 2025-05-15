@@ -1,6 +1,14 @@
 #!/bin/bash
 
-ipython3 test_torch.py -i -- \
+PYTHON=ipython3
+
+## FRONTIER, comparison of different smoothing methods
+# all models are ResNet-based
+# GAFS 0.03,0.01: log/20250322_1023_08/00199.pth
+# GAFS 0.06,0.01: log/20250322_1140_56/00199.pth
+# IFS 0.015: log/20250322_1043_24/00199.pth
+# IFS 0.005: log/20250322_1016_28/00199.pth
+$PYTHON test_torch.py -i -- \
     --dataset_path ~/Dataset/forcemap\
     --task_name tabletop240304\
     --data_split test\
@@ -13,7 +21,3 @@ ipython3 test_torch.py -i -- \
 # IFS 0.015: log/20250321_1423_23/00199.pth
 # IFS 0.005: log/20250321_1243_40/00199.pth
 
-# GAFS 0.03,0.01: log/20250322_1023_08/00199.pth
-# GAFS 0.06,0.01: log/20250322_1140_56/00199.pth
-# IFS 0.015: log/20250322_1043_24/00199.pth
-# IFS 0.005: log/20250322_1016_28/00199.pth

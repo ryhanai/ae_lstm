@@ -148,7 +148,7 @@ class TabletopRandomSceneDataset(Dataset):
     def _force_distribution_file(self, scene_idx, smoothing_method):
         if smoothing_method == 'geometry-aware':
             return f'force{scene_idx:05d}_GAFS_f{self._sigma_f:.3f}_g{self._sigma_g:.3f}.npy'
-        elif smoothing_medhod == 'isotropic':
+        elif smoothing_method == 'isotropic':
             return f'force{scene_idx:05d}_IFS_f{self._sigma_f:.3f}.npy'
         else:
             raise Exception(f'unknown smoothing method: {self._method}')

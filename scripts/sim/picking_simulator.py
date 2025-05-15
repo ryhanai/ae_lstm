@@ -6,8 +6,10 @@ from omni.isaac.kit import SimulationApp
 
 simulation_app = SimulationApp(launch_config={"headless": False, "multi_gpu": False})
 import cv2
-import cv_bridge
-import rclpy
+# import cv_bridge
+# import rclpy
+# from sensor_msgs.msg import Image
+# from visualization_msgs.msg import Marker, MarkerArray
 from aist_sb_ur5e.controller import RMPFlowController
 from aist_sb_ur5e.controller import KeyboardController
 from dataset.object_loader import ObjectInfo
@@ -17,11 +19,8 @@ from omni.isaac.core.prims import XFormPrim
 from omni.isaac.core.utils.types import ArticulationAction
 from omni.isaac.manipulators.grippers import ParallelGripper
 
-from sensor_msgs.msg import Image
-
 from sim.task.tabletop_picking_task import TabletopPickingTask
 from sim.controller.kinematics_solver import KinematicsSolver  # for UR5e
-from visualization_msgs.msg import Marker, MarkerArray
 from aist_sb_ur5e.model.factory import create_contact_sensor
 
 from omni.isaac.core import World
@@ -31,84 +30,83 @@ from isaacsim.core.utils.rotations import euler_angles_to_quat
 # world.get_physics_context().set_gravity(0.0)
 # world.set_gravity(value=-9.81 / meters_per_unit())
 
-rclpy.init()
-node = rclpy.create_node("isaac_picking_simulator")
-publisher = node.create_publisher(Image, "/camera/camera/color/image_raw", 1)
-bin_state_publisher = node.create_publisher(MarkerArray, "/bin_state", 1)
-br = cv_bridge.CvBridge()
+# rclpy.init()
+# node = rclpy.create_node("isaac_picking_simulator")
+# publisher = node.create_publisher(Image, "/camera/camera/color/image_raw", 1)
+# bin_state_publisher = node.create_publisher(MarkerArray, "/bin_state", 1)
+# br = cv_bridge.CvBridge()
 
+# def publish_image(img):
+#     def crop_center_and_resize(img):
+#         width, height = [768, 540]
+#         cam_height = img.shape[0]
+#         cam_width = img.shape[1]
+#         output_img_size = [512, 360]
+#         cropped_img = img[
+#             int((cam_height - height) / 2) : int((cam_height - height) / 2 + height),
+#             int((cam_width - width) / 2) : int((cam_width - width) / 2 + width),
+#         ]
+#         return cv2.resize(cropped_img, output_img_size)
 
-def publish_image(img):
-    def crop_center_and_resize(img):
-        width, height = [768, 540]
-        cam_height = img.shape[0]
-        cam_width = img.shape[1]
-        output_img_size = [512, 360]
-        cropped_img = img[
-            int((cam_height - height) / 2) : int((cam_height - height) / 2 + height),
-            int((cam_width - width) / 2) : int((cam_width - width) / 2 + width),
-        ]
-        return cv2.resize(cropped_img, output_img_size)
-
-    img = crop_center_and_resize(img)
-    msg = br.cv2_to_imgmsg(img, encoding="rgb8")
-    publisher.publish(msg)
+#     img = crop_center_and_resize(img)
+#     msg = br.cv2_to_imgmsg(img, encoding="rgb8")
+#     publisher.publish(msg)
 
 
 message_id = 0
 object_info = ObjectInfo("ycb_conveni_v1")
 
 
-def publish_bin_state(task):
-    global message_id
-    bin_state = []
-    for product in task.get_active_products():
-        p, o = product.get_world_pose()
-        o[0], o[1], o[2], o[3] = o[1], o[2], o[3], o[0]
-        bin_state.append((product.name, (p, o)))
+# def publish_bin_state(task):
+#     global message_id
+#     bin_state = []
+#     for product in task.get_active_products():
+#         p, o = product.get_world_pose()
+#         o[0], o[1], o[2], o[3] = o[1], o[2], o[3], o[0]
+#         bin_state.append((product.name, (p, o)))
 
-    # markerD = Marker()
-    # markerD.header.frame_id = 'fmap_frame'
-    # markerD.action = markerD.DELETEALL
-    marker_array = MarkerArray()
-    # marker_array.markers.append(markerD)
+#     # markerD = Marker()
+#     # markerD.header.frame_id = 'fmap_frame'
+#     # markerD.action = markerD.DELETEALL
+#     marker_array = MarkerArray()
+#     # marker_array.markers.append(markerD)
 
-    rgba = [0.5, 0.5, 0.5, 0.4]
-    scale = [1.0, 1.0, 1.0]
+#     rgba = [0.5, 0.5, 0.5, 0.4]
+#     scale = [1.0, 1.0, 1.0]
 
-    for name, (xyz, quat) in bin_state:
-        marker = Marker()
-        marker.type = Marker.MESH_RESOURCE
-        marker.header.frame_id = "fmap_frame"
-        marker.header.stamp = rclpy.clock.Clock().now().to_msg()
-        # marker.lifetime = rclpy.duration.Duration(seconds=0.2).to_msg()
-        marker.lifetime = rclpy.duration.Duration().to_msg()
-        marker.id = message_id
-        marker.action = marker.ADD
-        message_id += 1
+#     for name, (xyz, quat) in bin_state:
+#         marker = Marker()
+#         marker.type = Marker.MESH_RESOURCE
+#         marker.header.frame_id = "fmap_frame"
+#         marker.header.stamp = rclpy.clock.Clock().now().to_msg()
+#         # marker.lifetime = rclpy.duration.Duration(seconds=0.2).to_msg()
+#         marker.lifetime = rclpy.duration.Duration().to_msg()
+#         marker.id = message_id
+#         marker.action = marker.ADD
+#         message_id += 1
 
-        mesh_file, _ = object_info.rviz_mesh_file(name)
-        marker.mesh_resource = mesh_file
-        marker.mesh_use_embedded_materials = True
-        xyz = xyz.tolist()
-        quat = quat.tolist()
-        marker.pose.position.x = xyz[0]
-        marker.pose.position.y = xyz[1]
-        marker.pose.position.z = xyz[2]
-        marker.pose.orientation.x = quat[0]
-        marker.pose.orientation.y = quat[1]
-        marker.pose.orientation.z = quat[2]
-        marker.pose.orientation.w = quat[3]
-        marker.color.r = rgba[0]
-        marker.color.g = rgba[1]
-        marker.color.b = rgba[2]
-        marker.color.a = rgba[3]
-        marker.scale.x = scale[0]
-        marker.scale.y = scale[1]
-        marker.scale.z = scale[2]
+#         mesh_file, _ = object_info.rviz_mesh_file(name)
+#         marker.mesh_resource = mesh_file
+#         marker.mesh_use_embedded_materials = True
+#         xyz = xyz.tolist()
+#         quat = quat.tolist()
+#         marker.pose.position.x = xyz[0]
+#         marker.pose.position.y = xyz[1]
+#         marker.pose.position.z = xyz[2]
+#         marker.pose.orientation.x = quat[0]
+#         marker.pose.orientation.y = quat[1]
+#         marker.pose.orientation.z = quat[2]
+#         marker.pose.orientation.w = quat[3]
+#         marker.color.r = rgba[0]
+#         marker.color.g = rgba[1]
+#         marker.color.b = rgba[2]
+#         marker.color.a = rgba[3]
+#         marker.scale.x = scale[0]
+#         marker.scale.y = scale[1]
+#         marker.scale.z = scale[2]
 
-        marker_array.markers.append(marker)
-    bin_state_publisher.publish(marker_array)
+#         marker_array.markers.append(marker)
+#     bin_state_publisher.publish(marker_array)
 
 
 from isaacsim.core.utils.transformations import pose_from_tf_matrix, tf_matrix_from_pose
@@ -295,16 +293,22 @@ def reset_robot_state():
     ur5e.set_joint_positions(js.positions)
 
 
+def crop_center_and_resize(img, crop_size=[768,540], output_size=[320,240]):
+    width, height = crop_size
+    cam_height = img.shape[0]
+    cam_width = img.shape[1]
+    cropped_img = img[
+        int((cam_height - height) / 2) : int((cam_height - height) / 2 + height),
+        int((cam_width - width) / 2) : int((cam_width - width) / 2 + width),
+    ]
+    return cv2.resize(cropped_img, output_size)
+
+
 class Recorder:
     def __init__(self, 
-                 task, 
-                 crop_size=[768,540],
-                 output_image_size=[320,240]):
-
+                 task):
         self._task = task
         self._data_dir = Path("picking_experiment_results")
-        self._crop_size = crop_size
-        self._output_image_size = output_image_size
 
     def new_episode(self, name):
         self._frameNo = 0
@@ -357,16 +361,6 @@ class Recorder:
         )
 
     def save_image(self):
-        def crop_center_and_resize(img):
-            width, height = self._crop_size
-            cam_height = img.shape[0]
-            cam_width = img.shape[1]
-            cropped_img = img[
-                int((cam_height - height) / 2) : int((cam_height - height) / 2 + height),
-                int((cam_width - width) / 2) : int((cam_width - width) / 2 + width),
-            ]
-            return cv2.resize(cropped_img, self._output_image_size)
-
         rgb = self._task._cameras[0].get_rgb()  # top camera
         rgb_path = self._data_dir / self._episode_name / f"rgb{self._frameNo:05}.jpg"
         output_rgb = crop_center_and_resize(rgb)
@@ -380,7 +374,7 @@ class Recorder:
         self._frameNo += 1
 
 
-def do_lifting(recorder, end_of_episode = 300, end_of_grasping = 200):
+def do_lifting(recorder, end_of_episode = 300, end_of_grasping = 200, lifting_direction=[0., 0., 1.]):    
     counter = 5
     while simulation_app.is_running() and counter < end_of_episode:
         my_world.step(render=True)
@@ -399,7 +393,7 @@ def do_lifting(recorder, end_of_episode = 300, end_of_grasping = 200):
                 
             elif end_of_grasping < counter < end_of_episode:  # do lifting
                 target_position, target_orientation = ur5e._kinematics.compute_forward_kinematics('tool0', ur5e.get_joint_positions()[:6])
-                target_position[2] += 0.02
+                target_position += 0.02 * np.array(lifting_direction)
 
                 # target_orientation = tf.quaternions.mat2quat(target_orientation)
                 target_orientation = tf.quaternions.mat2quat(ori0)                
@@ -524,21 +518,31 @@ def collect_successful_grasps():
 
 from generated_grasps import episodes
 
+lifting_methods = ['UP', 'GAFS_f0.03_g0.01', 'GAFS_f0.06_g0.01', 'IFS_f0.015', 'IFS_f0.005']
+from fmdev import test_torch
+tester = test_torch.TesterWithLiftingPlanning("~/Dataset/forcemap", "tabletop240304", ["log/20250322_1023_08/00199.pth"], "test")
+
+
 def run_successful_grasps(lifting_method='UP'):
     recorder = Recorder(task)
 
     for problem, successful_grasps in episodes:
-        counter = 0
-
         print(f'PROBLEM: {problem}')
         scene_idx, lifting_target = problem
-        recorder.new_episode(name=f'{scene_idx}__{lifting_target}__{lifting_method}')
 
-        for pregrasp_opening, grasp in successful_grasps:
+        for grasp_number, (pregrasp_opening, grasp) in enumerate(successful_grasps):
+            recorder.new_episode(name=f'{scene_idx}__{lifting_target}_{grasp_number:03d}__{lifting_method}')
             reset_robot_state()
             task.load_bin_state(scene_idx)
+
             g_pos, g_ori = gripper_pose_in_world_mimo(task, grasp, lifting_target)
-            target.set_world_pose(position=g_pos, orientation=g_ori)  # set_world_pose() takes scalar-first quaternion
+            # target.set_world_pose(position=g_pos, orientation=g_ori)  # set_world_pose() takes scalar-first quaternion
+
+            for i in range(5):
+                my_world.step(render=True)
+            img = task._cameras[0].get_rgb()  # capture image from the top-camera
+            img = crop_center_and_resize(img)
+            cv2.imwrite('/tmp/hoge.jpg', cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
 
             position_tolerance = 0.002
             orientation_tolerance = 0.02
@@ -547,7 +551,10 @@ def run_successful_grasps(lifting_method='UP'):
             target_gripper_joint_position = convert_to_joint_angle(pregrasp_opening)
             target_joint_positions = set_joint_positions_UR5e(ik_action.joint_positions , target_gripper_joint_position) 
             ur5e.set_joint_velocities(np.zeros(len(target_joint_positions)))
-            
+
+            predicted_maps, planning_results = tester.predict_from_image(img, show_result=False)  ## lifting planning
+            print(planning_results)
+
             do_lifting(recorder)
 
 
@@ -558,5 +565,5 @@ run_successful_grasps()
 
 
 simulation_app.close()
-node.destroy_node()
-rclpy.shutdown()
+# node.destroy_node()
+# rclpy.shutdown()
