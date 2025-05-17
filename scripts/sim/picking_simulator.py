@@ -26,6 +26,8 @@ from aist_sb_ur5e.model.factory import create_contact_sensor
 from omni.isaac.core import World
 from isaacsim.core.utils.rotations import euler_angles_to_quat
 
+from generated_grasps import episodes, bb_centers
+
 # world = World()
 # world.get_physics_context().set_gravity(0.0)
 # world.set_gravity(value=-9.81 / meters_per_unit())
@@ -187,22 +189,153 @@ def sample_grasps_from_mesh(object_name, n_grasps=20):
 # lifting_targets = ['052_extra_large_clamp', 'jif', '004_sugar_box', 'java_curry_chukara', 'kinokonoyama', 'oi_ocha_350ml']
 
 lifting_problems = [
-    (2, 'calorie_mate_cheese'),    
+    ## (22, '010_potted_meat_can'),
+    ## (27, 'chip_star', 0.10),
+    ## (44, '008_pudding_box'),
+    ## (47, 'kinokonoyama'),         
+    ## (65, 'kinokonoyama'),
+    ## (86, '033_spatula', 0.07),        
+    ## (100, 'gogotea_straight', 0.10),          
+    ## (121, '052_extra_large_clamp', 0.07),
+    ## (129, 'java_curry_chukara'),    
+    ## (129, '033_spatula', 0.07),    
+    ## (151, 'toppo'),     
+    ## (152, 'pan_meat', 0.14),    
+    ## (168, 'vermont_curry_amakuchi'),
+    ## (170, 'pan_meat', 0.14),
+    ## (177, 'pan_meat', 0.14),
+    ## (186, 'xylitol', 0.10),    
+    ## (189, 'xylitol', 0.10),        
+    ## (192, 'gogotea_straight', 0.10),              
+    ## (196, 'java_curry_chukara'),            
+    ## (209, 'vermont_curry_amakuchi', 0.06),
+    ## (214, 'nonio_strong_energy', 0.1),                      
+    ## (223, '004_sugar_box', 0.135),        
+    ## (246, 'gogotea_straight', 0.10),                     
+    ## (250, 'vermont_curry_amakuchi'),    
+    ## (257, 'toppo'),
+    ## (264, '052_extra_large_clamp', 0.06),    
+    ## (292, 'gogotea_straight', 0.1),                         
+    ## (297, '010_potted_meat_can', 0.135),    
+    ## (336, '052_extra_large_clamp', 0.07),        
+    ## (344, '052_extra_large_clamp', 0.07),        
+    ## (352, 'vermont_curry_amakuchi'),    
+    ## (361, 'kinokonoyama'),      
+    ## (364, 'gogotea_straight', 0.1),
+    ## (373, '052_extra_large_clamp', 0.07),                        
+    ## (380, '052_extra_large_clamp', 0.07),                    
+    ## (393, '052_extra_large_clamp', 0.07),      
+    ## (433, '010_potted_meat_can'),            
+    ## (435, 'xylitol', 0.11),      
+    ## (446, '008_pudding_box'),       
+    ## (450, 'pan_meat', 0.14),        
+    ## (453, 'java_curry_chukara'),  
+    ## (463, '033_spatula', 0.07),           
+    ## (471, 'calorie_mate_cheese', 0.14),        
+    ## (482, 'oi_ocha_350ml', 0.10),                  
+    ## (488, '010_potted_meat_can'),                           
+    ## (492, '052_extra_large_clamp', 0.07),          
+    ## (492, 'kizami_aojiso_tube', 0.09),
+    ## (497, 'java_curry_chukara'),               
+    ## (498, 'toppo'),
+    ## (523, '004_sugar_box', 0.135),              
+    ## (554, 'oi_ocha_350ml', 0.1),
+    ## (558, 'ginger_tube', 0.09),    
+    ## (574, 'toppo'),    
+    ##　(580, '033_spatula', 0.07),      
+    ## (585, '004_sugar_box', 0.135),                  
+    ## (591, '077_rubiks_cube', 0.1),
+    ## (614, 'ginger_tube', 0.09),        
+    ## (615, 'kinokonoyama'),        
+    ## (615, 'calorie_mate_cheese', 0.14),                
+    ## (625, '014_lemon', 0.1),
+    ## (633, 'oi_ocha_350ml', 0.11),           
+    ## (642, 'kinokonoyama'),                     
+    ##　(687, '010_potted_meat_can'),        
+    ## (699, 'creap', 0.1),          
+    ## (703, 'xylitol'),              
+    ## (720, '010_potted_meat_can'),
+    ## (724, 'chip_star', 0.10),  
+    ## (732, 'oi_ocha_350ml', 0.1),                    
+    ## (733, '004_sugar_box', 0.135),                   
+    ## (736, '008_pudding_box'),    
+    ## (744, 'gogotea_straight', 0.10),              
+    ## (749, 'kinokonoyama'),
+    ## (751, 'creap', 0.1),             
+    ## (753, '004_sugar_box', 0.135),   
+    ## (755, 'oi_ocha_350ml', 0.1),
+    ## (763, 'vermont_curry_amakuchi'),
+    ## (765, 'vermont_curry_amakuchi'),
+    ## (779, 'pan_meat'),            
+    ## (781, '004_sugar_box', 0.135),                   
+    ## (796, 'kinokonoyama'),
+    ## (799, 'vermont_curry_amakuchi'),    
+    ## (825, '010_potted_meat_can'),
+    ## (838, 'oi_ocha_350ml', 0.1),                              
+    ## (844, 'kinokonoyama'),
+    ## (844, 'ginger_tube', 0.09),            
+    ## (846, 'kinokonoyama'),    
+    ## (864, 'gogotea_straight', 0.11),              
+    ## (865, 'vermont_curry_amakuchi'),     
+    ## (868, 'vermont_curry_amakuchi'),                      
+    ## (888, 'vermont_curry_amakuchi'),                          
+    ## (904, 'java_curry_chukara'),                        
+    ## (908, 'toppo'),        
+    ## (916, 'oi_ocha_350ml', 0.1),      
+    ## (916, 'java_curry_chukara'),                  
+    ## (920, 'gogotea_straight', 0.11),
+    ## (936, '004_sugar_box', 0.135),
+    ## (936, 'ginger_tube', 0.09),    
+    ## (938, 'vermont_curry_amakuchi'),
+    ## (939, 'vermont_curry_amakuchi'),    
+    ## (943, '015_peach', 0.1),
+    ## (973, '004_sugar_box', 0.135),                                     
+    # 
+    # (2, 'calorie_mate_cheese'),    
     # (8, 'calorie_mate_cheese'), 
     # (14, '052_extra_large_clamp', 0.07),    
-    # (22, '010_potted_meat_can'),
-    # (27, 'chip_star', 0.10),
-    # (29, '043_phillips_screwdriver', 0.05),
     # (35, 'calorie_mate_cheese'),
-    # (44, '008_pudding_box'),
-    # (45, '024_bowl', 0.07),    
-    # (47, 'kinokonoyama'),         
-    # (65, 'kinokonoyama'),
-    # (86, '033_spatula', 0.07),        
-    # (100, 'gogotea_straight', 0.10),          
-    # (121, '052_extra_large_clamp', 0.07),
-    # (69, 'pan_meat'), 
-    # (69, 'chocoball'),
+    # (133, 'java_curry_chukara'),        
+    # (139, '052_extra_large_clamp', 0.07),
+    # (143, '033_spatula', 0.07),
+    # (148, '008_pudding_box'),
+    # (170, '004_sugar_box', 0.135),   # 端を掴むのが難しい
+    # (181, '008_pudding_box'),    
+    # (213, 'ginger_tube', 0.06),
+    # (240, 'ginger_tube', 0.07),               
+    # (255, 'pan_meat'),        
+    # (269, 'gogotea_straight', 0.09),                     
+    # (270, '004_sugar_box', 0.135),        
+    # (305, 'canned_iwashi_kabayaki', 0.10),
+    # (326, 'vermont_curry_amakuchi', 0.1),        
+    # (358, 'chip_star', 0.09),    
+    # (443, '010_potted_meat_can', 0.135),                  
+    # (495, '008_pudding_box', 0.14),       
+    # (540, 'vermont_curry_amakuchi', 0.1),          
+    # (555, 'vermont_curry_amakuchi', 0.1),     
+    # (566, '052_extra_large_clamp', 0.07), 
+    # (634, '008_pudding_box'),          
+    # (652, '008_pudding_box', 0.14),               
+    # (698, 'vermont_curry_amakuchi', 0.1),         
+    # (703, 'kinokonoyama'),           
+    # (772, '008_pudding_box'),        
+    # (819, 'gogotea_straight', 0.11),   # 原点がそこにあるので成功判定されない
+    # (866, '010_potted_meat_can', 0.135),  # 開閉幅が足りない
+    # (870, '008_pudding_box'),    # 開閉幅不足
+    # (905, '054_softball'),   # 1回成功した
+    # (985, '004_sugar_box', 0.135),                                     
+    ## 
+    # (229, '025_mug', 0.06),    # 成功はする
+    # (256, '024_bowl', 0.06),
+    # (277, '025_mug', 0.06),            
+    # (451, '008_pudding_box'),   # 開閉幅不足
+    # (482, 'jif', 0.11),
+    # (535, 'calorie_mate_cheese', 0.135),            
+    # (564, '010_potted_meat_can'),        
+    # (642, 'jif', 0.08),
+    # (650, 'jif', 0.06),  # difficult?
+    # (713, 'oi_ocha_350ml', 0.1),                      
+    # (891, '008_pudding_box', 0.14),       
     ]
 
 # scene_idx, lifting_target = lifting_problems[-1]
@@ -213,24 +346,35 @@ def get_product_world_pose(task, target_name: str):
             return product.get_world_pose()  # get_world_pose() returns scalar-first quaternion
 
 
+def pos_euler2mat(pos, euler):
+    return tf.affines.compose(pos, tf.euler.euler2mat(euler[0], euler[1], euler[2], axes='sxyz'), np.ones(3))
+
+
+def pos_quat2mat(pos, quat):
+    return tf.affines.compose(pos, tf.quaternions.quat2mat(quat), np.ones(3))
+
+
 def gripper_pose_in_world_mimo(task, grasp, target_name: str, pregrasp_opening=0.13):
     """
     The depth of grasp is dependent on the pregrasp opening.
     """
-
-    def pos_euler2mat(pos, euler):
-        return tf.affines.compose(pos, tf.euler.euler2mat(euler[0], euler[1], euler[2], axes='sxyz'), np.ones(3))
-    def pos_quat2mat(pos, quat):
-        return tf.affines.compose(pos, tf.quaternions.quat2mat(quat), np.ones(3))
 
     obj_pos, obj_quat = get_product_world_pose(task, target_name)
     Tworld_obj = pos_quat2mat(obj_pos, obj_quat)
     # Tmimo_franka = pos_euler2mat([0, 0, 0.09], [0, 0, np.pi/2])
 
     ## 2f-140 grasp depth
-    grasp_depth = -0.168 * pregrasp_opening - 0.10716
+    offset = 0.001
+    grasp_depth = -0.168 * pregrasp_opening - 0.10716 + offset
     Tmimo_gripper = pos_euler2mat([0, 0, grasp_depth], [0, 0, np.pi/2])
     return pose_from_tf_matrix(Tworld_obj @ grasp @ Tmimo_gripper)  # pose_from_tf_matrix() returns scalar-first quaternion
+
+
+def get_object_center(task, lifting_target):
+    obj_pos, obj_quat = get_product_world_pose(task, lifting_target)
+    Tworld_obj = pos_quat2mat(obj_pos, obj_quat)
+    return pose_from_tf_matrix(Tworld_obj @ np.linalg.inv(bb_centers[lifting_target]))
+
 
 HELLO_ISAAC_ROOT = Path("~/Program/hello-isaac-sim").expanduser()
 
@@ -374,7 +518,7 @@ class Recorder:
         self._frameNo += 1
 
 
-def do_lifting(recorder, end_of_episode = 300, end_of_grasping = 200, lifting_direction=[0., 0., 1.]):    
+def do_lifting(end_of_episode = 300, end_of_grasping = 200, lifting_direction=[0., 0., 1.], recorder=None):    
     counter = 5
     while simulation_app.is_running() and counter < end_of_episode:
         my_world.step(render=True)
@@ -407,7 +551,8 @@ def do_lifting(recorder, end_of_episode = 300, end_of_grasping = 200, lifting_di
                     target_end_effector_orientation=next_orientation,
                 )
                 ur5e.get_articulation_controller().apply_action(control_actions=action)
-                recorder.save()
+                if recorder != None:
+                    recorder.save()
 
             counter += 1
 
@@ -434,7 +579,7 @@ def sample_pregrasp_opening():
     return np.random.choice([0.06])
 
 
-def find_feasible_grasp(scene_idx, lifting_target):
+def find_feasible_grasp(scene_idx, lifting_target, pregrasp_pose):
     counter = 0
     while simulation_app.is_running():
         my_world.step(render=True)
@@ -459,8 +604,7 @@ def find_feasible_grasp(scene_idx, lifting_target):
                     if not success:
                         continue
 
-                    pregrasp_opening = sample_pregrasp_opening()
-                    target_gripper_joint_position = convert_to_joint_angle(pregrasp_opening)
+                    target_gripper_joint_position = convert_to_joint_angle(pregrasp_pose)
                     target_joint_positions = set_joint_positions_UR5e(ik_action.joint_positions , target_gripper_joint_position) 
                     ur5e.set_joint_velocities(np.zeros(len(target_joint_positions)))
                     break
@@ -490,40 +634,49 @@ def find_feasible_grasp(scene_idx, lifting_target):
                     continue
 
             elif counter == 4:
-                return grasp, pregrasp_opening
+                return grasp
 
             counter += 1
 
 
 def collect_successful_grasps():
-    for problem in lifting_problems[-1:]:
+    for problem in lifting_problems:
         counter = 0
         successful_grasps = []
 
         print(f'PROBLEM: {problem}')
-        scene_idx, lifting_target = problem
+        if len(problem) == 3:
+            scene_idx, lifting_target, pregrasp_pose = problem
+        else:
+            scene_idx, lifting_target = problem
+            pregrasp_pose = 0.13
 
         while True:
             if len(successful_grasps) >= 3:
                 print(f'PROBLEM SOLVED: {(problem, successful_grasps)}')
                 break
 
-            grasp, pregrasp_opening = find_feasible_grasp(*problem)  # or set_feasible_grasp()
+            grasp = find_feasible_grasp(scene_idx, lifting_target, pregrasp_pose)
             do_lifting()
 
             if get_product_world_pose(task, lifting_target)[0][2] > 0.85:
-                successful_grasps.append((pregrasp_opening, grasp))
+                successful_grasps.append((pregrasp_pose, grasp))
                 print(f'# of successful grasps = {len(successful_grasps)}')
 
 
-from generated_grasps import episodes
+# lifting_methodd = 'UP'
+# from fmdev import test_torch
+# checkpoints = ["log/20250322_1023_08/00199.pth", "log/20250322_1140_56/00199.pth", "log/20250322_1043_24/00199.pth", "log/20250322_1016_28/00199.pth"]
 
-lifting_methods = ['UP', 'GAFS_f0.03_g0.01', 'GAFS_f0.06_g0.01', 'IFS_f0.015', 'IFS_f0.005']
-from fmdev import test_torch
-tester = test_torch.TesterWithLiftingPlanning("~/Dataset/forcemap", "tabletop240304", ["log/20250322_1023_08/00199.pth"], "test")
+# tester = test_torch.TesterWithLiftingPlanning("~/Dataset/forcemap", "tabletop240304", [checkpoints[3]], "test")
+# mp = tester._model_params[0]
+# if mp['method'] == 'isotropic':
+#     lifting_method = f"IFS_f{mp['sigma_f']:.3f}"
+# if mp['method'] == 'geometry-aware':
+#     lifting_method = f"GAFS_f{mp['sigma_f']:.3f}_g{mp['sigma_g']:.3f}"
 
 
-def run_successful_grasps(lifting_method='UP'):
+def run_successful_grasps(lifting_method):
     recorder = Recorder(task)
 
     for problem, successful_grasps in episodes:
@@ -536,13 +689,15 @@ def run_successful_grasps(lifting_method='UP'):
             task.load_bin_state(scene_idx)
 
             g_pos, g_ori = gripper_pose_in_world_mimo(task, grasp, lifting_target)
-            # target.set_world_pose(position=g_pos, orientation=g_ori)  # set_world_pose() takes scalar-first quaternion
 
             for i in range(5):
                 my_world.step(render=True)
             img = task._cameras[0].get_rgb()  # capture image from the top-camera
             img = crop_center_and_resize(img)
             cv2.imwrite('/tmp/hoge.jpg', cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
+
+            object_center_pos, object_center_ori = get_object_center(task, lifting_target)
+            target.set_world_pose(position=object_center_pos, orientation=object_center_ori)
 
             position_tolerance = 0.002
             orientation_tolerance = 0.02
@@ -552,16 +707,16 @@ def run_successful_grasps(lifting_method='UP'):
             target_joint_positions = set_joint_positions_UR5e(ik_action.joint_positions , target_gripper_joint_position) 
             ur5e.set_joint_velocities(np.zeros(len(target_joint_positions)))
 
-            predicted_maps, planning_results = tester.predict_from_image(img, show_result=False)  ## lifting planning
+            predicted_maps, planning_results = tester.predict_from_image(img, object_center_pos, show_result=False)  ## lifting planning
             print(planning_results)
 
-            do_lifting(recorder)
+            do_lifting(lifting_direction=planning_results[0], recorder=recorder)
 
 
 
 
-# collect_successful_grasps()
-run_successful_grasps()
+collect_successful_grasps()
+# run_successful_grasps(lifting_method=lifting_method)
 
 
 simulation_app.close()

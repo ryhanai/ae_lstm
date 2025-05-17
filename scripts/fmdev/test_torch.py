@@ -109,10 +109,13 @@ class Tester:
         self._device = "cuda"
 
         self._model_dataset_pairs = []
+        self._model_params = []
+
         for weight_file in weight_files:
             model, model_params = setup_model(weight_file, self._device)
             test_data, fmap = setup_dataloader(dataset_path, task_name, data_split, model_params)
             self._model_dataset_pairs.append((model, test_data))
+            self._model_params.append(model_params)
 
         self._fmap = fmap
         self._draw_range = [0.4, 0.9]
