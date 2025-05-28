@@ -21,12 +21,11 @@ from omni.isaac.manipulators.grippers import ParallelGripper
 
 from sim.task.tabletop_picking_task import TabletopPickingTask
 from sim.controller.kinematics_solver import KinematicsSolver  # for UR5e
-from aist_sb_ur5e.model.factory import create_contact_sensor
 
 from omni.isaac.core import World
-from isaacsim.core.utils.rotations import euler_angles_to_quat
+# from isaacsim.core.utils.rotations import euler_angles_to_quat
 
-from generated_grasps import episodes, bb_centers
+from generated_grasps import *
 
 # world = World()
 # world.get_physics_context().set_gravity(0.0)
@@ -111,7 +110,7 @@ object_info = ObjectInfo("ycb_conveni_v1")
 #     bin_state_publisher.publish(marker_array)
 
 
-from isaacsim.core.utils.transformations import pose_from_tf_matrix, tf_matrix_from_pose
+# from isaacsim.core.utils.transformations import pose_from_tf_matrix, tf_matrix_from_pose
 import transforms3d as tf
 import json
 import numpy as np
@@ -210,9 +209,9 @@ lifting_problems = [
     ## (196, 'java_curry_chukara'),            
     ## (209, 'vermont_curry_amakuchi', 0.06),
     ## (214, 'nonio_strong_energy', 0.1),                      
-    ## (223, '004_sugar_box', 0.135),        
+    # (223, '004_sugar_box', 0.135),        
     ## (246, 'gogotea_straight', 0.10),                     
-    ## (250, 'vermont_curry_amakuchi'),    
+    # (250, 'vermont_curry_amakuchi'),    
     ## (257, 'toppo'),
     ## (264, '052_extra_large_clamp', 0.06),    
     ## (292, 'gogotea_straight', 0.1),                         
@@ -346,14 +345,6 @@ def get_product_world_pose(task, target_name: str):
             return product.get_world_pose()  # get_world_pose() returns scalar-first quaternion
 
 
-def pos_euler2mat(pos, euler):
-    return tf.affines.compose(pos, tf.euler.euler2mat(euler[0], euler[1], euler[2], axes='sxyz'), np.ones(3))
-
-
-def pos_quat2mat(pos, quat):
-    return tf.affines.compose(pos, tf.quaternions.quat2mat(quat), np.ones(3))
-
-
 def gripper_pose_in_world_mimo(task, grasp, target_name: str, pregrasp_opening=0.13):
     """
     The depth of grasp is dependent on the pregrasp opening.
@@ -364,16 +355,15 @@ def gripper_pose_in_world_mimo(task, grasp, target_name: str, pregrasp_opening=0
     # Tmimo_franka = pos_euler2mat([0, 0, 0.09], [0, 0, np.pi/2])
 
     ## 2f-140 grasp depth
-    offset = 0.001
-    grasp_depth = -0.168 * pregrasp_opening - 0.10716 + offset
+    offset = 0.002
+    grasp_depth = 0.1679 * pregrasp_opening - 0.153827 + offset
     Tmimo_gripper = pos_euler2mat([0, 0, grasp_depth], [0, 0, np.pi/2])
     return pose_from_tf_matrix(Tworld_obj @ grasp @ Tmimo_gripper)  # pose_from_tf_matrix() returns scalar-first quaternion
 
 
 def get_object_center(task, lifting_target):
     obj_pos, obj_quat = get_product_world_pose(task, lifting_target)
-    Tworld_obj = pos_quat2mat(obj_pos, obj_quat)
-    return pose_from_tf_matrix(Tworld_obj @ np.linalg.inv(bb_centers[lifting_target]))
+    return transform_to_centroid(lifting_target, obj_pos, obj_quat)
 
 
 HELLO_ISAAC_ROOT = Path("~/Program/hello-isaac-sim").expanduser()
@@ -390,19 +380,18 @@ gripper: ParallelGripper = task.get_params()["gripper"]["value"]
 
 print(f'PD GAIN: {ur5e._articulation_controller.get_gains()}')
 print(f'MAX EFFORTS: {ur5e._articulation_controller.get_max_efforts()}')
-# ur5e._articulation_controller.set_max_efforts([1e+5]*7 + [30.0, 0.0])
-stiffnesses = [1500.0]*6 + [0, 5e+4, 0, 5e+4, 0, 0]
-dampings = [1500.0]*6 + [0, 4e+4, 0, 4e+4, 0, 0]
-# ur5e._articulation_controller.set_gains(kps=stiffnesses, kds=dampings)
-# print(f'PD GAIN (2): {ur5e._articulation_controller.get_gains()}')
-# print(f'MAX EFFORTS (2): {ur5e._articulation_controller.get_max_efforts()}')
-
+ur5e._articulation_controller.set_max_efforts([1e+6]*6 + [0, 100, 0, 100, 0, 0])
+stiffnesses = [150000.0]*6 + [0, 5e+4, 0, 5e+4, 0, 0]
+dampings = [72500.0]*6 + [0, 4e+4, 0, 4e+4, 0, 0]
+ur5e._articulation_controller.set_gains(kps=stiffnesses, kds=dampings)
+print(f'PD GAIN (2): {ur5e._articulation_controller.get_gains()}')
+print(f'MAX EFFORTS (2): {ur5e._articulation_controller.get_max_efforts()}')
 
 rmpflow_controller = RMPFlowController(
     # name="cspace_controller",
     robot_articulation=ur5e,
     robot_description_path=str(HELLO_ISAAC_ROOT / "aist_sb_ur5e/static/rmpflow/robot_descriptor.yml"),
-    rmpflow_config_path=str(HELLO_ISAAC_ROOT / "aist_sb_ur5e/static/rmpflow/ur5e_rmpflow_common.yml"),
+    rmpflow_config_path="../sim/ur5e_rmpflow_common_picking.yml",
     urdf_path=str(HELLO_ISAAC_ROOT / "aist_sb_ur5e/static/urdf/ur5e.urdf"),
 )
 
@@ -450,9 +439,11 @@ def crop_center_and_resize(img, crop_size=[768,540], output_size=[320,240]):
 
 class Recorder:
     def __init__(self, 
-                 task):
+                 task,
+                 output_directory="picking_experiment_results",
+                 ):
         self._task = task
-        self._data_dir = Path("picking_experiment_results")
+        self._data_dir = Path(output_directory)
 
     def new_episode(self, name):
         self._frameNo = 0
@@ -518,7 +509,49 @@ class Recorder:
         self._frameNo += 1
 
 
-def do_lifting(end_of_episode = 300, end_of_grasping = 200, lifting_direction=[0., 0., 1.], recorder=None):    
+def do_lifting(end_of_grasping = 120,
+               end_of_planned_direction=250,               
+               end_of_upward_motion=400,
+               end_of_episode = 450,
+               lifting_direction=[0., 0., 1.],
+               planned_direction_distance=0.10,
+               target_lifting_height=0.15,
+               recorder=None,               
+               ):
+
+    def get_tcp_pose():
+        return ur5e._kinematics.compute_forward_kinematics('tool0', ur5e.get_joint_positions()[:6])
+
+    def get_tcp_position():
+        return get_tcp_pose()[0]
+    
+    def distance_from(pos):
+        cur_pos = get_tcp_position()
+        return np.linalg.norm(cur_pos - pos)
+
+    def move_if_possible(motion_vector, target_orientation):
+        target_position, target_orientation = get_tcp_pose()
+        target_position += motion_vector
+        target_orientation = tf.quaternions.mat2quat(target_orientation)
+
+        position_tolerance = 0.001
+        orientation_tolerance = 0.02
+        ik_action, success = ik_solver.compute_inverse_kinematics(target_position, target_orientation, position_tolerance, orientation_tolerance)
+
+        if success:
+            if np.allclose(ur5e.get_joint_positions()[:6], ik_action.joint_positions[:6], atol=0.5):
+                joint_target = list(ik_action.joint_positions) + [None]*6
+                ur5e.get_articulation_controller().apply_action(ArticulationAction(joint_target))
+                return True
+            else:
+                joint_target = list(ur5e.get_joint_positions()[:6]) + [None]*6                        
+                # print('too large difference in arm joint positions!')
+                return False
+        else:
+            joint_target = list(ur5e.get_joint_positions()[:6]) + [None]*6
+            # print('IK failed!')
+            return False
+
     counter = 5
     while simulation_app.is_running() and counter < end_of_episode:
         my_world.step(render=True)
@@ -533,26 +566,31 @@ def do_lifting(end_of_episode = 300, end_of_grasping = 200, lifting_direction=[0
                 # target_joint_positions = set_joint_positions(ik_action.joint_positions , target_gripper_joint_position) 
 
                 if counter == end_of_grasping:
-                    pos0, ori0 = ur5e._kinematics.compute_forward_kinematics('tool0', ur5e.get_joint_positions()[:6])
-                
-            elif end_of_grasping < counter < end_of_episode:  # do lifting
-                target_position, target_orientation = ur5e._kinematics.compute_forward_kinematics('tool0', ur5e.get_joint_positions()[:6])
-                target_position += 0.02 * np.array(lifting_direction)
+                    # print('=> planned direction')
+                    pos0, ori0 = get_tcp_pose()
 
-                # target_orientation = tf.quaternions.mat2quat(target_orientation)
-                target_orientation = tf.quaternions.mat2quat(ori0)                
+            elif counter <= end_of_planned_direction:  # transport in a planned direction
+                if not move_if_possible(motion_vector=0.05 * np.array(lifting_direction), target_orientation=ori0):
+                    counter = end_of_planned_direction  # go to the next phase
 
-                next_position, next_orientation = target_controller.forward(
-                    position=target_position,
-                    orientation=target_orientation,
-                )
-                action: ArticulationAction = rmpflow_controller.forward(
-                    target_end_effector_position=next_position,
-                    target_end_effector_orientation=next_orientation,
-                )
-                ur5e.get_articulation_controller().apply_action(control_actions=action)
-                if recorder != None:
-                    recorder.save()
+                if distance_from(pos0) > planned_direction_distance:
+                    counter = end_of_planned_direction
+
+            elif counter <= end_of_upward_motion:  # transport upward
+                if not move_if_possible(motion_vector=0.05 * np.array([0., 0., 1.]), target_orientation=ori0):
+                    counter = end_of_upward_motion  # go to the next phase
+
+                cur_pos = get_tcp_position()
+                # print(f'{cur_pos[2]}, {pos0[2]}')
+                if cur_pos[2] - pos0[2] > target_lifting_height:
+                    print('=> Task succeeded!')                    
+                    counter = end_of_upward_motion
+
+            elif counter <= end_of_episode:  # do nothing
+                pass
+
+            if (end_of_grasping <= counter) and recorder != None:  # record scenes after grasping
+                recorder.save()
 
             counter += 1
 
@@ -641,7 +679,6 @@ def find_feasible_grasp(scene_idx, lifting_target, pregrasp_pose):
 
 def collect_successful_grasps():
     for problem in lifting_problems:
-        counter = 0
         successful_grasps = []
 
         print(f'PROBLEM: {problem}')
@@ -653,7 +690,7 @@ def collect_successful_grasps():
 
         while True:
             if len(successful_grasps) >= 3:
-                print(f'PROBLEM SOLVED: {(problem, successful_grasps)}')
+                print(f'PROBLEM SOLVED: {(problem[:2], successful_grasps)}')
                 break
 
             grasp = find_feasible_grasp(scene_idx, lifting_target, pregrasp_pose)
@@ -664,20 +701,9 @@ def collect_successful_grasps():
                 print(f'# of successful grasps = {len(successful_grasps)}')
 
 
-# lifting_methodd = 'UP'
-# from fmdev import test_torch
-# checkpoints = ["log/20250322_1023_08/00199.pth", "log/20250322_1140_56/00199.pth", "log/20250322_1043_24/00199.pth", "log/20250322_1016_28/00199.pth"]
-
-# tester = test_torch.TesterWithLiftingPlanning("~/Dataset/forcemap", "tabletop240304", [checkpoints[3]], "test")
-# mp = tester._model_params[0]
-# if mp['method'] == 'isotropic':
-#     lifting_method = f"IFS_f{mp['sigma_f']:.3f}"
-# if mp['method'] == 'geometry-aware':
-#     lifting_method = f"GAFS_f{mp['sigma_f']:.3f}_g{mp['sigma_g']:.3f}"
-
-
-def run_successful_grasps(lifting_method):
-    recorder = Recorder(task)
+def run_successful_grasps(lifting_method, tester):
+    recorder = Recorder(task, output_directory=f'picking_experiment_results_{lifting_method}')
+    success_list = {}
 
     for problem, successful_grasps in episodes:
         print(f'PROBLEM: {problem}')
@@ -707,16 +733,41 @@ def run_successful_grasps(lifting_method):
             target_joint_positions = set_joint_positions_UR5e(ik_action.joint_positions , target_gripper_joint_position) 
             ur5e.set_joint_velocities(np.zeros(len(target_joint_positions)))
 
-            predicted_maps, planning_results = tester.predict_from_image(img, object_center_pos, show_result=False)  ## lifting planning
-            print(planning_results)
+            if tester is None:
+                direction = [0., 0., 1]
+            else:
+                predicted_maps, planning_results = tester.predict_from_image(img, object_center_pos, show_result=False)  ## lifting planning
+                print(planning_results)
+                direction = planning_results[0]
 
-            do_lifting(lifting_direction=planning_results[0], recorder=recorder)
+            do_lifting(lifting_direction=direction, recorder=recorder)
+
+            if get_product_world_pose(task, lifting_target)[0][2] > 0.85:
+                try:
+                    success_list[problem].append(grasp_number)
+                except:
+                    success_list[problem] = [grasp_number]
+                print(success_list)
 
 
+# collect_successful_grasps()
 
 
-collect_successful_grasps()
-# run_successful_grasps(lifting_method=lifting_method)
+from fmdev import test_torch
+
+for ckpt in [None, "log/20250322_1023_08/00199.pth", "log/20250322_1140_56/00199.pth", "log/20250322_1043_24/00199.pth", "log/20250322_1016_28/00199.pth"]:
+    if ckpt is None:
+        tester = None
+        lifting_method = "UP"
+    else:
+        tester = test_torch.TesterWithLiftingPlanning("~/Dataset/forcemap", "tabletop240304", [ckpt], "test")
+        mp = tester._model_params[0]
+        if mp['method'] == 'isotropic':
+            lifting_method = f"IFS_f{mp['sigma_f']:.3f}"
+        if mp['method'] == 'geometry-aware':
+            lifting_method = f"GAFS_f{mp['sigma_f']:.3f}_g{mp['sigma_g']:.3f}"
+
+    run_successful_grasps(lifting_method=lifting_method, tester=tester)
 
 
 simulation_app.close()

@@ -48,6 +48,9 @@ class TabletopPickingTask(BaseTask):
             self._ur5e = UR5e(
                 usd_path=f"{static_path}/usd/ur5e_with_gripper_and_cuboid_stand.usd",
             )
+
+            self._ur5e.set_world_pose([-0.6, 0.0, 0.72], [0, 0, 0, 1])  # scalar last
+
         elif robot == "franka":
             franka_prim_path = find_unique_string_name(
                 initial_name="/World/Franka", is_unique_fn=lambda x: not is_prim_path_valid(x)
