@@ -324,13 +324,15 @@ class TesterWithLiftingPlanning(Tester):
             print_error('cannot get arrow color (unknown key)')
 
     def plan_lifting(self, predicted_maps, object_center, object_radius=0.05):        
-        print_info(f"object center: {object_center}")
+        print_info(f"object center: {object_center}, object radius: {object_radius}")
 
         planning_results = []
         for predicted_map, (model, dataset) in zip(predicted_maps, self._model_dataset_pairs):
             force_bounds = dataset._compute_force_bounds()
+
             # predicted_force_map = np.exp(normalization(predicted_map, dataset.minmax, np.log(force_bounds)))
             predicted_force_map = normalization(predicted_map, dataset.minmax, np.log(force_bounds))
+
             print_info(f"AVERAGE predicted force: {np.average(predicted_force_map)}")
             v_omega = self._planner.pick_direction_plan(predicted_force_map, object_center, object_radius=object_radius)
             print_info(f"planning result [V, omega]: {v_omega[0]}, {v_omega[1]}")

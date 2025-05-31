@@ -470,10 +470,14 @@ class Recorder:
         contact_normals = []
         impulse_values = []
         contacting_objects = []
+        forces = {}
 
         for o in task.get_active_products():
             cs = task._env._product_sensors[o.name]
             current_frame = cs.get_current_frame()
+
+            forces[o.name] = current_frame['force']
+
             if current_frame['in_contact']:
                 for contact in current_frame['contacts']:
                     objectA = contact["body0"]
@@ -491,12 +495,12 @@ class Recorder:
         # contacting_objects = [contacting_objects[idx] for idx in uidx]
 
         pd.to_pickle(
-            (contact_positions, impulse_values, contacting_objects, contact_normals),
+            (contact_positions, impulse_values, contacting_objects, contact_normals, forces),
             self._data_dir / self._episode_name / f"contact_raw_data{self._frameNo:05d}.pkl"
         )
 
     def save_image(self):
-        rgb = self._task._cameras[0].get_rgb()  # top camera
+        rgb = self._task._cameras[1].get_rgb()  # side-view camera
         rgb_path = self._data_dir / self._episode_name / f"rgb{self._frameNo:05}.jpg"
         output_rgb = crop_center_and_resize(rgb)
         cv2.imwrite(str(rgb_path), cv2.cvtColor(output_rgb, cv2.COLOR_RGB2BGR))
@@ -512,7 +516,7 @@ class Recorder:
 def do_lifting(end_of_grasping = 120,
                end_of_planned_direction=250,               
                end_of_upward_motion=400,
-               end_of_episode = 450,
+               end_of_episode = 460,
                lifting_direction=[0., 0., 1.],
                planned_direction_distance=0.10,
                target_lifting_height=0.15,
@@ -570,14 +574,14 @@ def do_lifting(end_of_grasping = 120,
                     pos0, ori0 = get_tcp_pose()
 
             elif counter <= end_of_planned_direction:  # transport in a planned direction
-                if not move_if_possible(motion_vector=0.05 * np.array(lifting_direction), target_orientation=ori0):
+                if not move_if_possible(motion_vector=0.06 * np.array(lifting_direction), target_orientation=ori0):
                     counter = end_of_planned_direction  # go to the next phase
 
                 if distance_from(pos0) > planned_direction_distance:
                     counter = end_of_planned_direction
 
             elif counter <= end_of_upward_motion:  # transport upward
-                if not move_if_possible(motion_vector=0.05 * np.array([0., 0., 1.]), target_orientation=ori0):
+                if not move_if_possible(motion_vector=0.06 * np.array([0., 0., 1.]), target_orientation=ori0):
                     counter = end_of_upward_motion  # go to the next phase
 
                 cur_pos = get_tcp_position()
@@ -736,7 +740,10 @@ def run_successful_grasps(lifting_method, tester):
             if tester is None:
                 direction = [0., 0., 1]
             else:
-                predicted_maps, planning_results = tester.predict_from_image(img, object_center_pos, show_result=False)  ## lifting planning
+                predicted_maps, planning_results = tester.predict_from_image(img,
+                                                                             object_center_pos,
+                                                                             show_result=False,
+                                                                             object_radius=0.1)
                 print(planning_results)
                 direction = planning_results[0]
 
@@ -755,7 +762,8 @@ def run_successful_grasps(lifting_method, tester):
 
 from fmdev import test_torch
 
-for ckpt in [None, "log/20250322_1023_08/00199.pth", "log/20250322_1140_56/00199.pth", "log/20250322_1043_24/00199.pth", "log/20250322_1016_28/00199.pth"]:
+# for ckpt in [None, "log/20250322_1023_08/00199.pth", "log/20250322_1140_56/00199.pth", "log/20250322_1043_24/00199.pth", "log/20250322_1016_28/00199.pth"]:
+for ckpt in [None, "log/20250322_1140_56/00199.pth", "log/20250322_1043_24/00199.pth", "log/20250322_1016_28/00199.pth"]:    
     if ckpt is None:
         tester = None
         lifting_method = "UP"

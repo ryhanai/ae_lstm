@@ -46,7 +46,7 @@ class TabletopEnv:
             self._product_sensors[p.name] = create_contact_sensor(
                                                 name=p.name, 
                                                 link_path=f"/World/_{p.name}",
-                                                radius=0.3)
+                                                radius=-1)
 
         for cs in self._product_sensors.values():
             cs.add_raw_contact_data_to_frame()
