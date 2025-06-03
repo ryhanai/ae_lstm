@@ -449,7 +449,9 @@ class Recorder:
         self._frameNo = 0
         self._episode_name = name
         p = self._data_dir / self._episode_name
-        p.mkdir(parents=True, exist_ok=True)
+        if p.is_dir():
+            raise FileExistsError(f"Output of episode {self._episode_name} already exists in {self._data_dir}.")
+        p.mkdir(parents=True)
 
     def save_robot_state(self):
         robot_state_path = self._data_dir / self._episode_name / f"robot_state{self._frameNo:05}.pkl"
@@ -714,7 +716,12 @@ def run_successful_grasps(lifting_method, tester):
         scene_idx, lifting_target = problem
 
         for grasp_number, (pregrasp_opening, grasp) in enumerate(successful_grasps):
-            recorder.new_episode(name=f'{scene_idx}__{lifting_target}_{grasp_number:03d}__{lifting_method}')
+            try:
+                recorder.new_episode(name=f'{scene_idx}__{lifting_target}_{grasp_number:03d}__{lifting_method}')
+            except FileExistsError as e:
+                print(e)
+                continue
+
             reset_robot_state()
             task.load_bin_state(scene_idx)
 
@@ -746,6 +753,9 @@ def run_successful_grasps(lifting_method, tester):
                                                                              object_radius=0.1)
                 print(planning_results)
                 direction = planning_results[0]
+                if direction[2] < 0.0:
+                    direction[2] = 0.0
+                    direction /= np.linalg.norm(direction)
 
             do_lifting(lifting_direction=direction, recorder=recorder)
 
@@ -763,7 +773,7 @@ def run_successful_grasps(lifting_method, tester):
 from fmdev import test_torch
 
 # for ckpt in [None, "log/20250322_1023_08/00199.pth", "log/20250322_1140_56/00199.pth", "log/20250322_1043_24/00199.pth", "log/20250322_1016_28/00199.pth"]:
-for ckpt in [None, "log/20250322_1140_56/00199.pth", "log/20250322_1043_24/00199.pth", "log/20250322_1016_28/00199.pth"]:    
+for ckpt in ["log/20250322_1140_56/00199.pth"]:    
     if ckpt is None:
         tester = None
         lifting_method = "UP"

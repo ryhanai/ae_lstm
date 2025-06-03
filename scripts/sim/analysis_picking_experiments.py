@@ -10,7 +10,7 @@ from sim.generated_grasps import transform_to_centroid
 from fmdev.eipl_print_func import print_info
 
 
-def get_trajectory(data_dir, to_centroid=True, compute_force_from_impulse=False, filter_size=1):
+def get_trajectory(data_dir, to_centroid=True, compute_force_from_impulse=False, filter_size=0):
     def get_name(prim_name):
         name = prim_name.split('/')[-1]
         if name != 'table_surface':
@@ -67,15 +67,17 @@ def get_trajectory(data_dir, to_centroid=True, compute_force_from_impulse=False,
                 except:
                     pass
         else:
-            trajs[name]['contact_force'][-1] = forces[name]
+            for name, _ in bin_state:
+                trajs[name]['contact_force'][-1] = forces[name]
 
-    # for name, traj in trajs.items():
-    #     a = traj['v_pos']
-    #     pre_padding = np.tile(a[0], (filter_size, 1))
-    #     post_padding = np.tile(a[-1], (filter_size, 1))
-    #     a = np.concatenate([pre_padding, a, post_padding])
-    #     a = np.array([np.average(a[i-filter_size:i+filter_size+1], axis=0) for i in range(filter_size, len(a) - filter_size)])
-    #     traj['v_pos'] = a
+    if filter_size >= 1:
+        for name, traj in trajs.items():
+            a = traj['v_pos']
+            pre_padding = np.tile(a[0], (filter_size, 1))
+            post_padding = np.tile(a[-1], (filter_size, 1))
+            a = np.concatenate([pre_padding, a, post_padding])
+            a = np.array([np.average(a[i-filter_size:i+filter_size+1], axis=0) for i in range(filter_size, len(a) - filter_size)])
+            traj['v_pos'] = a
 
     #     a = traj['pos']
     #     padding = np.zeros((filter_size, 3))
@@ -90,13 +92,13 @@ def get_trajectory(data_dir, to_centroid=True, compute_force_from_impulse=False,
     return trajs
 
 
-def eval_trajectory(data_dir, summarize=True, success_threshold=0.05):
+def eval_trajectory(data_dir, summarize=True, success_threshold=0.05, filter_size=0):
     problem = re.findall('/(.*)_\d\d\d', str(data_dir))[0]
     scene_number, lifting_target = problem.split('__')
     results = {}
     success = False
 
-    trajs = get_trajectory(data_dir)
+    trajs = get_trajectory(data_dir, filter_size=filter_size)
 
     for name, traj in trajs.items():
         if name == lifting_target:
@@ -124,24 +126,24 @@ def eval_trajectory(data_dir, summarize=True, success_threshold=0.05):
 
 
 blacklist = [
-    '264__052_extra_large_clamp',
-    '364__gogotea_straight',
-    '580__033_spatula',
-    '864__gogotea_straight',
-    '908__toppo',
+    '129__java_curry_chukara_000', # unrealistic force
+    '177__pan_mean_000', # IFS drops
+    '361__kinokonoyama',
+    '393__052_extra_large_clamp_002', # v
+    '633__oi_ocha_350ml_000', # unrealistic force
+    '703__xylitol', # f
+    '781_004_sugar_box_001', # strange drop
+    '865__vermont_curry_amakuchi', # v
+    '939__vermont_curry_amakuchi_001', # v
 ]
 
-def do_evaluation(root_dir='picking_experiment_results', use_blacklist=False):
+def do_evaluation(episode_ids, method, root_dir):
     root_dir = Path(root_dir)
     results = []
     success_flags = []
 
-    for data_dir in root_dir.iterdir():
-        problem = re.findall('/(.*)_\d\d\d', str(data_dir))[0]
-        if use_blacklist and (problem in blacklist):
-            print(f'Skipping {data_dir} due to blacklist.')
-            continue
-
+    for eid in episode_ids:
+        data_dir = root_dir / f'picking_experiment_results_{method}' / f'{eid}__{method}'
         r, success = eval_trajectory(data_dir)
         print(f' {data_dir}: {r}, success: {success}')
         results.append(r)
@@ -155,9 +157,16 @@ def do_evaluation(root_dir='picking_experiment_results', use_blacklist=False):
     return results, success_flags
 
 
-def read_episode_ids(dir):
+def read_episode_ids(dir, use_blacklist=True):
     episode_ids = []
     for data_dir in dir.iterdir():
+        problem = re.findall('/(.*)_\d\d\d', str(data_dir))[0]
+        episode_id = re.findall('/(.*_\d\d\d)', str(data_dir))[0]
+        if use_blacklist:
+            if problem in blacklist or episode_id in blacklist:
+                print(f'Skip {data_dir} due to blacklist.')
+                continue
+
         episode_ids.append(str(data_dir).split('/')[-1].split('__UP')[0])
     return episode_ids
 
@@ -169,8 +178,10 @@ def compare_for_FRONTIERS(root_dir='picking_experiment_results'):
     results = {}
     results['episode_ids'] = read_episode_ids(root_dir / f'picking_experiment_results_{methods[0]}')    
     for method in methods:
-        results[method] = do_evaluation(str(root_dir / f'picking_experiment_results_{method}'))
-    pd.to_pickle(results, root_dir / 'picking_experiment_results.pkl')
+        results[method] = do_evaluation(results['episode_ids'], method, root_dir)
+    output_file = root_dir / 'picking_experiment_results.pkl'
+    pd.to_pickle(results, output_file)
+    output_latex_table(str(output_file))
 
 
 from functools import reduce
@@ -210,7 +221,7 @@ def output_latex_table(picking_result_file='picking_experiment_results.pkl', cap
         metrics, success_flags = v
         line = f"{format_tag(k)} & " + \
             reduce(lambda x, y: f"{x} & {y}", 
-                    [f"${x[0]:.4f} \pm {x[1]:.4f}$" for x in zip(metrics.mean(axis=0), metrics.std(axis=0))]) + \
+                    [f"${x[0]:.3f} \pm {x[1]:.3f}$" for x in zip(metrics.mean(axis=0), metrics.std(axis=0))]) + \
             ' & ' + f"${compute_success_statistics(success_flags)}$" + ' \\\\'
         print(line)
 
