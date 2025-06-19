@@ -193,9 +193,33 @@ class Recorder:
         self._frameNo += 1
 
 
+def get_product_world_pose(task, target_name: str):
+    for product in task._convenience_store.products:
+        if product.name == target_name:
+            return product.get_world_pose()  # get_world_pose() returns scalar-first quaternion
+
+
+def plan_picking_trajectory(task, target_object):
+    group, obj_name, obj_id, (init_pos, init_quat), scale = target_object
+    tp = get_product_world_pose(task, f'{obj_name}_{obj_id[0]}_{obj_id[1]}')
+    print(f'Target pose: {target_pose}')
+    bb = np.array(group.object_dimension)
+    slide = 0.04
+    wps = [
+        tp + [bb[0] / 2 + 0.01, 0, 0.05],
+        tp + [bb[0] / 2 + 0.01, 0, 0],
+        tp + [bb[0] / 2 + 0.0, 0, 0],
+        tp + [bb[0] / 2 - slide, 0, 0],
+        tp + [bb[0] / 2 - slide, + 0.01 0, 0.05],
+        tp + [-bb[0] / 2 - slide - 0.01, 0, 0.05],
+        tp + [-bb[0] / 2 - slide - 0.01, 0, 0],
+    ]
+    return wps
+
+
 def generate_data():
     waypoints = []
-    waypoints_reached = False
+    waypoints_reached = True
 
     while simulation_app.is_running():
         my_world.step(render=True)
@@ -203,12 +227,13 @@ def generate_data():
         if waypoints == [] and waypoints_reached:
             # reset_robot_state()
             print('change layout')
-            target_object = task._convencience_store.display_products()
+            target_object = task._convenience_store.display_products()
             waypoints = []
+            waypoints_reached = False
 
         if my_world.is_playing():
             target_position, target_orientation = target.get_world_pose()
-            print(f'Target pose: {target_position}, {target_orientation}')
+            # print(f'Target pose: {target_position}, {target_orientation}')
 
             next_position, next_orientation = target_controller.forward(
                 position=target_position,

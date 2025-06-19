@@ -3,6 +3,7 @@ from functools import reduce
 
 import numpy as np
 import transforms3d as tf
+import random
 from dataset.object_loader import ObjectInfo
 
 
@@ -64,7 +65,7 @@ class GridProductGroup(ProductGroup):
         if n_levels == None:
             n_levels = np.random.randint(self.number_of_objects[2][0], self.number_of_objects[2][1])
 
-        product_name = np.random.choice(self.flavors)
+        product_name = random.choice(self.flavors)
 
         n_objects = 0
         for i in range(n_rows):
@@ -351,8 +352,7 @@ class DisplayPlanner:
 
         print(self._plan)
 
-        target_object = find_pickable_object_in_group(self._plan[1])
-
+        target_object = random.choice(find_pickable_object(self._plan))
         return self._plan, target_object
 
     def sample_group(self, base_frame):
@@ -361,7 +361,14 @@ class DisplayPlanner:
         g_inst.plan(base_frame)
         self._group_id += 1
         return g_inst
-    
+
+
+def find_pickable_object(plan):
+    pickable_objects = []
+    for group in plan:
+        pickable_objects.extend(find_pickable_object_in_group(group))
+    return pickable_objects
+
 
 def find_pickable_object_in_group(group):
     def isin_approx(pos, poss, atol=1e-2):
@@ -383,7 +390,12 @@ def find_pickable_object_in_group(group):
                 continue
             if isin_approx(pos + [-2*group.object_dimension[2], 0, 0], poss):  ## another object is on the front of this
                 continue
-            pickable.append((name, object_id, (pos, quat), scale))
+
+            if pos[1] < -0.5 or pos[1] > 0.5:  # rough reacheablity test
+                continue
+
+            pickable.append((group, name, object_id, (pos, quat), scale))
 
     return pickable
+
 
