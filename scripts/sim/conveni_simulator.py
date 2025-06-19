@@ -1,6 +1,7 @@
 from operator import itemgetter
 from pathlib import Path
 import pandas as pd
+# from pyrfc3339 import generate
 import transforms3d as tf
 import numpy as np
 
@@ -192,42 +193,46 @@ class Recorder:
         self._frameNo += 1
 
 
-def generate_sample_conveni_scenes(number_of_scenes):
-    pass
+def generate_data():
+    waypoints = []
+    waypoints_reached = False
 
-counter = 0
-while simulation_app.is_running():
-    my_world.step(render=True)
-    if my_world.is_playing():
-        if counter % 100 == 0:
+    while simulation_app.is_running():
+        my_world.step(render=True)
+
+        if waypoints == [] and waypoints_reached:
+            # reset_robot_state()
             print('change layout')
-            task._convencience_store.display_products()
-        counter += 1
+            target_object = task._convencience_store.display_products()
+            waypoints = []
 
-        target_position, target_orientation = target.get_world_pose()
-        next_position, next_orientation = target_controller.forward(
-            position=target_position,
-            orientation=target_orientation,
-        )
-        target.set_world_pose(
-            position=next_position,
-            orientation=next_orientation,
-        )
+        if my_world.is_playing():
+            target_position, target_orientation = target.get_world_pose()
+            print(f'Target pose: {target_position}, {target_orientation}')
 
-        action: ArticulationAction = rmpflow_controller.forward(
-            target_end_effector_position=next_position,
-            target_end_effector_orientation=next_orientation,
-        )
-        ur5e.get_articulation_controller().apply_action(control_actions=action)
-
-        optional_action: str | None = target_controller.get_gripper_action()
-        if optional_action is not None:
-            gripper_action: ArticulationAction = gripper.forward(optional_action)
-            gripper.apply_action(
-                ArticulationAction(
-                    joint_positions=itemgetter(7, 9)(gripper_action.joint_positions)
-                )
+            next_position, next_orientation = target_controller.forward(
+                position=target_position,
+                orientation=target_orientation,
             )
+            target.set_world_pose(
+                position=next_position,
+                orientation=next_orientation,
+            )
+
+            action: ArticulationAction = rmpflow_controller.forward(
+                target_end_effector_position=next_position,
+                target_end_effector_orientation=next_orientation,
+            )
+            ur5e.get_articulation_controller().apply_action(control_actions=action)
+
+            optional_action: str | None = target_controller.get_gripper_action()
+            if optional_action is not None:
+                gripper_action: ArticulationAction = gripper.forward(optional_action)
+                gripper.apply_action(
+                    ArticulationAction(
+                        joint_positions=itemgetter(7, 9)(gripper_action.joint_positions)
+                    )
+                )
 
 
 def do_lifting(end_of_grasping = 120,
@@ -460,4 +465,5 @@ def run_successful_grasps(lifting_method, tester):
                 print(success_list)
 
 
+generate_data()
 simulation_app.close()

@@ -350,7 +350,10 @@ class DisplayPlanner:
                 group_base_frame[1, 3] -= np.random.uniform(0.03, 0.2)
 
         print(self._plan)
-        return self._plan
+
+        target_object = find_pickable_object_in_group(self._plan[1])
+
+        return self._plan, target_object
 
     def sample_group(self, base_frame):
         g = np.random.choice(self._groups)
@@ -358,3 +361,29 @@ class DisplayPlanner:
         g_inst.plan(base_frame)
         self._group_id += 1
         return g_inst
+    
+
+def find_pickable_object_in_group(group):
+    def isin_approx(pos, poss, atol=1e-2):
+        return np.any([np.allclose(pos, x, atol=atol) for x in poss])
+    
+    pickable = []
+    dim = group.object_dimension
+    if isinstance(group, CalorieMateGroup) \
+        or isinstance(group, JavaCurryGroup) \
+        or isinstance(group, CannedIwashiGroup) \
+        or isinstance(group, KaoSoapGroup):
+        poss = [o[2][0] for o in group._plan]
+        for name, object_id, (pos, quat), scale  in group._plan:
+            if isin_approx(pos + [0, 0, group.object_dimension[2]], poss):  ## another object is on top of this
+                continue
+            if isin_approx(pos + [group.object_dimension[2], 0, 0], poss):  ## another object is on the back of this
+                continue
+            if isin_approx(pos + [-group.object_dimension[2], 0, 0], poss):  ## another object is on the front of this
+                continue
+            if isin_approx(pos + [-2*group.object_dimension[2], 0, 0], poss):  ## another object is on the front of this
+                continue
+            pickable.append((name, object_id, (pos, quat), scale))
+
+    return pickable
+
