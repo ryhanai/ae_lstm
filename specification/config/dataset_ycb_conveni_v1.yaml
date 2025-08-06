@@ -136,7 +136,7 @@ all:
     - 055_baseball
     - 056_tennis_ball
     - 061_foam_brick
-    - 001_chips_can
+    # - 001_chips_can  # no google_16k/textured.obj
     - 021_bleach_cleanser
     - 023_wine_glass
     - 031_spoon

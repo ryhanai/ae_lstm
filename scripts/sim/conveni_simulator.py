@@ -1,9 +1,9 @@
 from operator import itemgetter
 from pathlib import Path
 import pandas as pd
-# from pyrfc3339 import generate
 import transforms3d as tf
 import numpy as np
+import re
 
 from omni.isaac.kit import SimulationApp
 
@@ -20,16 +20,11 @@ from omni.isaac.manipulators.grippers import ParallelGripper
 
 from aist_sb_ur5e.task import ConveniPickupTask
 from sim.controller.kinematics_solver import KinematicsSolver  # for UR5e
-
+from sim.generated_grasps import *
 
 message_id = 0
 
 oi = ObjectInfo()
-
-def get_product_world_pose(task, target_name: str):
-    for product in task._env.products:
-        if product.name == target_name:
-            return product.get_world_pose()  # get_world_pose() returns scalar-first quaternion
 
 
 def gripper_pose_in_world_mimo(task, grasp, target_name: str, pregrasp_opening=0.13):
@@ -50,7 +45,9 @@ def gripper_pose_in_world_mimo(task, grasp, target_name: str, pregrasp_opening=0
 
 def get_object_center(task, lifting_target):
     obj_pos, obj_quat = get_product_world_pose(task, lifting_target)
-    return transform_to_centroid(lifting_target, obj_pos, obj_quat)
+    product_name = re.findall('(.*)_\d+_\d+', lifting_target)[0]  # product instance name -> product (class) name
+    print(f'PRODUCT: {product_name}')
+    return transform_to_centroid(product_name, obj_pos, obj_quat)
 
 
 HELLO_ISAAC_ROOT = Path("~/Program/hello-isaac-sim").expanduser()
@@ -107,6 +104,9 @@ def convert_to_joint_angle(finger_distance):
 
 def reset_robot_state():
     js = ur5e.get_joints_default_state()
+    q = convert_to_joint_angle(0.015)
+    js.positions[7] = q
+    js.positions[9] = -q
     ur5e.set_joint_positions(js.positions)
 
 
@@ -201,63 +201,136 @@ def get_product_world_pose(task, target_name: str):
 
 def plan_picking_trajectory(task, target_object):
     group, obj_name, obj_id, (init_pos, init_quat), scale = target_object
-    tp = get_product_world_pose(task, f'{obj_name}_{obj_id[0]}_{obj_id[1]}')
-    print(f'Target pose: {target_pose}')
+    target_pose = get_object_center(task, f'{obj_name}_{obj_id[0]}_{obj_id[1]}')
+    tp = target_pose[0]
     bb = np.array(group.object_dimension)
-    slide = 0.04
+    print(f'BB={bb}')
+    slide = bb[0] / 4.
+    dz = 0.01
     wps = [
-        tp + [bb[0] / 2 + 0.01, 0, 0.05],
-        tp + [bb[0] / 2 + 0.01, 0, 0],
-        tp + [bb[0] / 2 + 0.0, 0, 0],
-        tp + [bb[0] / 2 - slide, 0, 0],
-        tp + [bb[0] / 2 - slide, + 0.01 0, 0.05],
-        tp + [-bb[0] / 2 - slide - 0.01, 0, 0.05],
-        tp + [-bb[0] / 2 - slide - 0.01, 0, 0],
+        np.array([0.45, 0.3, 1.35]),       # initial position
+        tp + [bb[0] / 2 + 0.04, 0, dz + 0.05],  # back and up of the object
+        tp + [bb[0] / 2 + 0.04, 0, dz],     # back of the object
+        tp + [bb[0] / 2 + 0.0, 0, dz],      # back of and touching the object
+        tp + [bb[0] / 2 - slide, 0, dz + 0.005],    # slide a little the object
+        tp + [bb[0] / 2 - slide + 0.04, 0, dz + 0.05],  # back and up of the object
+        # tp + [-bb[0] / 2 - slide - 0.04, 0, 0.05],
+        # tp + [-bb[0] / 2 - slide - 0.04, 0, 0],
     ]
+
+    wps = [p + np.array([0, 0, 0.2]) for p in wps] # offset between "the middle of finger tips" and 'tool0'
     return wps
+
+def get_tcp_pose():
+    return ur5e._kinematics.compute_forward_kinematics('tool0', ur5e.get_joint_positions()[:6])
+
+def get_tcp_position():
+    return get_tcp_pose()[0]
+
+def move_if_possible(motion_vector, target_orientation):
+    target_position, target_orientation = get_tcp_pose()
+    # print(f'CURRENT TCP: {target_position}, {target_orientation}')    
+    # print(f'MOTION VECTOR: {motion_vector}')
+
+    target_position += motion_vector
+    target_orientation = tf.quaternions.mat2quat(target_orientation)
+
+    position_tolerance = 0.001
+    orientation_tolerance = 0.02
+    ik_action, success = ik_solver.compute_inverse_kinematics(target_position, target_orientation, position_tolerance, orientation_tolerance)
+
+    if success:
+        if np.allclose(ur5e.get_joint_positions()[:6], ik_action.joint_positions[:6], atol=0.4):
+            joint_target = list(ik_action.joint_positions) + [None]*6
+            ur5e.get_articulation_controller().apply_action(ArticulationAction(joint_target))
+            return True
+        else:
+            joint_target = list(ur5e.get_joint_positions()[:6]) + [None]*6                        
+            print('too large difference in arm joint positions!')
+            return False
+    else:
+        joint_target = list(ur5e.get_joint_positions()[:6]) + [None]*6
+        print('IK failed!')
+        return False
+
+
+def save_initial_poses(task):
+    initial_poses = {}
+    for product in task._convenience_store.products:
+        obj_pos, obj_quat = product.get_world_pose()
+        product_class_name = re.findall('(.*)_\d+_\d+', product.name)[0]  # product instance name -> product (class) name    
+        initial_poses[product.name] = transform_to_centroid(product_class_name, obj_pos, obj_quat)
+
+
+def success_condition_satisfied(task, target_object, initial_poses):
+    is_success = False
+    # target object moved as is expected
+    # group, obj_name, obj_id, (init_pos, init_quat), scale = target_object
+    # target_name = f'{obj_name}_{obj_id[0]}_{obj_id[1]}'
+    # bb = np.array(group.object_dimension)    
+    # current_position = get_object_center(task, target_name)[0]
+    # initial_position = initial_poses[target_name][0]
+    # if np.linalg.norm(current_position - initial_position) > 0.01:
+    #     is_success = False
+    #     print(f'{target_name} moved')
+
+    # other objects were not moved
+    for p in task._convenience_store.products:
+        current_position = get_object_center(p.name)
+        initial_position = initial_poses[p.name][0]
+        if np.linalg.norm(current_position - initial_position) > 0.01:
+            is_success = False
+            print(f'{p.name} moved')
+            break
+
+    return is_success
 
 
 def generate_data():
     waypoints = []
-    waypoints_reached = True
+    goal_reached = True
 
     while simulation_app.is_running():
         my_world.step(render=True)
 
-        if waypoints == [] and waypoints_reached:
-            # reset_robot_state()
-            print('change layout')
+        if waypoints == []:
+            reset_robot_state()
+
             target_object = task._convenience_store.display_products()
-            waypoints = []
-            waypoints_reached = False
+            initial_poses = save_initial_poses(task)
+            waypoints = plan_picking_trajectory(task, target_object)
+            # print(f"waypoints: {target_object}, {waypoints}")
+            goal_reached = False
 
         if my_world.is_playing():
-            target_position, target_orientation = target.get_world_pose()
-            # print(f'Target pose: {target_position}, {target_orientation}')
+            next_goal_position = waypoints[0]
+            current_position, current_quat = get_tcp_pose()
+            motion_v = next_goal_position - current_position
+            max_v = 0.08
+            min_v = 0.01
 
-            next_position, next_orientation = target_controller.forward(
-                position=target_position,
-                orientation=target_orientation,
-            )
-            target.set_world_pose(
-                position=next_position,
-                orientation=next_orientation,
-            )
+            if np.linalg.norm(motion_v) < 0.005:
+                waypoints.pop(0)  # reached the current waypoint
+                if len(waypoints) == 0:
+                    goal_reached = True                    
+                    if success_condition_satisfied(task, target_object, initial_poses):
+                        print('[TASK SUCCESS]: goal reached')
+                    else:
+                        print('[TASK FAILURE]: success condition not satisfied')
+                else:                    
+                    print('move onto the next waypoint')
 
-            action: ArticulationAction = rmpflow_controller.forward(
-                target_end_effector_position=next_position,
-                target_end_effector_orientation=next_orientation,
-            )
-            ur5e.get_articulation_controller().apply_action(control_actions=action)
+            if np.linalg.norm(motion_v) > max_v:
+                motion_v *= (max_v / np.linalg.norm(motion_v))
+            elif np.linalg.norm(motion_v) < min_v:
+                motion_v *= (min_v / np.linalg.norm(motion_v))
 
-            optional_action: str | None = target_controller.get_gripper_action()
-            if optional_action is not None:
-                gripper_action: ArticulationAction = gripper.forward(optional_action)
-                gripper.apply_action(
-                    ArticulationAction(
-                        joint_positions=itemgetter(7, 9)(gripper_action.joint_positions)
-                    )
-                )
+            # target_quat = current_quat
+            target_quat = tf.euler.euler2mat(0, 0, 0)
+            if not move_if_possible(motion_vector=motion_v, target_orientation=target_quat):
+                print('[TASK FAILURE]: cannot move further')
+                waypoints = []
+                goal_reached = False
 
 
 def do_lifting(end_of_grasping = 120,
@@ -285,8 +358,8 @@ def do_lifting(end_of_grasping = 120,
         target_position += motion_vector
         target_orientation = tf.quaternions.mat2quat(target_orientation)
 
-        position_tolerance = 0.001
-        orientation_tolerance = 0.02
+        position_tolerance = 0.002
+        orientation_tolerance = 0.03
         ik_action, success = ik_solver.compute_inverse_kinematics(target_position, target_orientation, position_tolerance, orientation_tolerance)
 
         if success:

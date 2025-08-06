@@ -338,21 +338,25 @@ class DisplayPlanner:
             KaoSoapGroup,
         ]
 
-    def display_plan(self, pos_x=0.60, pos_y_start=0.80, pos_y_end=-0.50, pos_z=1.165):
-        self._group_id = 0
-        self._plan = []
-        group_base_frame = tf.affines.compose(T=[pos_x, pos_y_start, pos_z], R=tf.euler.euler2mat(0, 0, 0), Z=[1, 1, 1])
-        while group_base_frame[1, 3] > pos_y_end:
-            g = self.sample_group(group_base_frame)
-            self._plan.append(g)
-            group_base_frame[1, 3] -= g.get_width()
-            # randomly make open space between groups
-            if np.random.randint(8) == 0:
-                group_base_frame[1, 3] -= np.random.uniform(0.03, 0.2)
+    def display_plan(self, pos_x=0.58, pos_y_start=0.80, pos_y_end=-0.50, pos_z=1.165):
+        while True:
+            self._group_id = 0
+            self._plan = []
+            group_base_frame = tf.affines.compose(T=[pos_x, pos_y_start, pos_z], R=tf.euler.euler2mat(0, 0, 0), Z=[1, 1, 1])
+            while group_base_frame[1, 3] > pos_y_end:
+                g = self.sample_group(group_base_frame)
+                self._plan.append(g)
+                group_base_frame[1, 3] -= g.get_width()
+                # randomly make open space between groups
+                if np.random.randint(8) == 0:
+                    group_base_frame[1, 3] -= np.random.uniform(0.03, 0.2)
 
-        print(self._plan)
+            # print(self._plan)
+            target_objects = find_pickable_object(self._plan)
+            if len(target_objects) > 0:
+                target_object = random.choice(target_objects)
+                break
 
-        target_object = random.choice(find_pickable_object(self._plan))
         return self._plan, target_object
 
     def sample_group(self, base_frame):
@@ -371,15 +375,13 @@ def find_pickable_object(plan):
 
 
 def find_pickable_object_in_group(group):
-    def isin_approx(pos, poss, atol=1e-2):
+    def isin_approx(pos, poss, atol=0.03):
         return np.any([np.allclose(pos, x, atol=atol) for x in poss])
     
     pickable = []
     dim = group.object_dimension
     if isinstance(group, CalorieMateGroup) \
-        or isinstance(group, JavaCurryGroup) \
-        or isinstance(group, CannedIwashiGroup) \
-        or isinstance(group, KaoSoapGroup):
+        or isinstance(group, KaoSoapGroup):         # or isinstance(group, CannedIwashiGroup)          or isinstance(group, JavaCurryGroup) \
         poss = [o[2][0] for o in group._plan]
         for name, object_id, (pos, quat), scale  in group._plan:
             if isin_approx(pos + [0, 0, group.object_dimension[2]], poss):  ## another object is on top of this
@@ -391,7 +393,7 @@ def find_pickable_object_in_group(group):
             if isin_approx(pos + [-2*group.object_dimension[2], 0, 0], poss):  ## another object is on the front of this
                 continue
 
-            if pos[1] < -0.5 or pos[1] > 0.5:  # rough reacheablity test
+            if pos[1] < 0.1 or pos[1] > 0.5:  # rough reacheablity test
                 continue
 
             pickable.append((group, name, object_id, (pos, quat), scale))
