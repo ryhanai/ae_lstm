@@ -76,6 +76,8 @@ while simulation_app.is_running():
         optional_action: str | None = target_controller.get_gripper_action()
         if optional_action is not None:
             gripper_action: ArticulationAction = gripper.forward(optional_action)
+            print(f"gripper action = {optional_action}, {gripper_action.joint_positions}")
             gripper.apply_action(ArticulationAction(joint_positions=itemgetter(7, 9)(gripper_action.joint_positions)))
+            print(f"joint positions = {ur5e.get_joint_positions()}")
 
 simulation_app.close()
