@@ -1,4 +1,4 @@
-from conveni_scene_generator_common import *
+from dataset.conveni_scene_generator_common import *
 
 
 class CupNoodleGroup(GridProductGroup):

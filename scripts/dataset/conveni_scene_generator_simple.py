@@ -1,4 +1,4 @@
-from conveni_scene_generator_common import *
+from dataset.conveni_scene_generator_common import *
 
 
 class XylitolBottleGroup(GridProductGroup):
@@ -120,9 +120,12 @@ class DisplayPlanner(DisplayPlannerBase):
             CannedIwashiGroup,
             KaoSoapGroup,
         ],
-        *args,
+        pos_x=0.57,
+        pos_y_start=0.40,
+        pos_y_end=-0.40,
+        pos_z=1.165,
     ):
-        super().__init__(groups, *args)
+        super().__init__(groups, pos_x, pos_y_start, pos_y_end, pos_z)
 
     def find_pickable_object_in_group(self, group):
         def isin_approx(pos, poss, atol=0.01):
@@ -155,4 +158,4 @@ class DisplayPlanner(DisplayPlannerBase):
         return pickable
 
 
-dp = DisplayPlanner()
+dp = DisplayPlanner(pos_x=0.57, pos_y_start=0.35, pos_y_end=-0.30, pos_z=1.165)
