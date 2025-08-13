@@ -18,12 +18,13 @@ class LeRobotRecorder:
 
     VALIDITY_LABEL = "valid"
 
-    def __init__(self, output_base="Downloads/conveni_gr00t"):
+    def __init__(self, output_base="Downloads/conveni_gr00t", image_size=[120, 160]):
         self.OUTPUT_BASE = Path.home() / output_base
-        self.image_size = [120, 160]
+        self.image_size = image_size
         self.FPS = 60.0  # Isaac sim is 60 FPS by default, ALOHA is 30FPS
 
         # scan data directory and find the next episode index
+        self._tasks = {}
         self._idx = 0
 
     def new_episode(self, task_description):
@@ -55,12 +56,14 @@ class LeRobotRecorder:
     def save_episode(self):
         # === This is called at the end of an episode ===
         self.save_video()
+        self.update_task_meta()  # This must be before save_parquet()
         self.save_parquet()
-        self.update_task_meta()
-        self._id += 1
-
-    def __del__(self):
+        self.add_episode_meta()
         self.write_other_meta()
+        self._idx += 1
+
+    # def __del__(self):
+    #     self.write_other_meta()
 
     def save_video(self):
         image_left = np.array(self._image_left)
@@ -74,8 +77,9 @@ class LeRobotRecorder:
         h, w, _ = image_left[0].shape
         out1 = cv2.VideoWriter(str(video_path1), cv2.VideoWriter_fourcc(*'mp4v'), self.FPS, (w, h))
         out2 = cv2.VideoWriter(str(video_path2), cv2.VideoWriter_fourcc(*'mp4v'), self.FPS, (w, h))
-        out1.write(image_left[0])
-        out2.write(image_right[0])
+        for i in range(len(image_left)):
+            out1.write(image_left[i])
+            out2.write(image_right[i])
         out1.release()
         out2.release()
 
@@ -95,42 +99,47 @@ class LeRobotRecorder:
             records.append({
                 "observation.state": state.tolist(),
                 "action": action[t].tolist(),
-                "timestamp": float(t),
-                "frame_index": t,
+                "timestamp": float(t) / self.FPS,
+                # "frame_index": t,
                 "episode_index": self._idx,
-                "index": self._idx * 10000 + t,
-                "task_index": 0
+                "index": t,
+                "task_index": self._tasks[self._task_description],  # task index
             })
             
         df = pd.DataFrame(records)
         pq.write_table(pa.Table.from_pandas(df), self.DATA_DIR / f"{episode_id}.parquet")
 
-    def add_episode_meta(self, idx, task_description, num_steps):
+    def add_episode_meta(self):
         # === Write meta/episodes.jsonl ===
-        with open(str(self.META_DIR / "episodes.jsonl"), "w+") as f:
+        with open(str(self.META_DIR / "episodes.jsonl"), "a") as f:
             ep = {
-                "episode_index": idx,
-                "tasks": [task_description, self.VALIDITY_LABEL],
-                "length": num_steps
+                "episode_index": self._idx,
+                "tasks": [self._task_description, self.VALIDITY_LABEL],
+                "length": len(self._action)
             }
             f.write(json.dumps(ep) + "\n")
 
     def update_task_meta(self):
+        print(f"Updating task metadata for episode {self._idx}...")
         task_descriptions = []
-        task_json = "tasks.jsonl"
-        with open(self.META_DIR / task_json, "r") as f:
-            while True:
-                l = f.readline()
-                if l == "":
-                    break
-                task_descriptions.append(json.loads(l))
+        task_json = self.META_DIR / "tasks.jsonl"
+        # if task_json.exists():
+        #     with open(task_json, "r") as f:
+        #         while True:
+        #             l = f.readline()
+        #             if l == "":
+        #                 break
+        #             task_descriptions.append(json.loads(l)["task"])
 
-            if not self._task_description in task_descriptions:
-                task_descriptions.append(self._task_description)
+        #         if not self._task_description in task_descriptions:
+        #             task_descriptions.append(self._task_description)
+
+        if not (self._task_description in self._tasks):
+            self._tasks[self._task_description] = len(self._tasks)
 
         # === Write meta/tasks.jsonl ===
-        with open(self.META_DIR / task_json, "w") as f:
-            for task_index, task_description in enumerate(sorted(task_descriptions)):
+        with open(task_json, "w") as f:
+            for task_description, task_index in self._tasks.items():
                 task_entry = {
                     "task_index": task_index,
                     "task": task_description
@@ -138,16 +147,18 @@ class LeRobotRecorder:
                 f.write(json.dumps(task_entry) + "\n")
 
     def write_other_meta(self):
+        print("Writing other metadata...")
+
         # === Write meta/modality.json ===
         modality_config = {
             "state": {
-                "qpos": {"start": 0, "end": 7},
-                "qvel": {"start": 0, "end": 7},
-                "effort": {"start": 0, "end": 7}
+                "qpos": {"start": 0, "end": 6},
+                "qvel": {"start": 0, "end": 6},
+                "effort": {"start": 0, "end": 6}
             },
             "action": {
-                "qpos": {"start": 0, "end": 7},
-                "qvel": {"start": 0, "end": 7}
+                "qpos": {"start": 0, "end": 6},
+                "qvel": {"start": 0, "end": 6}
             },
             "video": {
                 "left_view": {
@@ -158,13 +169,16 @@ class LeRobotRecorder:
                 },
             },
             "annotation": {
-                "human": {
-                    "action": {
-                        "task_description": { "type": "text" },
-                        "validity": { "type": "text" }
-                    }
-                }
+                "human.task_description": {
+                    "original_key": "task_index",
+                },
             }
+                # "human": {
+                #     "action": {
+                #         "task_description": { "type": "text" },
+                #         "validity": { "type": "text" }
+                #     }
+                # }
         }
         with open(self.META_DIR / "modality.json", "w") as f:
             json.dump(modality_config, f, indent=2)
@@ -178,7 +192,7 @@ class LeRobotRecorder:
             "robot_type": "UR5e_2F140",
             "total_episodes": number_of_episodes,
             "total_frames": sum([len(pd.read_parquet(f)) for f in data_files]),
-            "total_tasks": 1,
+            "total_tasks": len(self._tasks),
             "total_videos": number_of_episodes,
             "total_chunks": 1,
             "chunks_size": 1000,
@@ -215,30 +229,30 @@ class LeRobotRecorder:
                 },
                 "observation.state": {
                     "dtype": "float64",
-                    "shape": [21],
-                    "names": [f"motor_{i}" for i in range(21)]
+                    "shape": [18],
+                    "names": [f"motor_{i}" for i in range(18)]
                 },
                 "action": {
                     "dtype": "float64",
-                    "shape": [7],
-                    "names": [f"motor_{i}" for i in range(7)]
+                    "shape": [6],
+                    "names": [f"motor_{i}" for i in range(6)]
                 },
                 "timestamp": {
                     "dtype": "float64",
                     "shape": [1]
                 },
-                "annotation.human.action.task_description": {
-                    "dtype": "int64",
-                    "shape": [1]
-                },
+                # "annotation.human.task_description": {
+                #     "dtype": "int64",
+                #     "shape": [1]
+                # },
                 "task_index": {
                     "dtype": "int64",
                     "shape": [1]
                 },
-                "annotation.human.validity": {
-                    "dtype": "int64",
-                    "shape": [1]
-                },
+                # "annotation.human.validity": {
+                #     "dtype": "int64",
+                #     "shape": [1]
+                # },
                 "episode_index": {
                     "dtype": "int64",
                     "shape": [1]

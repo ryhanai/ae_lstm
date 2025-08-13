@@ -23,6 +23,7 @@ from sim.controller.kinematics_solver import KinematicsSolver  # for UR5e
 from sim.generated_grasps import *
 
 message_id = 0
+image_size = [120, 160]  # [height, width]
 
 oi = ObjectInfo()
 
@@ -119,7 +120,7 @@ def crop_center_and_resize(img, crop_size=[540, 768], output_size=[240, 320]):
         int((cam_height - height) / 2) : int((cam_height - height) / 2 + height),
         int((cam_width - width) / 2) : int((cam_width - width) / 2 + width),
     ]
-    return cv2.resize(cropped_img, output_size)
+    return cv2.resize(cropped_img, (output_size[1], output_size[0]))
 
 
 # class Recorder:
@@ -300,6 +301,7 @@ def success_condition_satisfied(task, target_object, initial_poses):
             current_position = get_object_center(task, p.name)[0]
             initial_position = initial_poses[p.name][0]
             if np.linalg.norm(current_position - initial_position) > 0.01:
+                print(f'{p.name} moved, initial={initial_position}, current={current_position}')
                 is_success = False
                 break
 
@@ -309,22 +311,23 @@ def success_condition_satisfied(task, target_object, initial_poses):
 def generate_data():
     waypoints = []
     recorder = LeRobotRecorder()
+    frame_number = 0
 
     while simulation_app.is_running():
         my_world.step(render=True)
 
         if waypoints == []:
             reset_robot_state()
-
             target_object = task._convenience_store.display_products()
-            initial_poses = save_initial_poses(task)
+            goal_reached = False            
+            frame_number = 0
             waypoints = plan_picking_trajectory(task, target_object)
-            # print(f"waypoints: {target_object}, {waypoints}")
-            goal_reached = False
-
             recorder.new_episode(task_description=f"pick a {target_object[1]}")
-            
-        if my_world.is_playing():
+
+        if frame_number == 4:
+            initial_poses = save_initial_poses(task)
+
+        if my_world.is_playing() and frame_number > 4:
             next_goal_position = waypoints[0]
             current_position, current_quat = get_tcp_pose()
             motion_v = next_goal_position - current_position
@@ -355,20 +358,25 @@ def generate_data():
                 waypoints = []
                 goal_reached = False
             else:
-                image_left = task._cameras[0].get_rgb()
-                image_right = task._cameras[1].get_rgb()
-                if image_left.shape == (720, 1280, 3) and image_right.shape == (720, 1280, 3):
-                    # first call of get_rgb() returns an array of shape (0,)
-                    image_left = crop_center_and_resize(image_left, output_size=[120, 160])
-                    image_right = crop_center_and_resize(image_right)
-                    recorder.step(
-                        qpos=qpos,
-                        qvel=qvel,
-                        effort=effort,
-                        action=action,
-                        image_left=image_left,
-                        image_right=image_right,
-                    )
+                image_left = crop_center_and_resize(task._cameras[0].get_rgb(), output_size=image_size)
+                image_left = cv2.cvtColor(image_left, cv2.COLOR_RGB2BGR)
+                image_right = crop_center_and_resize(task._cameras[1].get_rgb(), output_size=image_size)
+                image_right = cv2.cvtColor(image_right, cv2.COLOR_RGB2BGR)
+                recorder.step(
+                    qpos=qpos,
+                    qvel=qvel,
+                    effort=effort,
+                    action=action,
+                    image_left=image_left,
+                    image_right=image_right,
+                )
+
+        if frame_number >= 650:
+            print("Episode timed out")
+            waypoints = []
+            goal_reached = False
+
+        frame_number += 1
 
 
 # def do_lifting(
