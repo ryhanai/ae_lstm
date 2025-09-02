@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 
 from omni.isaac.kit import SimulationApp
-simulation_app = SimulationApp({"headless": False})
+
+simulation_app = SimulationApp({"headless": True})
 
 import os
 from abc import ABCMeta, abstractmethod
@@ -14,8 +15,8 @@ import omni.isaac.core.utils.prims as prim_utils
 import omni.usd
 import pandas as pd
 import scipy
-from force_estimation import forcemap
 from core.object_loader import ObjectInfo
+from force_estimation import forcemap
 from omni.isaac.core.materials import PhysicsMaterial
 from omni.isaac.core.prims.xform_prim import XFormPrim
 from omni.isaac.sensor import Camera, ContactSensor
@@ -154,7 +155,7 @@ class Scene:
     def __init__(self, world, env_config):
         self._world = world
         self._env_config = env_config
-        self._conf = ObjectInfo(env_config['object_set'])
+        self._conf = ObjectInfo(dataset=env_config["object_set"], split=env_config["split"])
         self._loaded_objects = []
         self._used_objects = []
         self._number_of_lights = 3
@@ -251,8 +252,6 @@ class Scene:
         camera.set_horizontal_aperture(2.7288)
         camera.set_vertical_aperture(1.5498)
         camera.set_clipping_range(0.1, 5.0)
-        # camera.add_distance_to_image_plane_to_frame()  # Needed to measure depth        
-        camera.add_distance_to_camera_to_frame()
         return camera
 
     def create_lights(self):
@@ -282,12 +281,12 @@ class Scene:
             set_translate(prim, Gf.Vec3d(pos_xy[0], pos_xy[1], pos_z))
 
             # IsaacSim 2022.2.0
-            # prim.GetAttribute("intensity").Set(1000.0 + 15000.0 * np.random.random())
-            # prim.GetAttribute("color").Set(Gf.Vec3f(*(np.array([0.2, 0.2, 0.2]) + 0.6 * np.random.random(3))))
+            prim.GetAttribute("intensity").Set(1000.0 + 15000.0 * np.random.random())
+            prim.GetAttribute("color").Set(Gf.Vec3f(*(np.array([0.2, 0.2, 0.2]) + 0.6 * np.random.random(3))))
 
             # IsaacSim > 2023
-            prim.GetAttribute("inputs:intensity").Set(1000.0 + 15000.0 * np.random.random())
-            prim.GetAttribute("inputs:color").Set(Gf.Vec3f(*(np.array([0.2, 0.2, 0.2]) + 0.6 * np.random.random(3))))
+            # prim.GetAttribute("inputs:intensity").Set(1000.0 + 15000.0 * np.random.random())
+            # prim.GetAttribute("inputs:color").Set(Gf.Vec3f(*(np.array([0.2, 0.2, 0.2]) + 0.6 * np.random.random(3))))
 
     def randomize_camera_parameters(self):
         d = 0.7 + 0.2 * (np.random.random() - 0.5)
@@ -322,8 +321,6 @@ class Scene:
     def read_contact_sensor(self, contact_sensor):
         csif = contact_sensor._contact_sensor_interface
         cs_raw_data = csif.get_contact_sensor_raw_data(contact_sensor.prim_path)
-        print(f'CURRENT_FRAME: {contact_sensor.get_current_frame()}')
-        print(f'{len(cs_raw_data)}: {cs_raw_data}')
         # backend_utils = simulation_context.backend_utils
         # device = simulation_context.device
         backend_utils = self._world.backend_utils
@@ -469,8 +466,8 @@ class RandomTableScene(RandomScene):
             self._camera.set_horizontal_aperture(2.6034 + 0.1562 * (np.random.random() - 0.5))
             self._camera.set_vertical_aperture(1.4621 + 0.0877 * (np.random.random() - 0.5))
         else:  # perturb viewpoint
-            vp = self._env_config['viewpoint']
-            rng = self._env_config['viewpoint_randomization_range']
+            vp = self._env_config["viewpoint"]
+            rng = self._env_config["viewpoint_randomization_range"]
             position = np.array(vp[0]) + rng[0] * (np.random.random(3) - 0.5)
             orientation = rot_utils.euler_angles_to_quats(
                 np.array(vp[1] + rng[1] * (np.random.random(3) - 0.5)), degrees=True
@@ -547,11 +544,7 @@ class AllObjectTableScene(RandomScene):
 
 
 class Recorder:
-    def __init__(self, 
-                 camera, 
-                 crop_size,
-                 output_image_size,
-                 output_smoothed_force=False):
+    def __init__(self, camera, crop_size, output_image_size, output_smoothed_force=False):
 
         self._output_smoothed_force = output_smoothed_force
         self._frameNo = 0
@@ -575,8 +568,7 @@ class Recorder:
             contacts = scene.read_contact_sensor(contact_sensor)
 
             for contact in contacts:
-                # if scipy.linalg.norm(contact["impulse"]) > 1e-8:
-                if True:
+                if scipy.linalg.norm(contact["impulse"]) > 1e-8:
                     objectA = scene.get_object_name_by_primitive_name(contact["body0"])
                     objectB = scene.get_object_name_by_primitive_name(contact["body1"])
                     contact_positions.append(contact["position"])
@@ -611,31 +603,20 @@ class Recorder:
             pd.to_pickle(force_dist, os.path.join(self._data_dir, "force_zip{:05d}.pkl".format(self._frameNo)))
 
     def save_image(self, viewNum=None):
-        def crop_center_and_resize(img):
-            width, height = self._crop_size
-            cam_height = img.shape[0]
-            cam_width = img.shape[1]
-            cropped_img = img[
-                int((cam_height - height) / 2) : int((cam_height - height) / 2 + height),
-                int((cam_width - width) / 2) : int((cam_width - width) / 2 + width),
-            ]
-            return cv2.resize(cropped_img, self._output_image_size)
-
         rgb = self._camera.get_rgba()[:, :, :3]
         rgb_path = os.path.join(self._data_dir, f"rgb{self._frameNo:05}_{viewNum:05}.jpg")
-        output_rgb = crop_center_and_resize(rgb)
+
+        # crop center
+        width, height = self._crop_size
+        cam_height, cam_width, _ = rgb.shape
+        cropped_rgb = rgb[
+            int((cam_height - height) / 2) : int((cam_height - height) / 2 + height),
+            int((cam_width - width) / 2) : int((cam_width - width) / 2 + width),
+        ]
+        # resize
+        output_rgb = cv2.resize(cropped_rgb, self._output_image_size)
+
         cv2.imwrite(rgb_path, cv2.cvtColor(output_rgb, cv2.COLOR_RGB2BGR))
-
-        # depth = self._camera.get_depth()
-        depth = self._camera.get_current_frame()["distance_to_camera"]
-        depth = np.where(depth > 1., 0., depth)
-        # print(f'DEPTH={depth, np.min(depth), np.max(depth), np.average(depth)}')
-        depth_path = os.path.join(self._data_dir, f"depth{self._frameNo:05}_{viewNum:05}.png")
-        output_depth = crop_center_and_resize(depth)
-        # output_depth = np.array(output_depth * 1000., dtype=np.uint16)  # [m] -> [mm]
-        output_depth = np.array((1.0 - output_depth) * 50000., dtype=np.uint16)
-        cv2.imwrite(depth_path, output_depth)
-
         pd.to_pickle(
             self._camera.get_world_pose(),
             os.path.join(self._data_dir, f"camera_info{self._frameNo:05}_{viewNum:05}.pkl"),
@@ -667,10 +648,12 @@ class DatasetGenerator(metaclass=ABCMeta):
     def __init__(self, scene, output_smoothed_force=False):
         self._scene = scene
         ec = self._scene._env_config
-        self._recorder = Recorder(self._scene._camera,
-                                  crop_size=ec['crop_size'],
-                                  output_image_size=ec['output_image_size'],
-                                  output_smoothed_force=output_smoothed_force)
+        self._recorder = Recorder(
+            self._scene._camera,
+            crop_size=ec["crop_size"],
+            output_image_size=ec["output_image_size"],
+            output_smoothed_force=output_smoothed_force,
+        )
 
     def create(self, number_of_scenes, number_of_views=5):
         self._scene._world.initialize_physics()
@@ -687,14 +670,15 @@ class DatasetGenerator(metaclass=ABCMeta):
             self._recorder.save_state(self._scene)
             self._recorder.incrementFrameNumber()
 
-        while simulation_app.is_running():
-            self._scene._world.step(render=True)
+        # while simulation_app.is_running():
+        #     self._scene._world.step(render=True)
 
         self._scene._world.stop()
         simulation_app.close()
 
 
 from pathlib import Path
+
 
 class ViewChanger:
     def __init__(self, scene, task_name="tabletop240304"):
@@ -762,6 +746,3 @@ class ViewChanger:
 # env_usd_file = f'{os.environ["HOME"]}/Dataset/scenes/ycb_piled_scene.usd'
 # conf = ObjectInfo("ycb_conveni_v1_small")
 # scene = RandomSeriaBasketScene(world, conf)
-
-
-

@@ -22,9 +22,10 @@ if args.method == "sim":
         "headless": True,
         "asset_root": os.environ["HOME"] + "/Dataset/scenes",
         "scene_usd": "green_table_scene.usd",
-        "viewpoint": ([-0.42, 0, 1.15], [0, 45, 0]),  # euler angles in degree
+        "viewpoint": ([0, 0, 1.6], [0, 90, 180]),  # euler angles in degree
         "viewpoint_randomization_range": (0.02, 3),  # ([m], [degree])
         "object_set": "ycb_conveni_v1",
+        "split": "ar-train",
         "crop_size": [768, 540],
         "output_image_size": [512, 360],
     }
@@ -40,28 +41,9 @@ if args.method == "sim":
 
 
 elif args.method == "smoothing":
-    # basket
-    # env_config = {
-    #     'data_dir': os.environ["HOME"] + "/Dataset/forcemap/basket240511",
-    #     'object_set': "ycb_conveni_v1_small",
-    #     'forcemap': 'seria_basket',
-    #     'forcemap_bandwidth': 0.03,
-    #     'scene_id': 81,
-    # }
-
-    # TRO
-    # env_config = {
-    #     'data_dir': os.environ["HOME"] + "/Dataset/forcemap/tabletop240304",
-    #     'object_set': "ycb_conveni_v1",
-    #     'forcemap': 'small_table',
-    #     'forcemap_bandwidth': 0.03,
-    #     'use_precomputed_sdfs': True,
-    # }
-
-    # AIREC
+    # AR
     env_config = {
-        # 'data_dir': os.environ["HOME"] + "/Dataset/forcemap/tabletop_airec241008",
-        "data_dir": "data",
+        "data_dir": os.environ["HOME"] + "/Dataset/forcemap/tabletop250902",
         "object_set": "ycb_conveni_v1",
         "forcemap": "small_table",
         "forcemap_bandwidth": 0.03,
