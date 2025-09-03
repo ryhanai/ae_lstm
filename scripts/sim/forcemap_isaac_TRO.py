@@ -39,6 +39,7 @@ if args.method == 'sim':
         'viewpoint': ([0, 0, 1.6], [0, 90, 180]),  # euler angles in degree
         'viewpoint_randomization_range': (0.02, 3),  # ([m], [degree])
         'object_set': "ycb_conveni_v1",
+        'split': 'ar-train',  # TRO = 'train, AR = 'ar-train'
         'crop_size': [768, 540],
         'output_image_size': [512, 360],
     }
@@ -53,10 +54,10 @@ if args.method == 'sim':
     dataset.create(args.num_scenes, 3)
 
 elif args.method == 'smoothing':
-    # TRO
     env_config = {
         'data_dir': args.data_dir,
-        'object_set': "ycb_conveni_v1",
+        'object_set': 'ycb_conveni_v1',
+        'split': 'ar-train',  # TRO = 'train, AR = 'ar-train'
         'forcemap': 'small_table',
         'smoothing_method': args.smoothing_method,
         'sigma_f': args.sigma_f,

@@ -10,7 +10,7 @@ from fmdev.eipl_print_func import print_info
 import numpy as np
 import pandas as pd
 import trimesh
-from core.object_loader import ObjectInfo
+from dataset.object_loader import ObjectInfo
 
 from mesh_to_sdf import mesh_to_voxels
 from scipy.spatial.transform import Rotation as R
@@ -31,7 +31,7 @@ from scipy.spatial.transform import Rotation as R
 class FmapSmoother:
     def __init__(self, env_config, viewer=None):
         self._data_dir = env_config['data_dir']
-        self._object_info = ObjectInfo(env_config['object_set'])
+        self._object_info = ObjectInfo(env_config['object_set'], split=env_config['split'])
         self._fmap = GridForceMap(env_config['forcemap'], bandwidth=env_config['sigma_f'])
         self._env_config = env_config
 
@@ -270,6 +270,7 @@ class FmapSmoother:
         out_file = os.path.join(self._data_dir, self._out_file_name(frameNo))
         if (not overwrite) and os.path.exists(out_file):
             print(f"skip [{frameNo}]")
+            return
         else:
             print(f"process [{frameNo}], log_scale={log_scale}")
             bin_state, contacts = self.load(frameNo)
@@ -279,7 +280,7 @@ class FmapSmoother:
             if log_scale:
                 d = np.log(1 + d)
             pd.to_pickle(d, out_file)
-        return d
+            return d
 
 
 def in_forcemap_area(p):

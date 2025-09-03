@@ -15,7 +15,7 @@ import omni.usd
 import pandas as pd
 import scipy
 from force_estimation import forcemap
-from core.object_loader import ObjectInfo
+from dataset.object_loader import ObjectInfo
 from omni.isaac.core.materials import PhysicsMaterial
 from omni.isaac.core.prims.xform_prim import XFormPrim
 from omni.isaac.sensor import Camera, ContactSensor
