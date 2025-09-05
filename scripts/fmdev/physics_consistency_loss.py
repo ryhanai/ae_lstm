@@ -1,4 +1,4 @@
-from flask.cli import shell_command
+# from flask.cli import shell_command
 import numpy as np
 from fmdev.TabletopForceMapData import TabletopRandomSceneDataset
 
@@ -27,13 +27,21 @@ def normalized_pc_loss1(d_pred, d_gt, sdf, shell_thickness=0.01):
 from fmdev.test_torch import *
 
 dataset_path = '~/Dataset/forcemap'
-task_name = 'tabletop240304'
 
+# task_name = 'tabletop240304'
+# weight_files = {
+#     'GAFS_f0.030_g0.010':'log/20250322_1023_08/00199.pth',
+#     'GAFS_f0.060_g0.010': 'log/20250322_1140_56/00199.pth',
+#     'IFS_f0.015': 'log/20250322_1043_24/00199.pth',
+#     'IFS_f0.005': 'log/20250322_1016_28/00199.pth'
+# }
+
+task_name = 'tabletop250902'
 weight_files = {
-    'GAFS_f0.030_g0.010':'log/20250322_1023_08/00199.pth',
-    'GAFS_f0.060_g0.010': 'log/20250322_1140_56/00199.pth',
-    'IFS_f0.015': 'log/20250322_1043_24/00199.pth',
-    'IFS_f0.005': 'log/20250322_1016_28/00199.pth'
+    'GAFS_f0.030_g0.010':'log/20250903_1152_46/00199.pth',
+    'GAFS_f0.060_g0.010': 'log/20250903_1215_49/00199.pth',
+    'IFS_f0.015': 'log/20250903_1234_37/00199.pth',
+    'IFS_f0.005': 'log/20250903_1304_01/00199.pth'
 }
 
 
@@ -60,7 +68,7 @@ class Experiment:
 
         for scene_idx in range(ds.__len__()):
         # for scene_idx in range(3):            
-            d_predicted = self._tester.predict(scene_idx)[0]
+            d_predicted = self._tester.predict(scene_idx, show_result=False)[0]
             sdf = self._sdf_ds.load_fmap(scene_idx).transpose(1, 2, 0)
             d_label = ds.load_fmap(scene_idx).transpose(1, 2, 0)
             loss1 = mse_loss(d_label, d_predicted)

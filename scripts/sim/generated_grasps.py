@@ -4,7 +4,7 @@ import pandas as pd
 import transforms3d as tf
 import pandas as pd
 
-# episodes = pd.read_pickle('./successful_grasps.pkl')
+episodes = pd.read_pickle('./successful_grasps.pkl')
 
 # episodes = [e for e in episodes if e[0] == (100, 'gogotea_straight')]
 

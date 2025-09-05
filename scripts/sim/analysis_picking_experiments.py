@@ -125,17 +125,30 @@ def eval_trajectory(data_dir, summarize=True, success_threshold=0.05, filter_siz
         return results, success
 
 
+# TRO
+# blacklist = [
+#     '129__java_curry_chukara_000', # unrealistic force
+#     '177__pan_mean_000', # IFS drops
+#     '361__kinokonoyama',
+#     '393__052_extra_large_clamp_002', # v
+#     '633__oi_ocha_350ml_000', # unrealistic force
+#     '703__xylitol', # f
+#     '781_004_sugar_box_001', # strange drop
+#     '865__vermont_curry_amakuchi', # v
+#     '939__vermont_curry_amakuchi_001', # v
+# ]
+
 blacklist = [
     '129__java_curry_chukara_000', # unrealistic force
-    '177__pan_mean_000', # IFS drops
-    '361__kinokonoyama',
-    '393__052_extra_large_clamp_002', # v
-    '633__oi_ocha_350ml_000', # unrealistic force
-    '703__xylitol', # f
-    '781_004_sugar_box_001', # strange drop
-    '865__vermont_curry_amakuchi', # v
-    '939__vermont_curry_amakuchi_001', # v
-]
+    '435__xylitol_001',
+    '591__077_rubiks_cube_001',
+    '129__033_spatula_000', # v
+    '393__052_extra_large_clamp_001',
+    '580__033_spatula_000',
+    '799__vermont_curry_amakuchi_000',
+    '781__004_sugar_box_001', # IFS
+    '838__oi_ocha_350ml_001',
+    ]
 
 def do_evaluation(episode_ids, method, root_dir):
     root_dir = Path(root_dir)
@@ -160,20 +173,23 @@ def do_evaluation(episode_ids, method, root_dir):
 def read_episode_ids(dir, use_blacklist=True):
     episode_ids = []
     for data_dir in dir.iterdir():
-        problem = re.findall('/(.*)_\d\d\d', str(data_dir))[0]
-        episode_id = re.findall('/(.*_\d\d\d)', str(data_dir))[0]
+        # problem = re.findall('/(.*)_\d\d\d', str(data_dir))[0]
+        # episode_id = re.findall('/(.*_\d\d\d)', str(data_dir))[0]
+        episode_id = reduce(lambda x, y: x+ '__' + y, str(data_dir).split('/')[-1].split('__')[:2])
+        problem = re.sub('_\\d\\d\\d', '', episode_id)
         if use_blacklist:
             if problem in blacklist or episode_id in blacklist:
                 print(f'Skip {data_dir} due to blacklist.')
                 continue
 
-        episode_ids.append(str(data_dir).split('/')[-1].split('__UP')[0])
+        episode_ids.append(episode_id)
     return episode_ids
 
 
-methods = ['UP', 'GAFS_f0.030_g0.010', 'GAFS_f0.060_g0.010', 'IFS_f0.015', 'IFS_f0.005']
+# methods = ['UP', 'GAFS_f0.030_g0.010', 'GAFS_f0.060_g0.010', 'IFS_f0.005']
+methods = ['GAFS_f0.030_g0.010', 'GAFS_f0.060_g0.010', 'IFS_f0.015', 'IFS_f0.005']
 
-def compare_for_FRONTIERS(root_dir='picking_experiment_results'):
+def compare_for_AR(root_dir='picking_experiment_results'):
     root_dir = Path(root_dir)
     results = {}
     results['episode_ids'] = read_episode_ids(root_dir / f'picking_experiment_results_{methods[0]}')    

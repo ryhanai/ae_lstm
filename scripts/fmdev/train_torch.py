@@ -340,7 +340,7 @@ def do_train():
 
     if model_class_name == 'ForceEstimationV5':
         model_tag = 'transformer'
-    elif model_class_name == 'ForceEstimationResNetSeriaBasket':
+    elif re.match('.*ResNet.*', model_class_name) is not None:
         model_tag = 'resnet'
     
     if config['method'] == 'isotropic':

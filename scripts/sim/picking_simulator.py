@@ -772,8 +772,15 @@ def run_successful_grasps(lifting_method, tester):
 
 from fmdev import test_torch
 
+# models trained on 'train' split of ycb_conveni_v1
 # for ckpt in [None, "log/20250322_1023_08/00199.pth", "log/20250322_1140_56/00199.pth", "log/20250322_1043_24/00199.pth", "log/20250322_1016_28/00199.pth"]:
-for ckpt in ["log/20250322_1140_56/00199.pth"]:    
+
+# models trained on 'ar-train' split of ycb_conveni_v1
+# 20250903_1152_46: GAFS_f0.030_g0.010
+# 20250903_1215_49: GAFS_f0.060_g0.010
+# 20250903_1234_37: IFS_f0.015
+# 20250903_1304_01: IFS_f0.005
+for ckpt in ["log/20250903_1215_49/00199.pth"]:
     if ckpt is None:
         tester = None
         lifting_method = "UP"
