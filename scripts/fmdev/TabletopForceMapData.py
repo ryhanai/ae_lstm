@@ -1,4 +1,3 @@
-import json
 import os
 import re
 import yaml
@@ -9,8 +8,7 @@ import cv2
 import numpy as np
 import pandas as pd
 import torch
-from fmdev.eipl_print_func import *
-from fmdev.eipl_utils import normalization
+from core.utils import print_info, normalization
 from torch.utils.data import Dataset
 
 
