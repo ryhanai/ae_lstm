@@ -85,8 +85,8 @@ class LeRobotRecorder:
 
     def save_parquet(self):
         qpos = np.array(self._qpos)
-        qvel = np.array(self._qvel)
-        effort = np.array(self._effort)
+        # qvel = np.array(self._qvel)
+        # effort = np.array(self._effort)
         action = np.array(self._action)
 
         episode_id = f"episode_{self._idx:06d}"
@@ -94,8 +94,16 @@ class LeRobotRecorder:
         num_steps = len(action)
 
         for t in range(num_steps):
-            state = np.concatenate([qpos[t], qvel[t], effort[t]])
+            # state = np.concatenate([qpos[t], qvel[t], effort[t]])
+            state = qpos[t]
             
+            if t == num_steps - 1:
+                next_done = True
+                next_reward = 1.0
+            else:
+                next_done = False
+                next_reward = 0.0
+
             records.append({
                 "observation.state": state.tolist(),
                 "action": action[t].tolist(),
@@ -104,6 +112,9 @@ class LeRobotRecorder:
                 "episode_index": self._idx,
                 "index": t,
                 "task_index": self._tasks[self._task_description],  # task index
+                "annotation.human.task_description": self._tasks[self._task_description],
+                "next.reward": next_reward,
+                "next.done": next_done,
             })
             
         df = pd.DataFrame(records)
@@ -149,16 +160,19 @@ class LeRobotRecorder:
     def write_other_meta(self):
         print("Writing other metadata...")
 
+        action_dof = 7
+        obs_dof = 7
+
         # === Write meta/modality.json ===
         modality_config = {
             "state": {
-                "qpos": {"start": 0, "end": 6},
-                "qvel": {"start": 0, "end": 6},
-                "effort": {"start": 0, "end": 6}
+                "qpos": {"start": 0, "end": obs_dof},
+                # "qvel": {"start": 0, "end": obs_dof},
+                "effort": {"start": 0, "end": obs_dof}
             },
             "action": {
-                "qpos": {"start": 0, "end": 6},
-                "qvel": {"start": 0, "end": 6}
+                "qpos": {"start": 0, "end": action_dof},
+                # "qvel": {"start": 0, "end": action_dof}
             },
             "video": {
                 "left_view": {
@@ -229,30 +243,30 @@ class LeRobotRecorder:
                 },
                 "observation.state": {
                     "dtype": "float64",
-                    "shape": [18],
-                    "names": [f"motor_{i}" for i in range(18)]
+                    "shape": [obs_dof],
+                    "names": [f"motor_{i}" for i in range(obs_dof)]
                 },
                 "action": {
                     "dtype": "float64",
-                    "shape": [6],
-                    "names": [f"motor_{i}" for i in range(6)]
+                    "shape": [action_dof],
+                    "names": [f"motor_{i}" for i in range(action_dof)]
                 },
                 "timestamp": {
                     "dtype": "float64",
                     "shape": [1]
                 },
-                # "annotation.human.task_description": {
-                #     "dtype": "int64",
-                #     "shape": [1]
-                # },
+                "annotation.human.task_description": {
+                    "dtype": "int64",
+                    "shape": [1]
+                },
                 "task_index": {
                     "dtype": "int64",
                     "shape": [1]
                 },
-                # "annotation.human.validity": {
-                #     "dtype": "int64",
-                #     "shape": [1]
-                # },
+                "annotation.human.validity": {
+                    "dtype": "int64",
+                    "shape": [1]
+                },
                 "episode_index": {
                     "dtype": "int64",
                     "shape": [1]

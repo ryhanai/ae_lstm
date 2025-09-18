@@ -362,6 +362,9 @@ def generate_data():
                 image_left = cv2.cvtColor(image_left, cv2.COLOR_RGB2BGR)
                 image_right = crop_center_and_resize(task._cameras[1].get_rgb(), output_size=image_size)
                 image_right = cv2.cvtColor(image_right, cv2.COLOR_RGB2BGR)
+
+                action = np.append(action, 0.0)  # gripper action is not yet supported
+
                 recorder.step(
                     qpos=qpos,
                     qvel=qvel,

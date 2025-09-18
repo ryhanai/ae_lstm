@@ -4,21 +4,23 @@ import gr00t
 
 from gr00t.data.dataset import LeRobotSingleDataset
 from gr00t.model.policy import Gr00tPolicy
+from gr00t.data.schema import EmbodimentTag
 
 # change the following paths
-MODEL_PATH = "nvidia/GR00T-N1.5-3B"
+MODEL_PATH = "/data2/SB_gr00t/model/path"
 
 # REPO_PATH is the path of the pip install gr00t repo and one level up
-REPO_PATH = os.path.dirname(os.path.dirname(gr00t.__file__))
-DATASET_PATH = os.path.join(REPO_PATH, "demo_data/robot_sim.PickNPlace")
-EMBODIMENT_TAG = "gr1"
+# REPO_PATH = os.path.dirname(os.path.dirname(gr00t.__file__))
+# DATASET_PATH = os.path.join(REPO_PATH, "demo_data/robot_sim.PickNPlace")
+DATASET_PATH = "/home/ryo/Downloads/conveni_gr00t"
+EMBODIMENT_TAG = EmbodimentTag.NEW_EMBODIMENT
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-from gr00t.experiment.data_config import DATA_CONFIG_MAP
+from data_config import UR5eDataConfig
 
 
-data_config = DATA_CONFIG_MAP["fourier_gr1_arms_only"]
+data_config = UR5eDataConfig()
 modality_config = data_config.modality_config()
 modality_transform = data_config.transform()
 
@@ -35,8 +37,6 @@ print(policy.model)
 
 import numpy as np
 
-modality_config = policy.modality_config
-
 print(modality_config.keys())
 
 for key, value in modality_config.items():
@@ -49,7 +49,7 @@ for key, value in modality_config.items():
 # Create the dataset
 dataset = LeRobotSingleDataset(
     dataset_path=DATASET_PATH,
-    modality_configs=modality_config,
+    modality_configs=policy.modality_config,
     video_backend="decord",
     video_backend_kwargs=None,
     transforms=None,  # We'll handle transforms separately through the policy
@@ -64,33 +64,33 @@ def do_inference_test():
 
 import matplotlib.pyplot as plt
 
-def draw_data_as_graph():
-    traj_id = 0
-    max_steps = 150
-
+def draw_data_as_graph(traj_id=0, max_steps=500):
     state_joints_across_time = []
     gt_action_joints_across_time = []
+    predicted_action_joints_across_time = []
     images = []
 
     sample_images = 6
 
     for step_count in range(max_steps):
         data_point = dataset.get_step_data(traj_id, step_count)
-        state_joints = data_point["state.right_arm"][0]
-        gt_action_joints = data_point["action.right_arm"][0]
-        
+        state_joints = data_point["state.qpos"][0]
+        gt_action_joints = data_point["action.qpos"][0]
+        predicted_action_joints = policy.get_action(data_point)['action.qpos'][0]
     
         state_joints_across_time.append(state_joints)
         gt_action_joints_across_time.append(gt_action_joints)
+        predicted_action_joints_across_time.append(predicted_action_joints)
 
         # We can also get the image data
         if step_count % (max_steps // sample_images) == 0:
-            image = data_point["video.ego_view"][0]
+            image = data_point["video.left_view"][0]
             images.append(image)
 
     # Size is (max_steps, num_joints == 7)
     state_joints_across_time = np.array(state_joints_across_time)
     gt_action_joints_across_time = np.array(gt_action_joints_across_time)
+    predicted_action_joints_across_time = np.array(predicted_action_joints_across_time)
 
     # Plot the joint angles across time
     fig, axes = plt.subplots(nrows=7, ncols=1, figsize=(8, 2*7))
@@ -98,6 +98,7 @@ def draw_data_as_graph():
     for i, ax in enumerate(axes):
         ax.plot(state_joints_across_time[:, i], label="state joints")
         ax.plot(gt_action_joints_across_time[:, i], label="gt action joints")
+        ax.plot(predicted_action_joints_across_time[:, i], label="predicted action joints")        
         ax.set_title(f"Joint {i}")
         ax.legend()
 
@@ -112,3 +113,4 @@ def draw_data_as_graph():
         ax.axis("off")
 
     plt.show()
+
