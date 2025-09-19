@@ -64,7 +64,7 @@ def do_inference_test():
 
 import matplotlib.pyplot as plt
 
-def draw_data_as_graph(traj_id=0, max_steps=500):
+def draw_data_as_graph(traj_id=0, max_steps=500, draw_prediction=False):
     state_joints_across_time = []
     gt_action_joints_across_time = []
     predicted_action_joints_across_time = []
@@ -76,11 +76,12 @@ def draw_data_as_graph(traj_id=0, max_steps=500):
         data_point = dataset.get_step_data(traj_id, step_count)
         state_joints = data_point["state.qpos"][0]
         gt_action_joints = data_point["action.qpos"][0]
-        predicted_action_joints = policy.get_action(data_point)['action.qpos'][0]
-    
         state_joints_across_time.append(state_joints)
         gt_action_joints_across_time.append(gt_action_joints)
-        predicted_action_joints_across_time.append(predicted_action_joints)
+
+        if draw_prediction:
+            predicted_action_joints = policy.get_action(data_point)['action.qpos'][0]
+            predicted_action_joints_across_time.append(predicted_action_joints)
 
         # We can also get the image data
         if step_count % (max_steps // sample_images) == 0:
@@ -90,7 +91,9 @@ def draw_data_as_graph(traj_id=0, max_steps=500):
     # Size is (max_steps, num_joints == 7)
     state_joints_across_time = np.array(state_joints_across_time)
     gt_action_joints_across_time = np.array(gt_action_joints_across_time)
-    predicted_action_joints_across_time = np.array(predicted_action_joints_across_time)
+    
+    if draw_prediction:
+        predicted_action_joints_across_time = np.array(predicted_action_joints_across_time)
 
     # Plot the joint angles across time
     fig, axes = plt.subplots(nrows=7, ncols=1, figsize=(8, 2*7))
@@ -98,7 +101,10 @@ def draw_data_as_graph(traj_id=0, max_steps=500):
     for i, ax in enumerate(axes):
         ax.plot(state_joints_across_time[:, i], label="state joints")
         ax.plot(gt_action_joints_across_time[:, i], label="gt action joints")
-        ax.plot(predicted_action_joints_across_time[:, i], label="predicted action joints")        
+
+        if draw_prediction:
+            ax.plot(predicted_action_joints_across_time[:, i], label="predicted action joints")        
+
         ax.set_title(f"Joint {i}")
         ax.legend()
 

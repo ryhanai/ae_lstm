@@ -1,9 +1,7 @@
 import re
-from operator import itemgetter
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import transforms3d as tf
 from working.test_lerobot_data2 import LeRobotRecorder
 
@@ -11,7 +9,6 @@ from omni.isaac.kit import SimulationApp
 
 simulation_app = SimulationApp(launch_config={"headless": False, "multi_gpu": False})
 import cv2
-from aist_sb_ur5e.controller import KeyboardController, RMPFlowController
 from aist_sb_ur5e.task import ConveniPickupTask
 from dataset.object_loader import ObjectInfo
 from omni.isaac.core import World
@@ -21,29 +18,13 @@ from omni.isaac.core.utils.types import ArticulationAction
 from omni.isaac.manipulators.grippers import ParallelGripper
 from sim.controller.kinematics_solver import KinematicsSolver  # for UR5e
 from sim.generated_grasps import *
+from sim.motion_planning import trapezoidal_trajectory
+
 
 message_id = 0
 image_size = [120, 160]  # [height, width]
 
 oi = ObjectInfo()
-
-
-def gripper_pose_in_world_mimo(task, grasp, target_name: str, pregrasp_opening=0.13):
-    """
-    The depth of grasp is dependent on the pregrasp opening.
-    """
-
-    obj_pos, obj_quat = get_product_world_pose(task, target_name)
-    Tworld_obj = pos_quat2mat(obj_pos, obj_quat)
-    # Tmimo_franka = pos_euler2mat([0, 0, 0.09], [0, 0, np.pi/2])
-
-    ## 2f-140 grasp depth
-    offset = 0.002
-    grasp_depth = 0.1679 * pregrasp_opening - 0.153827 + offset
-    Tmimo_gripper = pos_euler2mat([0, 0, grasp_depth], [0, 0, np.pi / 2])
-    return pose_from_tf_matrix(
-        Tworld_obj @ grasp @ Tmimo_gripper
-    )  # pose_from_tf_matrix() returns scalar-first quaternion
 
 
 def get_object_center(task, object_name : str):
@@ -56,9 +37,6 @@ HELLO_ISAAC_ROOT = Path("~/Program/hello-isaac-sim").expanduser()
 
 
 my_world: World = World(stage_units_in_meters=1.0)
-# my_world.get_physics_context().set_gravity(0.0)
-# my_world.set_gravity(value=-9.81 / meters_per_unit())
-
 task = ConveniPickupTask(static_path=HELLO_ISAAC_ROOT / "aist_sb_ur5e/static")
 my_world.add_task(task=task)
 my_world.reset()
@@ -70,43 +48,25 @@ gripper: ParallelGripper = task.get_params()["gripper"]["value"]
 print(f"PD GAIN: {ur5e._articulation_controller.get_gains()}")
 print(f"MAX EFFORTS: {ur5e._articulation_controller.get_max_efforts()}")
 ur5e._articulation_controller.set_max_efforts([1e6] * 6 + [0, 100, 0, 100, 0, 0])
-stiffnesses = [150000.0] * 6 + [0, 5e4, 0, 5e4, 0, 0]
-dampings = [72500.0] * 6 + [0, 4e4, 0, 4e4, 0, 0]
+# stiffnesses = [150000.0] * 6 + [0, 5e4, 0, 5e4, 0, 0]
+# dampings = [72500.0] * 6 + [0, 4e4, 0, 4e4, 0, 0]
+stiffnesses = [60000.0] * 6 + [0, 5e4, 0, 5e4, 0, 0]
+dampings = [2500.0] * 6 + [0, 4e4, 0, 4e4, 0, 0]
 ur5e._articulation_controller.set_gains(kps=stiffnesses, kds=dampings)
 print(f"PD GAIN (2): {ur5e._articulation_controller.get_gains()}")
 print(f"MAX EFFORTS (2): {ur5e._articulation_controller.get_max_efforts()}")
 
-rmpflow_controller = RMPFlowController(
-    # name="cspace_controller",
-    robot_articulation=ur5e,
-    robot_description_path=str(HELLO_ISAAC_ROOT / "aist_sb_ur5e/static/rmpflow/robot_descriptor.yml"),
-    rmpflow_config_path=str(HELLO_ISAAC_ROOT / "aist_sb_ur5e/static/rmpflow/ur5e_rmpflow_common.yml"),
-    urdf_path=str(HELLO_ISAAC_ROOT / "aist_sb_ur5e/static/urdf/ur5e.urdf"),
-)
-
 ik_solver = KinematicsSolver(robot_articulation=ur5e)
 ik_solver._kinematics.set_robot_base_pose(*ur5e.get_world_pose())
 
-target_controller = KeyboardController()
 
-
-def set_joint_positions_UR5e(arm_joint_positions, gripper_joint_position):
-    joint_positions = np.zeros(12)
-    joint_positions[[6, 8, 9]] = -gripper_joint_position
-    joint_positions[[7, 10, 11]] = gripper_joint_position
-    joint_positions[:6] = arm_joint_positions
-    ur5e.set_joint_positions(joint_positions)
-    ur5e.set_joint_velocities(np.zeros(12))
-    return joint_positions
-
-
-def convert_to_joint_angle(finger_distance):
-    return 0.725 - np.arcsin(finger_distance / 0.21112)
+def convert_to_joint_angle(gripper_opening_width: float):
+    return 0.725 - np.arcsin(gripper_opening_width / 0.21112)
 
 
 def reset_robot_state():
     js = ur5e.get_joints_default_state()
-    q = convert_to_joint_angle(0.015)
+    q = convert_to_joint_angle(gripper_opening_width=0.12)
     js.positions[7] = q
     js.positions[9] = -q
     ur5e.set_joint_positions(js.positions)
@@ -121,6 +81,250 @@ def crop_center_and_resize(img, crop_size=[540, 768], output_size=[240, 320]):
         int((cam_width - width) / 2) : int((cam_width - width) / 2 + width),
     ]
     return cv2.resize(cropped_img, (output_size[1], output_size[0]))
+
+
+def get_product_world_pose(task, target_name: str):
+    for product in task._convenience_store.products:
+        if product.name == target_name:
+            return product.get_world_pose()  # get_world_pose() returns scalar-first quaternion
+
+
+def plan_picking_trajectory(task, target_object):
+    group, obj_name, obj_id, (init_pos, init_quat), scale = target_object
+    target_pose = get_object_center(task, f"{obj_name}_{obj_id[0]}_{obj_id[1]}")
+    tp = target_pose[0]
+    bb = np.array(group.object_dimension)
+    slide = bb[0] / 4.0
+    dz = 0.02
+    wps = [
+        (np.array([0.45, 0.3, 1.35]), 0.015), # initial position
+        (tp + [bb[0] / 2 + 0.025, 0, dz + 0.05], 0.015),  # back and up of the object
+        (tp + [bb[0] / 2 + 0.025, 0, dz], 0.015), # back of the object
+        (tp + [bb[0] / 2 + 0.012, 0, dz], 0.015), # back of and touching the object
+        (tp + [bb[0] / 2 + 0.012 - slide, 0, dz + 0.005], 0.015), # slide a little the object
+        (tp + [bb[0] / 2 + 0.012 - slide + 0.04, 0, dz + 0.05], 0.015),  # back and up of the object
+        # tp + [-bb[0] / 2 - slide - 0.04, 0, 0.05],
+        # tp + [-bb[0] / 2 - slide - 0.04, 0, 0],
+    ]
+
+    wps = [(p + np.array([0, 0, 0.2]), convert_to_joint_angle(w)) for p, w in wps]  # offset between "the middle of finger tips" and 'tool0'
+    return wps
+
+
+# def get_tcp_pose():
+#     return ur5e._kinematics.compute_forward_kinematics("tool0", ur5e.get_joint_positions()[:6])
+
+
+# def get_tcp_position():
+#     return get_tcp_pose()[0]
+
+
+class TaskEnvironment:
+    def __init__(self, task, recorder=None):
+        self._task = task
+        self._recorder = recorder
+
+    def reset(self):
+        self._target_object = task._convenience_store.display_products()
+        if not (self._recorder is None):
+            self._recorder.new_episode(task_description=f"pick a {self._target_object[1]}")        
+        return self._target_object
+
+    def get_observation(self):
+        qpos = ur5e.get_joint_positions()[:7]
+        qvel = np.zeros(7)  # not yet used
+        effort = np.zeros(7)  # not yet used
+        image_left = crop_center_and_resize(task._cameras[0].get_rgb(), output_size=image_size)
+        image_left = cv2.cvtColor(image_left, cv2.COLOR_RGB2BGR)
+        image_right = crop_center_and_resize(task._cameras[1].get_rgb(), output_size=image_size)
+        image_right = cv2.cvtColor(image_right, cv2.COLOR_RGB2BGR)
+        return qpos, qvel, effort, image_left, image_right
+
+    def step(self, action, observation, end_flag):
+        if end_flag:
+            if self.success_condition_satisfied():
+                print("[TASK SUCCESS]: goal reached")
+                if not (self._recorder is None):
+                    self._recorder.save_episode()
+            else:
+                print("[TASK FAILURE]: success condition not satisfied")
+
+        else:
+            arm_action = list(action[:6]) + [None] * 6
+            ur5e.get_articulation_controller().apply_action(ArticulationAction(arm_action))
+            gripper_action = [action[6], -action[6]]
+            action[6] = -action[6]
+            # print(f'GRIPPER GOAL={gripper_action}')
+            gripper.apply_action(ArticulationAction(joint_positions=gripper_action))
+
+            if not (self._recorder is None):
+                qpos, qvel, effort, image_left, image_right = observation
+
+                self._recorder.step(
+                    qpos=qpos,
+                    qvel=qvel,
+                    effort=effort,
+                    action=action,
+                    image_left=image_left,
+                    image_right=image_right,
+                )
+
+    def save_initial_state(self):
+        self._initial_poses = {}
+        for product in self._task._convenience_store.products:
+            obj_pos, obj_quat = product.get_world_pose()
+            product_class_name = re.findall("(.*)_\d+_\d+", product.name)[
+                0
+            ]  # product instance name -> product (class) name
+            try:
+                self._initial_poses[product.name] = transform_to_centroid(product_class_name, obj_pos, obj_quat)
+            except:
+                pass
+
+    def success_condition_satisfied(self):
+        is_success = True
+
+        # target object moved as is expected
+        group, obj_name, obj_id, (init_pos, init_quat), scale = self._target_object
+        target_name = f'{obj_name}_{obj_id[0]}_{obj_id[1]}'
+
+        # bb = np.array(group.object_dimension)
+        # current_position = get_object_center(task, target_name)[0]
+        # initial_position = initial_poses[target_name][0]
+        # if np.linalg.norm(current_position - initial_position) > 0.01:
+        #     is_success = False
+        #     print(f'{target_name} moved')
+
+        # other objects were not moved
+        for p in self._task._convenience_store.products:
+            if p.name != target_name:
+                current_position = get_object_center(task, p.name)[0]
+                initial_position = self._initial_poses[p.name][0]
+                if np.linalg.norm(current_position - initial_position) > 0.01:
+                    print(f'{p.name} moved, initial={initial_position}, current={current_position}')
+                    is_success = False
+                    break
+
+        return is_success
+
+
+class Policy(object):
+    def __init__(self):
+        pass
+
+    def reset(self):
+        pass
+
+    def get_action(self, observation):
+        pass
+
+
+class SimpleScriptedPolicy(object):
+    def __init__(self):
+        self._vel_range = [0.01, 0.05]
+
+    def reset(self, target_object):
+        """
+        target object can be replaced with a language instruction
+        """
+        self._target_object = target_object
+        self._waypoints = plan_picking_trajectory(task, target_object)
+        self._current_trajectory = None
+
+    def set_next_waypoint(self, current_position):
+        arm_goal, gripper_goal = self._waypoints.pop(0)
+        ts, xs, vs, as_ = trapezoidal_trajectory(current_position, 
+                                                 arm_goal,
+                                                 vmax=0.3,
+                                                 amax=1.0,
+                                                 dt=1/60.,
+                                                 )
+        self._current_trajectory = xs
+        self._current_gripper_goal = gripper_goal
+        self._t = 0
+
+    def get_action(self, observation):
+        qpos, qvel, effort, image_left, image_right = observation
+        arm_joint_positions = qpos[:6]
+        gripper_joint_position = qpos[6]
+        current_position, current_quat = ur5e._kinematics.compute_forward_kinematics("tool0", arm_joint_positions)
+
+        if self._current_trajectory is None:
+            self.set_next_waypoint(current_position)
+
+        arm_goal = self._current_trajectory[-1]
+        gripper_goal = self._current_gripper_goal
+        
+        if np.linalg.norm(arm_goal - current_position) < 0.005:
+            # and np.abs(gripper_goal - gripper_joint_position) < 0.05:
+            print("[POLICY]: current goal reached")
+            if len(self._waypoints) == 0:
+                return qpos, True
+            else:
+                self.set_next_waypoint(current_position)
+
+        if self._t < self._current_trajectory.shape[0]:
+            target_position = self._current_trajectory[self._t]
+        else:
+            # print(f'DISTANCE left: {np.linalg.norm(arm_goal - current_position)}')
+            target_position = self._current_trajectory[-1]
+
+        self._t += 1
+        target_orientation = tf.quaternions.mat2quat(tf.euler.euler2mat(0, np.pi, 0))
+
+        position_tolerance = 0.001
+        orientation_tolerance = 0.01
+        ik_action, ik_success = ik_solver.compute_inverse_kinematics(
+            target_position, target_orientation, position_tolerance, orientation_tolerance
+        )
+
+        arm_action = ik_action.joint_positions[:6]
+        action = np.append(arm_action, gripper_goal)
+
+        if ik_success:
+            if np.allclose(arm_joint_positions, arm_action, atol=0.4):
+                return action, False
+            else:
+                # IK solution is obtained, but it is not good
+                print("Too large difference in arm joint positions!")
+                return qpos, True
+        else:
+            print("IK failed!")
+            return qpos, True
+
+
+def generate_data(max_episode_steps=650):
+    env = TaskEnvironment(task, recorder=LeRobotRecorder())
+    policy = SimpleScriptedPolicy()
+    end_flag = True
+
+    while simulation_app.is_running():
+        my_world.step(render=True)
+
+        if end_flag:
+            frame_number = 0
+            reset_robot_state()
+            target_object = env.reset()
+            policy.reset(target_object)
+            end_flag = False
+
+        if frame_number == 4:  # It takes some time till the renderer's output becomes stable
+            env.save_initial_state()
+
+        if my_world.is_playing() and frame_number > 4:
+            obs = env.get_observation()
+            action, end_flag = policy.get_action(obs)
+            env.step(action, obs, end_flag)
+
+        if frame_number >= max_episode_steps:
+            print("Episode timed out")
+            end_flag = True
+
+        frame_number += 1
+
+
+generate_data()
+simulation_app.close()
 
 
 # class Recorder:
@@ -194,435 +398,3 @@ def crop_center_and_resize(img, crop_size=[540, 768], output_size=[240, 320]):
 #         self.save_contact_state()
 #         self.save_image()
 #         self._frameNo += 1
-
-
-def get_product_world_pose(task, target_name: str):
-    for product in task._convenience_store.products:
-        if product.name == target_name:
-            return product.get_world_pose()  # get_world_pose() returns scalar-first quaternion
-
-
-def plan_picking_trajectory(task, target_object):
-    group, obj_name, obj_id, (init_pos, init_quat), scale = target_object
-    target_pose = get_object_center(task, f"{obj_name}_{obj_id[0]}_{obj_id[1]}")
-    tp = target_pose[0]
-    bb = np.array(group.object_dimension)
-    print(f"BB={bb}")
-    slide = bb[0] / 4.0
-    dz = 0.02
-    wps = [
-        np.array([0.45, 0.3, 1.35]),  # initial position
-        tp + [bb[0] / 2 + 0.025, 0, dz + 0.05],  # back and up of the object
-        tp + [bb[0] / 2 + 0.025, 0, dz],  # back of the object
-        tp + [bb[0] / 2 + 0.012, 0, dz],  # back of and touching the object
-        tp + [bb[0] / 2 + 0.012 - slide, 0, dz + 0.005],  # slide a little the object
-        tp + [bb[0] / 2 + 0.012 - slide + 0.04, 0, dz + 0.05],  # back and up of the object
-        # tp + [-bb[0] / 2 - slide - 0.04, 0, 0.05],
-        # tp + [-bb[0] / 2 - slide - 0.04, 0, 0],
-    ]
-
-    wps = [p + np.array([0, 0, 0.2]) for p in wps]  # offset between "the middle of finger tips" and 'tool0'
-    return wps
-
-
-def get_tcp_pose():
-    return ur5e._kinematics.compute_forward_kinematics("tool0", ur5e.get_joint_positions()[:6])
-
-
-def get_tcp_position():
-    return get_tcp_pose()[0]
-
-
-def move_if_possible(motion_vector, target_orientation):
-    current_position, current_orientation = get_tcp_pose()
-    # print(f'CURRENT TCP: {current_position}, {current_orientation}')
-
-    target_position = current_position + motion_vector
-    target_orientation = tf.quaternions.mat2quat(target_orientation)
-
-    position_tolerance = 0.001
-    orientation_tolerance = 0.01
-    ik_action, success = ik_solver.compute_inverse_kinematics(
-        target_position, target_orientation, position_tolerance, orientation_tolerance
-    )
-
-    qpos = ur5e.get_joint_positions()[:7]
-    qvel = np.zeros(7)
-    effort = np.zeros(7)
-    action = ik_action.joint_positions[:7]
-
-    if success:
-        if np.allclose(ur5e.get_joint_positions()[:6], ik_action.joint_positions[:6], atol=0.4):
-            joint_target = list(ik_action.joint_positions) + [None] * 6
-            ur5e.get_articulation_controller().apply_action(ArticulationAction(joint_target))
-            end_flag = False
-        else:
-            joint_target = list(ur5e.get_joint_positions()[:6]) + [None] * 6
-            print("Too large difference in arm joint positions!")
-            end_flag = True
-    else:
-        joint_target = list(ur5e.get_joint_positions()[:6]) + [None] * 6
-        print("IK failed!")
-        end_flag = True
-
-    return (qpos, qvel, effort, action), end_flag
-
-def save_initial_poses(task):
-    initial_poses = {}
-    for product in task._convenience_store.products:
-        obj_pos, obj_quat = product.get_world_pose()
-        product_class_name = re.findall("(.*)_\d+_\d+", product.name)[
-            0
-        ]  # product instance name -> product (class) name
-        try:
-            initial_poses[product.name] = transform_to_centroid(product_class_name, obj_pos, obj_quat)
-        except:
-            pass
-
-    return initial_poses
-
-
-def success_condition_satisfied(task, target_object, initial_poses):
-    is_success = True
-
-    # target object moved as is expected
-    group, obj_name, obj_id, (init_pos, init_quat), scale = target_object
-    target_name = f'{obj_name}_{obj_id[0]}_{obj_id[1]}'
-    # bb = np.array(group.object_dimension)
-    # current_position = get_object_center(task, target_name)[0]
-    # initial_position = initial_poses[target_name][0]
-    # if np.linalg.norm(current_position - initial_position) > 0.01:
-    #     is_success = False
-    #     print(f'{target_name} moved')
-
-    # other objects were not moved
-    for p in task._convenience_store.products:
-        if p.name != target_name:
-            current_position = get_object_center(task, p.name)[0]
-            initial_position = initial_poses[p.name][0]
-            if np.linalg.norm(current_position - initial_position) > 0.01:
-                print(f'{p.name} moved, initial={initial_position}, current={current_position}')
-                is_success = False
-                break
-
-    return is_success
-
-
-def generate_data():
-    waypoints = []
-    recorder = LeRobotRecorder()
-    frame_number = 0
-
-    while simulation_app.is_running():
-        my_world.step(render=True)
-
-        if waypoints == []:
-            reset_robot_state()
-            target_object = task._convenience_store.display_products()
-            goal_reached = False            
-            frame_number = 0
-            waypoints = plan_picking_trajectory(task, target_object)
-            recorder.new_episode(task_description=f"pick a {target_object[1]}")
-
-        if frame_number == 4:
-            initial_poses = save_initial_poses(task)
-
-        if my_world.is_playing() and frame_number > 4:
-            next_goal_position = waypoints[0]
-            current_position, current_quat = get_tcp_pose()
-            motion_v = next_goal_position - current_position
-            max_v = 0.1
-            min_v = 0.012
-
-            if np.linalg.norm(motion_v) < 0.005:
-                waypoints.pop(0)  # reached the current waypoint
-                if len(waypoints) == 0:
-                    goal_reached = True
-                    if success_condition_satisfied(task, target_object, initial_poses):
-                        print("[TASK SUCCESS]: goal reached")
-                        recorder.save_episode()
-                    else:
-                        print("[TASK FAILURE]: success condition not satisfied")
-                else:
-                    print("move onto the next waypoint")
-
-            if np.linalg.norm(motion_v) > max_v:
-                motion_v *= max_v / np.linalg.norm(motion_v)
-            elif np.linalg.norm(motion_v) < min_v:
-                motion_v *= min_v / np.linalg.norm(motion_v)
-
-            target_quat = tf.euler.euler2mat(0, np.pi, 0)
-            (qpos, qvel, effort, action), end_flag = move_if_possible(motion_vector=motion_v, target_orientation=target_quat)
-
-            if end_flag:    
-                waypoints = []
-                goal_reached = False
-            else:
-                image_left = crop_center_and_resize(task._cameras[0].get_rgb(), output_size=image_size)
-                image_left = cv2.cvtColor(image_left, cv2.COLOR_RGB2BGR)
-                image_right = crop_center_and_resize(task._cameras[1].get_rgb(), output_size=image_size)
-                image_right = cv2.cvtColor(image_right, cv2.COLOR_RGB2BGR)
-
-                action = np.append(action, 0.0)  # gripper action is not yet supported
-
-                recorder.step(
-                    qpos=qpos,
-                    qvel=qvel,
-                    effort=effort,
-                    action=action,
-                    image_left=image_left,
-                    image_right=image_right,
-                )
-
-        if frame_number >= 650:
-            print("Episode timed out")
-            waypoints = []
-            goal_reached = False
-
-        frame_number += 1
-
-
-# def do_lifting(
-#     end_of_grasping=120,
-#     end_of_planned_direction=250,
-#     end_of_upward_motion=400,
-#     end_of_episode=460,
-#     lifting_direction=[0.0, 0.0, 1.0],
-#     planned_direction_distance=0.10,
-#     target_lifting_height=0.15,
-#     recorder=None,
-# ):
-
-#     def get_tcp_pose():
-#         return ur5e._kinematics.compute_forward_kinematics("tool0", ur5e.get_joint_positions()[:6])
-
-#     def get_tcp_position():
-#         return get_tcp_pose()[0]
-
-#     def distance_from(pos):
-#         cur_pos = get_tcp_position()
-#         return np.linalg.norm(cur_pos - pos)
-
-#     def move_if_possible(motion_vector, target_orientation):
-#         target_position, target_orientation = get_tcp_pose()
-#         target_position += motion_vector
-#         target_orientation = tf.quaternions.mat2quat(target_orientation)
-
-#         position_tolerance = 0.002
-#         orientation_tolerance = 0.03
-#         ik_action, success = ik_solver.compute_inverse_kinematics(
-#             target_position, target_orientation, position_tolerance, orientation_tolerance
-#         )
-
-#         if success:
-#             if np.allclose(ur5e.get_joint_positions()[:6], ik_action.joint_positions[:6], atol=0.5):
-#                 joint_target = list(ik_action.joint_positions) + [None] * 6
-#                 ur5e.get_articulation_controller().apply_action(ArticulationAction(joint_target))
-#                 return True
-#             else:
-#                 joint_target = list(ur5e.get_joint_positions()[:6]) + [None] * 6
-#                 # print('too large difference in arm joint positions!')
-#                 return False
-#         else:
-#             joint_target = list(ur5e.get_joint_positions()[:6]) + [None] * 6
-#             # print('IK failed!')
-#             return False
-
-#     counter = 5
-#     while simulation_app.is_running() and counter < end_of_episode:
-#         my_world.step(render=True)
-
-#         if my_world.is_playing():
-#             if 4 < counter <= end_of_grasping:  # do grasp
-#                 gripper_action: ArticulationAction = gripper.forward("close")
-#                 gripper.apply_action(
-#                     ArticulationAction(joint_positions=itemgetter(7, 9)(gripper_action.joint_positions))
-#                 )
-
-#                 # distance = min(dof[0] + dof[1] + counter * 0.0005, 0.14)
-#                 # target_gripper_joint_position = convert_to_joint_angle(distance)
-#                 # target_joint_positions = set_joint_positions(ik_action.joint_positions , target_gripper_joint_position)
-
-#                 if counter == end_of_grasping:
-#                     # print('=> planned direction')
-#                     pos0, ori0 = get_tcp_pose()
-
-#             elif counter <= end_of_planned_direction:  # transport in a planned direction
-#                 if not move_if_possible(motion_vector=0.06 * np.array(lifting_direction), target_orientation=ori0):
-#                     counter = end_of_planned_direction  # go to the next phase
-
-#                 if distance_from(pos0) > planned_direction_distance:
-#                     counter = end_of_planned_direction
-
-#             elif counter <= end_of_upward_motion:  # transport upward
-#                 if not move_if_possible(motion_vector=0.06 * np.array([0.0, 0.0, 1.0]), target_orientation=ori0):
-#                     counter = end_of_upward_motion  # go to the next phase
-
-#                 cur_pos = get_tcp_position()
-#                 # print(f'{cur_pos[2]}, {pos0[2]}')
-#                 if cur_pos[2] - pos0[2] > target_lifting_height:
-#                     print("=> Task succeeded!")
-#                     counter = end_of_upward_motion
-
-#             elif counter <= end_of_episode:  # do nothing
-#                 pass
-
-#             if (end_of_grasping <= counter) and recorder != None:  # record scenes after grasping
-#                 recorder.save()
-
-#             counter += 1
-
-
-# def find_feasible_grasp(scene_idx, lifting_target, pregrasp_pose):
-#     counter = 0
-#     while simulation_app.is_running():
-#         my_world.step(render=True)
-
-#         if my_world.is_playing():
-
-#             if counter == 0:
-#                 reset_robot_state()
-
-#                 while True:
-#                     task.load_bin_state(scene_idx)
-#                     grasp = grasp_sampler.sample_grasp(lifting_target)
-#                     g_pos, g_ori = gripper_pose_in_world_mimo(task, grasp, lifting_target)
-#                     target.set_world_pose(
-#                         position=g_pos, orientation=g_ori
-#                     )  # set_world_pose() takes scalar-first quaternion
-#                     if np.dot(tf.quaternions.quat2mat(g_ori)[:, 2], [0, 0, -1]) < 0.707:
-#                         continue
-
-#                     position_tolerance = 0.002
-#                     orientation_tolerance = 0.02
-#                     ik_action, success = ik_solver.compute_inverse_kinematics(
-#                         g_pos, g_ori, position_tolerance, orientation_tolerance
-#                     )
-
-#                     if not success:
-#                         continue
-
-#                     target_gripper_joint_position = convert_to_joint_angle(pregrasp_pose)
-#                     target_joint_positions = set_joint_positions_UR5e(
-#                         ik_action.joint_positions, target_gripper_joint_position
-#                     )
-#                     ur5e.set_joint_velocities(np.zeros(len(target_joint_positions)))
-#                     break
-
-#             elif 0 < counter < 4:  # check collision in the grasp pose
-#                 in_contact = False
-#                 for cs in ur5e._sensors:
-#                     current_frame = cs.get_current_frame()
-#                     # print(f'CF: {cs.name}, {current_frame}')
-#                     if current_frame["in_contact"]:
-#                         for c in current_frame["contacts"]:
-#                             in_contact = True
-#                             # print(c)
-#                             # if c['body1'] == '/World/table_surface':
-#                             #     in_contact = True
-
-#                 if in_contact:
-#                     counter = 0
-#                     continue
-#                 if not np.allclose(target_joint_positions[:6], ur5e.get_joint_positions()[:6], atol=2e-2):
-#                     print(f"ARM joint poisitions are different from the goal {ur5e.get_joint_positions()[:6]}")
-#                     counter = 0
-#                     continue
-#                 if not np.allclose(target_joint_positions[6:], ur5e.get_joint_positions()[6:], atol=8e-2):
-#                     print(f"GRIPPER joint poisitions are different from the goal {ur5e.get_joint_positions()[6:]}")
-#                     counter = 0
-#                     continue
-
-#             elif counter == 4:
-#                 return grasp
-
-#             counter += 1
-
-
-# def collect_successful_grasps():
-#     for problem in lifting_problems:
-#         successful_grasps = []
-
-#         print(f"PROBLEM: {problem}")
-#         if len(problem) == 3:
-#             scene_idx, lifting_target, pregrasp_pose = problem
-#         else:
-#             scene_idx, lifting_target = problem
-#             pregrasp_pose = 0.13
-
-#         while True:
-#             if len(successful_grasps) >= 3:
-#                 print(f"PROBLEM SOLVED: {(problem[:2], successful_grasps)}")
-#                 break
-
-#             grasp = find_feasible_grasp(scene_idx, lifting_target, pregrasp_pose)
-#             do_lifting()
-
-#             if get_product_world_pose(task, lifting_target)[0][2] > 0.85:
-#                 successful_grasps.append((pregrasp_pose, grasp))
-#                 print(f"# of successful grasps = {len(successful_grasps)}")
-
-
-# def run_successful_grasps(lifting_method, tester):
-#     recorder = Recorder(task, output_directory=f"picking_experiment_results_{lifting_method}")
-#     success_list = {}
-
-#     for problem, successful_grasps in episodes:
-#         print(f"PROBLEM: {problem}")
-#         scene_idx, lifting_target = problem
-
-#         for grasp_number, (pregrasp_opening, grasp) in enumerate(successful_grasps):
-#             try:
-#                 recorder.new_episode(name=f"{scene_idx}__{lifting_target}_{grasp_number:03d}__{lifting_method}")
-#             except FileExistsError as e:
-#                 print(e)
-#                 continue
-
-#             reset_robot_state()
-#             task.load_bin_state(scene_idx)
-
-#             g_pos, g_ori = gripper_pose_in_world_mimo(task, grasp, lifting_target)
-
-#             for i in range(5):
-#                 my_world.step(render=True)
-#             img = task._cameras[0].get_rgb()  # capture image from the top-camera
-#             img = crop_center_and_resize(img)
-#             cv2.imwrite("/tmp/hoge.jpg", cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
-
-#             object_center_pos, object_center_ori = get_object_center(task, lifting_target)
-#             target.set_world_pose(position=object_center_pos, orientation=object_center_ori)
-
-#             position_tolerance = 0.002
-#             orientation_tolerance = 0.02
-#             ik_action, success = ik_solver.compute_inverse_kinematics(
-#                 g_pos, g_ori, position_tolerance, orientation_tolerance
-#             )
-
-#             target_gripper_joint_position = convert_to_joint_angle(pregrasp_opening)
-#             target_joint_positions = set_joint_positions_UR5e(ik_action.joint_positions, target_gripper_joint_position)
-#             ur5e.set_joint_velocities(np.zeros(len(target_joint_positions)))
-
-#             if tester is None:
-#                 direction = [0.0, 0.0, 1]
-#             else:
-#                 predicted_maps, planning_results = tester.predict_from_image(
-#                     img, object_center_pos, show_result=False, object_radius=0.1
-#                 )
-#                 print(planning_results)
-#                 direction = planning_results[0]
-#                 if direction[2] < 0.0:
-#                     direction[2] = 0.0
-#                     direction /= np.linalg.norm(direction)
-
-#             do_lifting(lifting_direction=direction, recorder=recorder)
-
-#             if get_product_world_pose(task, lifting_target)[0][2] > 0.85:
-#                 try:
-#                     success_list[problem].append(grasp_number)
-#                 except:
-#                     success_list[problem] = [grasp_number]
-#                 print(success_list)
-
-
-generate_data()
-simulation_app.close()
