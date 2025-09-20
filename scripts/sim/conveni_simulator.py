@@ -28,6 +28,18 @@ import time
 json_numpy.patch()  # default json doesn't support the serialization of ndarray
 
 
+
+import omni.ui as ui
+# Create Window
+hud_window = ui.Window("Text Instruction", width=400, height=50)
+with hud_window.frame:
+    with ui.VStack():
+        hud_label = ui.Label("", style={"color": 0xff00ffff, "font_size": 20})  # RGBA
+
+def update_hud_text(new_text: str):
+    hud_label.text = new_text
+
+
 message_id = 0
 image_size = [120, 160]  # [height, width]
 
@@ -126,6 +138,9 @@ class TaskEnvironment:
     def reset(self):
         self._target_object = task._convenience_store.display_products()
         self._task_description = f"pick a {self._target_object[1]}"
+
+        update_hud_text(self._task_description)
+
         if not (self._recorder is None):
             self._recorder.new_episode(task_description=self._task_description)
         return self._target_object
@@ -152,8 +167,7 @@ class TaskEnvironment:
         else:
             arm_action = list(action[:6]) + [None] * 6
             ur5e.get_articulation_controller().apply_action(ArticulationAction(arm_action))
-            gripper_action = [action[6], -action[6]]
-            action[6] = -action[6]
+            gripper_action = [-action[6], action[6]]
 
             # print(f'GRIPPER GOAL={gripper_action}')
             gripper.apply_action(ArticulationAction(joint_positions=gripper_action))
@@ -313,7 +327,7 @@ class SimpleScriptedPolicy(Policy):
         )
 
         arm_action = ik_action.joint_positions[:6]
-        action = np.append(arm_action, gripper_goal)
+        action = np.append(arm_action, -gripper_goal)
 
         if ik_success:
             if np.allclose(arm_joint_positions, arm_action, atol=0.4):
@@ -327,7 +341,7 @@ class SimpleScriptedPolicy(Policy):
             return qpos, True
 
 
-def main(max_episode_steps=350):
+def main(max_episode_steps=200):
     env = TaskEnvironment(task, recorder=LeRobotRecorder())
     policy = SimpleScriptedPolicy()
     policy = LearningBasedPolicy()
