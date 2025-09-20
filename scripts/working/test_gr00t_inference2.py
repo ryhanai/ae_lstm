@@ -1,12 +1,11 @@
-import os
+import numpy as np
 import torch
-import gr00t
-
 from gr00t.data.dataset import LeRobotSingleDataset
 from gr00t.model.policy import Gr00tPolicy
 from gr00t.data.schema import EmbodimentTag
+from data_config import UR5eDataConfig
 
-# change the following paths
+
 MODEL_PATH = "/data2/SB_gr00t/model/path"
 
 # REPO_PATH is the path of the pip install gr00t repo and one level up
@@ -16,8 +15,6 @@ DATASET_PATH = "/home/ryo/Downloads/conveni_gr00t"
 EMBODIMENT_TAG = EmbodimentTag.NEW_EMBODIMENT
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-
-from data_config import UR5eDataConfig
 
 
 data_config = UR5eDataConfig()
@@ -34,9 +31,6 @@ policy = Gr00tPolicy(
 
 # print out the policy model architecture
 print(policy.model)
-
-import numpy as np
-
 print(modality_config.keys())
 
 for key, value in modality_config.items():
@@ -64,7 +58,7 @@ def do_inference_test():
 
 import matplotlib.pyplot as plt
 
-def draw_data_as_graph(traj_id=0, max_steps=500, draw_prediction=False):
+def draw_data_as_graph(traj_id=0, max_steps=250, draw_prediction=False):
     state_joints_across_time = []
     gt_action_joints_across_time = []
     predicted_action_joints_across_time = []
@@ -85,7 +79,7 @@ def draw_data_as_graph(traj_id=0, max_steps=500, draw_prediction=False):
 
         # We can also get the image data
         if step_count % (max_steps // sample_images) == 0:
-            image = data_point["video.left_view"][0]
+            image = data_point["video.right_view"][0]
             images.append(image)
 
     # Size is (max_steps, num_joints == 7)

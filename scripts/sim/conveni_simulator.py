@@ -19,6 +19,13 @@ from omni.isaac.manipulators.grippers import ParallelGripper
 from sim.controller.kinematics_solver import KinematicsSolver  # for UR5e
 from sim.generated_grasps import *
 from sim.motion_planning import trapezoidal_trajectory
+from abc import ABC, abstractmethod
+import numpy.typing as npt
+import json_numpy
+import requests
+import time
+
+json_numpy.patch()  # default json doesn't support the serialization of ndarray
 
 
 message_id = 0
@@ -111,14 +118,6 @@ def plan_picking_trajectory(task, target_object):
     return wps
 
 
-# def get_tcp_pose():
-#     return ur5e._kinematics.compute_forward_kinematics("tool0", ur5e.get_joint_positions()[:6])
-
-
-# def get_tcp_position():
-#     return get_tcp_pose()[0]
-
-
 class TaskEnvironment:
     def __init__(self, task, recorder=None):
         self._task = task
@@ -126,8 +125,9 @@ class TaskEnvironment:
 
     def reset(self):
         self._target_object = task._convenience_store.display_products()
+        self._task_description = f"pick a {self._target_object[1]}"
         if not (self._recorder is None):
-            self._recorder.new_episode(task_description=f"pick a {self._target_object[1]}")        
+            self._recorder.new_episode(task_description=self._task_description)
         return self._target_object
 
     def get_observation(self):
@@ -138,7 +138,7 @@ class TaskEnvironment:
         image_left = cv2.cvtColor(image_left, cv2.COLOR_RGB2BGR)
         image_right = crop_center_and_resize(task._cameras[1].get_rgb(), output_size=image_size)
         image_right = cv2.cvtColor(image_right, cv2.COLOR_RGB2BGR)
-        return qpos, qvel, effort, image_left, image_right
+        return qpos, qvel, effort, image_left, image_right, self._task_description
 
     def step(self, action, observation, end_flag):
         if end_flag:
@@ -154,11 +154,12 @@ class TaskEnvironment:
             ur5e.get_articulation_controller().apply_action(ArticulationAction(arm_action))
             gripper_action = [action[6], -action[6]]
             action[6] = -action[6]
+
             # print(f'GRIPPER GOAL={gripper_action}')
             gripper.apply_action(ArticulationAction(joint_positions=gripper_action))
 
             if not (self._recorder is None):
-                qpos, qvel, effort, image_left, image_right = observation
+                qpos, qvel, effort, image_left, image_right, task_description = observation
 
                 self._recorder.step(
                     qpos=qpos,
@@ -208,18 +209,51 @@ class TaskEnvironment:
         return is_success
 
 
-class Policy(object):
+class Policy(ABC):
+    @abstractmethod
+    def reset(self, target_object):
+        pass
+
+    @abstractmethod
+    def get_action(self, observation) -> tuple[npt.NDArray[np.float32], bool]:
+        pass
+
+
+class LearningBasedPolicy(Policy):
+    """
+    Inference server must be started in another process
+    $ python inference_service.py --server --http-server --port 8000 --model_path /data2/SB_gr00t/model/path --denoising-steps 4
+    """
+
     def __init__(self):
         pass
 
-    def reset(self):
+    def reset(self, target_object):
         pass
 
-    def get_action(self, observation):
-        pass
+    def get_action(self, observation) -> tuple[npt.NDArray[np.float32], bool]:
+        qpos, qvel, effort, image_left, image_right, task_description = observation
+        x = {
+            'state.qpos': qpos[np.newaxis, :],
+            'video.left_view': image_left[np.newaxis, :],
+            'video.right_view': image_right[np.newaxis, :],
+            'annotation.human.task_description': [task_description],
+        }
+
+        t = time.time()
+        response = requests.post(
+            "http://0.0.0.0:8000/act",
+            # "http://159.223.171.199:44989/act",   # Bore tunnel
+            json={"observation": x},
+        )
+        print(f"used time {time.time() - t}")
+        y = response.json()        
+        print(f'ACTION={y}')        
+        action = y['action.qpos'][15].copy()  # response value is immutable
+        return action, False
 
 
-class SimpleScriptedPolicy(object):
+class SimpleScriptedPolicy(Policy):
     def __init__(self):
         self._vel_range = [0.01, 0.05]
 
@@ -244,7 +278,7 @@ class SimpleScriptedPolicy(object):
         self._t = 0
 
     def get_action(self, observation):
-        qpos, qvel, effort, image_left, image_right = observation
+        qpos, qvel, effort, image_left, image_right, task_description = observation
         arm_joint_positions = qpos[:6]
         gripper_joint_position = qpos[6]
         current_position, current_quat = ur5e._kinematics.compute_forward_kinematics("tool0", arm_joint_positions)
@@ -293,9 +327,10 @@ class SimpleScriptedPolicy(object):
             return qpos, True
 
 
-def generate_data(max_episode_steps=650):
+def main(max_episode_steps=350):
     env = TaskEnvironment(task, recorder=LeRobotRecorder())
     policy = SimpleScriptedPolicy()
+    policy = LearningBasedPolicy()
     end_flag = True
 
     while simulation_app.is_running():
@@ -323,7 +358,7 @@ def generate_data(max_episode_steps=650):
         frame_number += 1
 
 
-generate_data()
+main()
 simulation_app.close()
 
 
