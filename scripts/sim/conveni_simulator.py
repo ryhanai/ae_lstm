@@ -70,7 +70,7 @@ ur5e._articulation_controller.set_max_efforts([1e6] * 6 + [0, 100, 0, 100, 0, 0]
 # stiffnesses = [150000.0] * 6 + [0, 5e4, 0, 5e4, 0, 0]
 # dampings = [72500.0] * 6 + [0, 4e4, 0, 4e4, 0, 0]
 stiffnesses = [60000.0] * 6 + [0, 5e4, 0, 5e4, 0, 0]
-dampings = [2500.0] * 6 + [0, 4e4, 0, 4e4, 0, 0]
+dampings = [2500.0] * 6 + [0, 2e4, 0, 2e4, 0, 0]
 ur5e._articulation_controller.set_gains(kps=stiffnesses, kds=dampings)
 print(f"PD GAIN (2): {ur5e._articulation_controller.get_gains()}")
 print(f"MAX EFFORTS (2): {ur5e._articulation_controller.get_max_efforts()}")
@@ -137,7 +137,7 @@ class TaskEnvironment:
 
     def reset(self):
         self._target_object = task._convenience_store.display_products()
-        self._task_description = f"pick a {self._target_object[1]}"
+        self._task_description = f"slide a {self._target_object[1]}"
 
         update_hud_text(self._task_description)
 
@@ -341,7 +341,7 @@ class SimpleScriptedPolicy(Policy):
             return qpos, True
 
 
-def main(max_episode_steps=200):
+def main(max_episode_steps=80):
     env = TaskEnvironment(task, recorder=LeRobotRecorder())
     policy = SimpleScriptedPolicy()
     policy = LearningBasedPolicy()
@@ -447,3 +447,9 @@ simulation_app.close()
 #         self.save_contact_state()
 #         self.save_image()
 #         self._frameNo += 1
+
+
+# 1. Start the inference server
+# python inference_service.py --server --http-server --port 8000 --model_path /data2/SB_gr00t/model/path --denoising-steps 4
+# 2. Run the simulator
+# ~/isaacsim/python.sh conveni_simulator.py -i

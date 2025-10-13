@@ -242,17 +242,17 @@ class LeRobotRecorder:
                     }
                 },
                 "observation.state": {
-                    "dtype": "float64",
+                    "dtype": "float32",
                     "shape": [obs_dof],
                     "names": [f"motor_{i}" for i in range(obs_dof)]
                 },
                 "action": {
-                    "dtype": "float64",
+                    "dtype": "float32",
                     "shape": [action_dof],
                     "names": [f"motor_{i}" for i in range(action_dof)]
                 },
                 "timestamp": {
-                    "dtype": "float64",
+                    "dtype": "float32",
                     "shape": [1]
                 },
                 "annotation.human.task_description": {
