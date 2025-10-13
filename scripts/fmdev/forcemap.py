@@ -30,7 +30,7 @@ class ForceMap(ABC):
 
 class GridForceMap(ForceMap):
     def __init__(self, name, bandwidth=0.010):
-        assert name == "seria_basket" or "konbini_shelf" or "small_table"
+        assert name == "seria_basket" or "konbini_shelf" or "small_table" or "maniskill_table"
         if name == "seria_basket":  # IROS2023, moonshot interim review
             self.grid = np.mgrid[-0.13:0.13:40j, -0.13:0.13:40j, 0.73:0.99:40j]
             # X, Y, Z = self.grid
@@ -54,6 +54,8 @@ class GridForceMap(ForceMap):
         elif name == "small_table":
             # self.grid = np.mgrid[-0.2:0.2:80j, -0.2:0.2:80j, 0.73:0.93:40j]
             self.grid = np.mgrid[-0.2:0.2:80j, -0.2:0.2:80j, 0.71:0.91:40j]
+        elif name == "maniskill_table":
+            self.grid = np.mgrid[-0.3:0.3:120j, -0.3:0.3:120j, 0.0:0.30:60j]
 
         X, Y, Z = self.grid
         self._xmax = X.max()
