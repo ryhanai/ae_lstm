@@ -22,7 +22,8 @@ PRE_TRAINED_MODEL_PATH = "nvidia/GR00T-N1.5-3B"
 EMBODIMENT_TAG = EmbodimentTag.NEW_EMBODIMENT
 
 REPO_PATH = os.path.dirname(os.path.dirname(gr00t.__file__))
-DATASET_PATH = str(Path.home() / "Downloads" / "conveni_gr00t_250919")
+# DATASET_PATH = str(Path.home() / "Downloads" / "conveni_gr00t_250919")
+DATASET_PATH = str(Path.home() / "Downloads" / "conveni_gr00t_251111")
 
 
 # data_config = DATA_CONFIG_MAP["fourier_gr1_arms_only"]
@@ -91,8 +92,8 @@ model.to(device)
 from transformers import TrainingArguments
 
 output_dir = "/data2/SB_gr00t/model/path"    # CHANGE THIS ACCORDING TO YOUR LOCAL PATH
-per_device_train_batch_size = 16     # CHANGE THIS ACCORDING TO YOUR GPU MEMORY
-max_steps = 10000                      # CHANGE THIS ACCORDING TO YOUR NEEDS
+per_device_train_batch_size = 64     # CHANGE THIS ACCORDING TO YOUR GPU MEMORY
+max_steps = 20000                      # CHANGE THIS ACCORDING TO YOUR NEEDS
 report_to = "wandb"
 dataloader_num_workers = 1          # 8 by default
 

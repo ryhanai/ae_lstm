@@ -19,6 +19,7 @@ from omni.isaac.manipulators.grippers import ParallelGripper
 from sim.controller.kinematics_solver import KinematicsSolver  # for UR5e
 from sim.generated_grasps import *
 from sim.motion_planning import trapezoidal_trajectory
+from sim.action_ensembler import StreamingChunkEMAEnsembler
 from abc import ABC, abstractmethod
 import numpy.typing as npt
 import json_numpy
@@ -239,11 +240,20 @@ class LearningBasedPolicy(Policy):
     $ python inference_service.py --server --http-server --port 8000 --model_path /data2/SB_gr00t/model/path --denoising-steps 4
     """
 
-    def __init__(self):
-        pass
+    def __init__(self, use_ensemble: bool = True):
+        self._action_dim = 7
+        self._chunk_size = 16
+        self._stride = 1
+        self._decay = 0.8
+        self._use_ensemble = use_ensemble
 
     def reset(self, target_object):
-        pass
+        self._ensembler = StreamingChunkEMAEnsembler(
+            chunk_size=self._chunk_size,
+            stride=self._stride,
+            action_dim=self._action_dim,
+            decay=self._decay,
+        )
 
     def get_action(self, observation) -> tuple[npt.NDArray[np.float32], bool]:
         qpos, qvel, effort, image_left, image_right, task_description = observation
@@ -262,8 +272,15 @@ class LearningBasedPolicy(Policy):
         )
         print(f"used time {time.time() - t}")
         y = response.json()        
-        print(f'ACTION={y}')        
-        action = y['action.qpos'][15].copy()  # response value is immutable
+        # print(f'ACTION={y}')        
+        action_chunk = y['action.qpos'].copy()  # response value is immutable        
+
+        if self._use_ensemble:
+            self._ensembler.update(action_chunk)
+            action = self._ensembler.get_current_action(t=self._ensembler.horizon - self._chunk_size + 2).cpu().numpy()
+        else:
+            action = action_chunk[0]
+
         return action, False
 
 
@@ -341,9 +358,9 @@ class SimpleScriptedPolicy(Policy):
             return qpos, True
 
 
-def main(max_episode_steps=80):
+def main(max_episode_steps=250):
     env = TaskEnvironment(task, recorder=LeRobotRecorder())
-    policy = SimpleScriptedPolicy()
+    # policy = SimpleScriptedPolicy()
     policy = LearningBasedPolicy()
     end_flag = True
 

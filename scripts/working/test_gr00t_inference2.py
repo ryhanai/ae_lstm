@@ -11,7 +11,9 @@ MODEL_PATH = "/data2/SB_gr00t/model/path"
 # REPO_PATH is the path of the pip install gr00t repo and one level up
 # REPO_PATH = os.path.dirname(os.path.dirname(gr00t.__file__))
 # DATASET_PATH = os.path.join(REPO_PATH, "demo_data/robot_sim.PickNPlace")
-DATASET_PATH = "/home/ryo/Downloads/conveni_gr00t"
+
+# DATASET_PATH = "/home/ryo/Downloads/conveni_gr00t_251111"
+DATASET_PATH = "/home/ryo/Downloads/conveni_gr00t_250919_test"
 EMBODIMENT_TAG = EmbodimentTag.NEW_EMBODIMENT
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
