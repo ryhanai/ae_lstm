@@ -96,10 +96,10 @@ class Experiment:
         abc = tag.split('_')
         if len(abc) == 3:
             a, b, c = abc
-            return f'{a}$(\sigma_f={b[1:]},\sigma_g={c[1:]})$' 
+            return f'{a}$(\\sigma_f={b[1:]},\\sigma_g={c[1:]})$' 
         elif len(abc) == 2:
             a, b = abc
-            return f'{a}$(\sigma_f={b[1:]})$'
+            return f'{a}$(\\sigma_f={b[1:]})$'
         else:
             return tag
 
@@ -109,13 +109,13 @@ class Experiment:
         print('\\centering')
         print('\\begin{tabular}{ l|lll }')
         print('\\toprule')
-        print('\\textbf{Smoothing Method} & \\textbf{MSE} & \\textbf{MSE, 1.0(cm)} & \\textbf{MSE, 0.5(cm)} \\\\ \midrule')
+        print('\\textbf{Smoothing Method} & \\textbf{MSE} & \\textbf{MSE, 1.0(cm)} & \\textbf{MSE, 0.5(cm)} \\\\ \\midrule')
 
         for tag, vals in scores.items():
             vals = np.array(vals)
             means = np.average(vals, axis=0)
             stds = np.std(vals, axis=0)
-            print(f'{self.format_tag(tag)} & ${means[0]:.5f} \pm {stds[0]:.5f}$ & ${means[1]:.5f} \pm {stds[1]:.5f}$ & ${means[2]:.5f} \pm {stds[2]:.5f}$ \\\\')
+            print(f'{self.format_tag(tag)} & ${means[0]:.5f} \\pm {stds[0]:.5f}$ & ${means[1]:.5f} \\pm {stds[1]:.5f}$ & ${means[2]:.5f} \\pm {stds[2]:.5f}$ \\\\')
 
         print('\\bottomrule')
         print('\\end{tabular}')
