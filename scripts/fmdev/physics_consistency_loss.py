@@ -1,6 +1,9 @@
 # from flask.cli import shell_command
 import numpy as np
+from regex import F
+from scipy.spatial.transform import Rotation as R
 from fmdev.TabletopForceMapData import TabletopRandomSceneDataset
+
 
 def mse_loss(d1, d2):
     return ((d1 - d2)**2).mean()
@@ -22,6 +25,10 @@ def normalized_pc_loss1(d_pred, d_gt, sdf, shell_thickness=0.01):
     l = (msk * (d_pred - d_gt)**2)[msk.nonzero()].mean()
     l /= (msk * d_gt)[msk.nonzero()].mean()
     return l
+
+
+from dataset.object_loader import ObjectInfo
+object_info = ObjectInfo('ycb_conveni_v1', split='all')
 
 
 from fmdev.test_torch import *
@@ -127,6 +134,79 @@ class Experiment:
         self.print_score(self._scores, caption='prediction losses')
         self.print_score(self._nscores, caption='prediction losses (normalized)')
 
+    def get_dataset(self, model_index):
+        return self._tester._model_dataset_pairs[model_index][1]
+
+
+def unnormalize_force(fmap, force_bounds):
+    fmap = np.exp(fmap)
+    fmap = np.clip(fmap, force_bounds[0], force_bounds[1])
+    return fmap
+
+
+def pose_to_matrix(position, quaternion):
+    R_mat = R.from_quat(quaternion).as_matrix()
+    T = np.eye(4)
+    T[:3, :3] = R_mat
+    T[:3, 3] = position
+    return T
+
+
+def get_CoM(object_name, obj_pose):
+    com_local = object_info.CoM(object_name)
+    com_world = obj_pose[:3, :3] @ com_local + obj_pose[:3, 3]
+    return com_world
+
 
 if __name__ == '__main__':
     ex = Experiment()
+
+
+scene_idx = 0
+shell_thickness = 0.01
+object_name = 'jif'
+model_idx = 0
+
+y_pred = ex._tester.predict(scene_idx, show_result=False)[0]
+fv = np.zeros((80, 80, 40))
+fv[:, :, :30] = y_pred
+gxyz = np.gradient(-fv)
+g_vecs = np.column_stack([g.flatten() for g in gxyz])    
+
+fmap = ex._tester._fmap
+
+sdf = ex._sdf_ds.load_sdf(scene_idx, object_name=object_name, transpose=False)  # array of shape (80, 80, 40)
+shell_mask = distance_mask(sdf, shell_thickness=shell_thickness)  # binary mask of shape (80, 80, 40)
+
+# convert to 1D array of force values and mask
+fmap.set_values(y_pred)
+force_values = fmap.get_values()
+fmap.set_values(shell_mask)
+shell_mask = fmap.get_values()
+
+masked_g_vecs = g_vecs[shell_mask.astype(bool)]
+masked_xy_coords = ex._tester._fmap.get_positions()[shell_mask.astype(bool)]
+
+total_force_on_object = masked_g_vecs.sum(axis=0)
+mg = object_info.mass(object_name) * 9.81
+gravity_support = np.linalg.norm(total_force_on_object - mg)
+print(f"Gravity support: {gravity_support}")
+
+ds = ex._tester._model_dataset_pairs[model_idx][1]
+bs = dict(ds.load_bin_state(scene_idx))
+obj_pose = bs[object_name]
+com = get_CoM(object_name, pose_to_matrix(*obj_pose))
+torque_balance = np.linalg.norm(np.cross(masked_xy_coords - com, masked_g_vecs).sum(axis=0))
+print(f"Torque balance: {torque_balance}")
+
+# agreement of contact regions
+contact_threshold = 0.4
+GT_force = np.array((80, 80, 40))
+
+
+# agreement of low resistance directions
+contact_pred = np.where(force_values > contact_threshold, 1., 0.)
+contact_gt = np.zeros_like(force_values)
+contact_I = (contact_pred.astype(bool) & contact_gt.astype(bool)).sum() 
+contact_U =(contact_pred.astype(bool) | contact_gt.astype(bool)).sum()
+contact_IoU = contact_I / contact_U

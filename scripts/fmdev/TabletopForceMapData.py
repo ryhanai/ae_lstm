@@ -167,14 +167,13 @@ class TabletopRandomSceneDataset(Dataset):
             fmap = self._normalization(fmap, np.log(self._force_bounds))
         return fmap.transpose(2, 0, 1)            
 
-    def load_sdf(self, idx):
+    def load_sdf(self, idx, object_name=None, transpose=True):
         dataset_name, scene_idx = self._ids[idx]
         sdf = np.load(self.root_dir / dataset_name / self._sdf_file(scene_idx))
         sdf = sdf[:, :, :30].astype("float32")
-        # dist_bounds = [-0.001, 0.02]
-        # sdf = np.clip(-fmap, dist_bounds[0], dist_bounds[1])
-        # sdf = self._normalization(sdf, dist_bounds)
-        return sdf.transpose(2, 0, 1)
+        if transpose:
+            sdf = sdf.transpose(2, 0, 1)
+        return sdf
     
     def load_image(self, idx, view_idx):
         dataset_name, scene_idx = self._ids[idx]
@@ -197,6 +196,12 @@ class TabletopRandomSceneDataset(Dataset):
         dataset_name, scene_idx = self._ids[idx]
         p = Path(self.root_dir) / dataset_name / f"bin_state{scene_idx:05d}.pkl"
         return pd.read_pickle(p)
+
+    def load_point_forces(self, idx):
+        dataset_name, scene_idx = self._ids[idx]
+        p = Path(self.root_dir) / dataset_name / f"contact_raw_data{scene_idx:05d}.pkl"
+        return pd.read_pickle(p)
+
 
     # def get_specific_view_and_force(self, idx, view_idx):
     #     assert (

@@ -19,27 +19,37 @@ class ObjectInfo:
             obj_def = yaml.safe_load(f)
 
         self._info = {}
-        try:
-            for name in dataset_def["ycb"]:
-                prop = obj_def["ycb"][name]
-                self._info[name] = {
-                    "mass": prop["mass"],
-                    "usd_file": f"{self._object_dir}/ycb/{name}/google_16k/textured/textured.usd",
-                    "dataset": "ycb",
-                }
-        except:
-            pass
+        for name in dataset_def["ycb"]:
+            prop = obj_def[name]
+            self._info[name] = {
+                "mass": prop["mass"],
+                "usd_file": f"{self._object_dir}/ycb/{name}/google_16k/textured/textured.usd",
+                "dataset": "ycb",
+            }
+            try:
+                self._info[name]["center"] = prop["center"]
+            except KeyError:
+                pass
+            try:
+                self._info[name]["com"] = prop["com"]
+            except KeyError:
+                pass
 
-        try:
-            for name in dataset_def["conveni"]:
-                prop = obj_def["conveni"][name]
-                self._info[name] = {
-                    "mass": prop["mass"],
-                    "usd_file": f"{self._object_dir}/conveni/{name}/{name}/{name}.usd",
-                    "dataset": "conveni",
-                }
-        except:
-            pass
+        for name in dataset_def["conveni"]:
+            prop = obj_def[name]
+            self._info[name] = {
+                "mass": prop["mass"],
+                "usd_file": f"{self._object_dir}/conveni/{name}/{name}/{name}.usd",
+                "dataset": "conveni",
+            }
+            try:
+                self._info[name]["center"] = prop["center"]
+            except KeyError:
+                pass
+            try:
+                self._info[name]["com"] = prop["com"]
+            except KeyError:
+                pass
 
     def usd_file(self, name):
         return self._info[name]["usd_file"]
@@ -85,6 +95,9 @@ class ObjectInfo:
 
     def dataset(self, name):
         return self._info[name]["dataset"]
+
+    def CoM(self, name):
+        return self._info[name]["com"]
 
     def names(self):
         return list(self._info.keys())

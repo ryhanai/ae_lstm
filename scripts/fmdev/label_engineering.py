@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 
 from fmdev.forcemap import GridForceMap, SmoothingMethod
-from fmdev.eipl_print_func import print_info
+from core.utils import print_info
 # import mesh2sdf
 import numpy as np
 import pandas as pd
@@ -211,7 +211,7 @@ class FmapSmoother:
         print_info(f"{time.time() - start_t:.2f}[sec]")
         return force_distribution
 
-    def compute_density_SDF(self, bs):
+    def compute_density_SDF(self, bs, save_sdf_for_objects=True):
         """
           compute the sdf for the scene
         """
@@ -223,6 +223,7 @@ class FmapSmoother:
         if inside_only:  # nsdf
             sdfs = [np.where(sdf <= 0, sdf, 0) for sdf in sdfs]
         scene_sdf = functools.reduce(lambda x, y: np.minimum(x, y), sdfs)
+
 
         print_info(f"{time.time() - start_t:.2f}[sec]")
         return scene_sdf
@@ -267,20 +268,23 @@ class FmapSmoother:
         self._viewer.publish_bin_state(bin_state, self._fmap, draw_fmap=True, draw_range=draw_range)
 
     def compute_force_distribution(self, frameNo, log_scale=False, overwrite=False):
-        out_file = os.path.join(self._data_dir, self._out_file_name(frameNo))
-        if (not overwrite) and os.path.exists(out_file):
-            print(f"skip [{frameNo}]")
-            return
-        else:
-            print(f"process [{frameNo}], log_scale={log_scale}")
-            bin_state, contacts = self.load(frameNo)
-            d = self.compute_density(bin_state,
-                                     contacts,
-                                     method=self._smoothing_method)
-            if log_scale:
-                d = np.log(1 + d)
-            pd.to_pickle(d, out_file)
-            return d
+        try:
+            out_file = os.path.join(self._data_dir, self._out_file_name(frameNo))
+            if (not overwrite) and os.path.exists(out_file):
+                print(f"skip [{frameNo}]")
+                return
+            else:
+                print(f"process [{frameNo}], log_scale={log_scale}")
+                bin_state, contacts = self.load(frameNo)
+                d = self.compute_density(bin_state,
+                                        contacts,
+                                        method=self._smoothing_method)
+                if log_scale:
+                    d = np.log(1 + d)
+                pd.to_pickle(d, out_file)
+                return d
+        except Exception as e:
+            print(f"{e}, frameNo: {frameNo}")
 
 
 def in_forcemap_area(p):
