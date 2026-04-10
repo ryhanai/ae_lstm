@@ -99,6 +99,9 @@ class ObjectInfo:
     def CoM(self, name):
         return self._info[name]["com"]
 
+    def center(self, name):
+        return self._info[name]["center"]
+
     def names(self):
         return list(self._info.keys())
 

@@ -218,15 +218,19 @@ class FmapSmoother:
         start_t = time.time()
 
         inside_only = False
-        sdfs = [self.get_sdf_for_object_in_scene(name, pose) for name, pose in bs.items()]
 
-        if inside_only:  # nsdf
-            sdfs = [np.where(sdf <= 0, sdf, 0) for sdf in sdfs]
-        scene_sdf = functools.reduce(lambda x, y: np.minimum(x, y), sdfs)
+        sdfs = {}
 
+        for name, pose in bs.items():
+            sdfs[name] = self.get_sdf_for_object_in_scene(name, pose)
+
+        # if inside_only:  # nsdf
+        #     sdfs = [np.where(sdf <= 0, sdf, 0) for sdf in sdfs]
+        scene_sdf = functools.reduce(lambda x, y: np.minimum(x, y), sdfs.values())
+        sdfs['scene'] = scene_sdf
 
         print_info(f"{time.time() - start_t:.2f}[sec]")
-        return scene_sdf
+        return sdfs
 
     def compute_density(self, bin_state, contact_state, method):
         bs = dict(bin_state)

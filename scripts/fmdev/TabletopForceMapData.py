@@ -152,9 +152,10 @@ class TabletopRandomSceneDataset(Dataset):
             raise Exception(f'unknown smoothing method: {self._method}')
 
     def _sdf_file(self, scene_idx):
-        return f'force{scene_idx:05d}_SDF.npy'
+        # return f'force{scene_idx:05d}_SDF.npy'
+        return f'force{scene_idx:05d}_SDF.pkl'    
 
-    def load_fmap(self, idx, normalize=True):
+    def load_fmap(self, idx, normalize=True, transpose=True):
         dataset_name, scene_idx = self._ids[idx]
         # this only works in numpy 2.x
         # fmap = pd.read_pickle(self.root_dir / dataset_name / self._force_distribution_file(scene_idx))
@@ -165,11 +166,18 @@ class TabletopRandomSceneDataset(Dataset):
             fmap = np.clip(fmap, self._force_bounds[0], self._force_bounds[1])
             fmap = np.log(fmap)  # force_raw (in log scale)
             fmap = self._normalization(fmap, np.log(self._force_bounds))
-        return fmap.transpose(2, 0, 1)            
+        if transpose:
+            fmap = fmap.transpose(2, 0, 1)            
+        return fmap
 
     def load_sdf(self, idx, object_name=None, transpose=True):
         dataset_name, scene_idx = self._ids[idx]
-        sdf = np.load(self.root_dir / dataset_name / self._sdf_file(scene_idx))
+        # sdf = np.load(self.root_dir / dataset_name / self._sdf_file(scene_idx))
+        sdf = pd.read_pickle(self.root_dir / dataset_name / self._sdf_file(scene_idx))        
+        if object_name is None:
+            object_name = 'scene'
+
+        sdf = sdf[object_name]
         sdf = sdf[:, :, :30].astype("float32")
         if transpose:
             sdf = sdf.transpose(2, 0, 1)
@@ -197,11 +205,11 @@ class TabletopRandomSceneDataset(Dataset):
         p = Path(self.root_dir) / dataset_name / f"bin_state{scene_idx:05d}.pkl"
         return pd.read_pickle(p)
 
-    def load_point_forces(self, idx):
+    def load_raw_contact_data(self, idx):
         dataset_name, scene_idx = self._ids[idx]
         p = Path(self.root_dir) / dataset_name / f"contact_raw_data{scene_idx:05d}.pkl"
         return pd.read_pickle(p)
-
+        
 
     # def get_specific_view_and_force(self, idx, view_idx):
     #     assert (
