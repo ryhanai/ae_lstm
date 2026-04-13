@@ -272,8 +272,8 @@ def evaluate(model_idx=0,
     # Gravity Support
     total_force_on_object = approximated_force_vecs.sum(axis=0)
     mg = object_info.mass(object_name) * np.array([0, 0, -9.81])
-    gravity_support = np.linalg.norm(total_force_on_object + mg)
-    print(f"Gravity support: {gravity_support}")
+    gravity_support = np.linalg.norm(total_force_on_object + mg) / np.linalg.norm(mg)
+    print(f"Gravity support: {gravity_support}[{total_force_on_object}/{mg}]")
 
     # Torque Balance
     com = get_CoM(object_name, pose_to_matrix(*obj_pose))
@@ -292,16 +292,14 @@ def evaluate(model_idx=0,
     force_values_gt = unnormalize_force(force_values_gt, ds) / dt  # impulse -> Force [N]
 
     contact_gt = np.where(force_values_gt >= contact_threshold, 1., 0.)
-
-    # contact_threshold = np.percentile(force_values, recall_percentile) 
     contact_pred = np.where(force_values >= contact_threshold, 1., 0.)
 
     contact_I = (contact_pred.astype(bool) & contact_gt.astype(bool)).sum() 
     contact_U =(contact_pred.astype(bool) | contact_gt.astype(bool)).sum()
     contact_recall = contact_I / contact_gt.astype(bool).sum()
     contact_IoU = contact_I / contact_U
-    print(f"Contact_IoU: {contact_IoU}[{contact_I}/{contact_U}]")
-    print(f"Contact Recall: {contact_recall}")
+    # print(f"Contact_IoU: {contact_IoU}[{contact_I}/{contact_U}]")
+    # print(f"Contact Recall: {contact_recall}")
 
     # agreement of low resistance directions
     directions = fibonacci_sphere(100)
@@ -340,3 +338,13 @@ def evaluate(model_idx=0,
     # return contact_pred, contact_gt, approximated_force_poss, approximated_force_vecs
 
     
+def evaluate_models(model_indices=range(4),
+                    scene_idx=0,
+                    object_name='007_tuna_fish_can',
+                    shell_thickness=0.01,
+                    contact_threshold=1e-4,
+                    recall_percentile=90,
+                    resist_percentile=10,
+                 ):
+    for model_idx in model_indices:
+        evaluate(model_idx, scene_idx, object_name, shell_thickness, contact_threshold, recall_percentile, resist_percentile)
